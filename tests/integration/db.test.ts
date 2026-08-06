@@ -100,4 +100,43 @@ describe('createDb', () => {
       expect(db.select().from(taskPeople).all()).toHaveLength(0);
     });
   });
+
+  describe('task_notes table', () => {
+    it('creates the task_notes table with id, task_id, text, source, created_at columns', () => {
+      const { sqlite } = createDb(':memory:');
+
+      const tableNames = (
+        sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'task_notes'").all() as { name: string }[]
+      ).map((row) => row.name);
+      expect(tableNames).toEqual(['task_notes']);
+
+      const columnNames = (sqlite.prepare('PRAGMA table_info(task_notes)').all() as { name: string }[])
+        .map((row) => row.name)
+        .sort();
+      expect(columnNames).toEqual(['created_at', 'id', 'source', 'task_id', 'text']);
+    });
+
+    it('rejects a note row referencing a missing task (foreign key enforced)', () => {
+      const { sqlite } = createDb(':memory:');
+
+      expect(() =>
+        sqlite
+          .prepare('INSERT INTO task_notes (task_id, text, source, created_at) VALUES (?, ?, ?, ?)')
+          .run(999, 'Orphan note', 'ui', 1),
+      ).toThrow();
+    });
+
+    it('cascades deleting a task to remove its notes', () => {
+      const { db, sqlite } = createDb(':memory:');
+      const [task] = db.insert(tasks).values({ title: 'Follow up with Sam', lane: 'To Do', createdAt: 1 }).returning().all();
+      sqlite
+        .prepare('INSERT INTO task_notes (task_id, text, source, created_at) VALUES (?, ?, ?, ?)')
+        .run(task!.id, 'First note', 'ui', 1);
+
+      sqlite.prepare('DELETE FROM tasks WHERE id = ?').run(task!.id);
+
+      const remaining = sqlite.prepare('SELECT * FROM task_notes').all();
+      expect(remaining).toHaveLength(0);
+    });
+  });
 });

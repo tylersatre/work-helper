@@ -37,3 +37,13 @@ export const taskPeople = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.taskId, t.personId] })],
 );
+
+export const taskNotes = sqliteTable('task_notes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  taskId: integer('task_id')
+    .notNull()
+    .references(() => tasks.id, { onDelete: 'cascade' }),
+  text: text('text').notNull(),
+  source: text('source', { enum: ['ui', 'mcp'] }).notNull(),
+  createdAt: integer('created_at').notNull(),
+});

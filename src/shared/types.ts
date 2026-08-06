@@ -32,6 +32,17 @@ export interface PersonInput {
   extraFields?: Record<string, string>;
 }
 
+export type NoteSource = 'ui' | 'mcp';
+
+export interface Note {
+  id: number;
+  taskId: number;
+  text: string;
+  source: NoteSource;
+  createdAt: number;
+}
+
 export interface TaskDetail extends Task {
   people: Person[];
+  notes: Note[];
 }
