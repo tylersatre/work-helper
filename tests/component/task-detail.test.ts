@@ -29,7 +29,7 @@ describe('TaskDetailPage', () => {
       'fetch',
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [] }),
+        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [] }),
       }),
     );
 
@@ -50,7 +50,7 @@ describe('TaskDetailPage', () => {
       if (url === '/api/tasks/1' && !options) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [] }),
+          json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [] }),
         });
       }
       if (typeof url === 'string' && url.startsWith('/api/people?q=')) {
@@ -72,6 +72,7 @@ describe('TaskDetailPage', () => {
             people: [
               { id: 1, firstName: 'Sam', lastName: 'Rivera', email: 'sam.rivera@example.com', phone: null, extraFields: {}, createdAt: 1 },
             ],
+            notes: [],
           }),
         });
       }
@@ -112,13 +113,14 @@ describe('TaskDetailPage', () => {
             people: [
               { id: 1, firstName: 'Sam', lastName: 'Rivera', email: 'sam.rivera@example.com', phone: null, extraFields: {}, createdAt: 1 },
             ],
+            notes: [],
           }),
         });
       }
       if (options?.method === 'DELETE') {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [] }),
+          json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [] }),
         });
       }
       return Promise.resolve({ ok: true, json: async () => [] });
@@ -135,5 +137,47 @@ describe('TaskDetailPage', () => {
     await flushPromises();
 
     expect(screen.queryAllByTestId('linked-person')).toHaveLength(0);
+  });
+
+  it('renders a populated notes section for a task with notes', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          id: 1,
+          title: 'Follow up with Sam',
+          lane: 'To Do',
+          createdAt: 1,
+          people: [],
+          notes: [{ id: 1, taskId: 1, text: 'Waiting on budget numbers', source: 'ui', createdAt: Date.now() }],
+        }),
+      }),
+    );
+
+    const router = makeRouter('/tasks/1');
+    await router.isReady();
+    render(TaskDetailPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(await screen.findByText('Waiting on budget numbers')).toBeTruthy();
+  });
+
+  it('renders the empty notes state with the add-note input still present for a task with no notes', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [] }),
+      }),
+    );
+
+    const router = makeRouter('/tasks/1');
+    await router.isReady();
+    render(TaskDetailPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(screen.queryAllByTestId('note')).toHaveLength(0);
+    expect(screen.getByRole('textbox', { name: /note/i })).toBeTruthy();
   });
 });

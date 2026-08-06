@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import type { Person, TaskDetail } from '../../shared/types.js';
+import type { Note, Person, TaskDetail } from '../../shared/types.js';
 import LinkedPeople from '../components/LinkedPeople.vue';
+import TaskNotes from '../components/TaskNotes.vue';
 
 const route = useRoute();
 const task = ref<TaskDetail | null>(null);
@@ -18,6 +19,12 @@ function onUpdatePeople(people: Person[]): void {
   }
 }
 
+function onUpdateNotes(notes: Note[]): void {
+  if (task.value) {
+    task.value.notes = notes;
+  }
+}
+
 onMounted(fetchTask);
 </script>
 
@@ -25,5 +32,6 @@ onMounted(fetchTask);
   <section v-if="task">
     <h2>{{ task.title }}</h2>
     <LinkedPeople :task-id="task.id" :people="task.people" @update:people="onUpdatePeople" />
+    <TaskNotes :task-id="task.id" :notes="task.notes" @update:notes="onUpdateNotes" />
   </section>
 </template>
