@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { absoluteLocal, relativeTime } from '../../src/client/utils/time.js';
 
 function normalizeSpaces(value: string): string {
-  return value.replace(/ /g, ' ');
+  return value.replace(/\u202F/g, ' ');
 }
 
 describe('relativeTime', () => {

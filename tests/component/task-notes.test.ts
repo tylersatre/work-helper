@@ -187,4 +187,34 @@ describe('TaskNotes', () => {
     expect(note.querySelector('img')).toBeNull();
     expect(note.textContent).toContain('<script>alert(1)</script>');
   });
+
+  it('labels a source "mcp" note "via MCP" and a source "ui" note "You", each with its timestamp', () => {
+    const notes: Note[] = [
+      { id: 2, taskId: 1, text: 'Synced from assistant', source: 'mcp', createdAt: 2 },
+      { id: 1, taskId: 1, text: 'Manual note', source: 'ui', createdAt: 1 },
+    ];
+
+    render(TaskNotes, { props: { taskId: 1, notes } });
+
+    const items = screen.getAllByTestId('note');
+    expect(items[0]?.textContent).toContain('via MCP');
+    expect(items[0]?.querySelector('time')).toBeTruthy();
+    expect(items[1]?.textContent).toContain('You');
+    expect(items[1]?.querySelector('time')).toBeTruthy();
+  });
+
+  it('the confirm-guarded delete flow works identically on a source "mcp" note', async () => {
+    const notes: Note[] = [{ id: 1, taskId: 1, text: 'Synced from assistant', source: 'mcp', createdAt: 1 }];
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(TaskNotes, { props: { taskId: 1, notes } });
+
+    await fireEvent.click(screen.getByRole('button', { name: /delete/i }));
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/tasks/1/notes/1', expect.objectContaining({ method: 'DELETE' }));
+    expect(screen.queryAllByTestId('note')).toHaveLength(0);
+  });
 });
