@@ -4,10 +4,10 @@ import { addNote, createTask, getTaskDetail, linkPerson, unlinkPerson } from '..
 
 export async function taskRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/tasks', async (request, reply) => {
-    const body = request.body as { title?: unknown } | undefined;
+    const body = request.body as { title?: unknown; note?: unknown } | undefined;
 
     try {
-      const task = createTask(app.db, app.lanes, body?.title);
+      const task = createTask(app.db, app.lanes, body?.title, body?.note);
       reply.status(201);
       return task;
     } catch (error) {

@@ -6,18 +6,26 @@ import type * as schema from '../db/schema.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
 
-export function createTask(db: AppDb, lanes: string[], rawTitle: unknown) {
+export function createTask(db: AppDb, lanes: string[], rawTitle: unknown, rawNote?: unknown) {
   const title = titleSchema.parse(rawTitle);
   const firstLane = lanes[0]!;
   const createdAt = Date.now();
 
-  const [created] = db
-    .insert(tasks)
-    .values({ title, lane: firstLane, createdAt })
-    .returning()
-    .all();
+  const trimmedNote = typeof rawNote === 'string' ? rawNote.trim() : '';
 
-  return created!;
+  return db.transaction((tx) => {
+    const [created] = tx
+      .insert(tasks)
+      .values({ title, lane: firstLane, createdAt })
+      .returning()
+      .all();
+
+    if (trimmedNote !== '') {
+      tx.insert(taskNotes).values({ taskId: created!.id, text: rawNote as string, source: 'ui', createdAt }).run();
+    }
+
+    return created!;
+  });
 }
 
 export function listTasksByLane(db: AppDb, lane: string) {

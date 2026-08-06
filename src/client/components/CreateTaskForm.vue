@@ -6,6 +6,7 @@ import { titleSchema } from '../../shared/validation.js';
 const emit = defineEmits<{ created: [task: Task] }>();
 
 const title = ref('');
+const note = ref('');
 const validationMessage = ref('');
 
 async function onSubmit(): Promise<void> {
@@ -17,10 +18,16 @@ async function onSubmit(): Promise<void> {
 
   validationMessage.value = '';
 
+  const trimmedNote = note.value.trim();
+  const body: { title: string; note?: string } = { title: title.value };
+  if (trimmedNote !== '') {
+    body.note = note.value;
+  }
+
   const response = await fetch('/api/tasks', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ title: title.value }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -29,6 +36,7 @@ async function onSubmit(): Promise<void> {
 
   const task: Task = await response.json();
   title.value = '';
+  note.value = '';
   emit('created', task);
 }
 </script>
@@ -37,6 +45,8 @@ async function onSubmit(): Promise<void> {
   <form @submit.prevent="onSubmit">
     <label for="task-title">Title</label>
     <input id="task-title" v-model="title" type="text" name="title" />
+    <label for="task-create-note">Note</label>
+    <textarea id="task-create-note" v-model="note" name="note"></textarea>
     <button type="submit">Add task</button>
     <p v-if="validationMessage" role="alert">{{ validationMessage }}</p>
   </form>
