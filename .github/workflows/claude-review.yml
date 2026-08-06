@@ -1,0 +1,57 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Review this pull request against CLAUDE.md and this repo's
+            spec-driven workflow. The PR branch is already checked out in
+            the current working directory.
+
+            Specifically:
+            - Find the feature spec this PR implements (look for
+              docs/product/features/<name>.md referenced in the PR
+              description, or a recently-touched spec under
+              docs/product/features/). Check the diff against its
+              Given/When/Then acceptance criteria.
+            - Flag any implementation code that has no corresponding
+              failing-test-first commit — this project requires TDD
+              (red before green); code that shows up without a preceding
+              test looks like the test was skipped or backfilled.
+            - Flag tests that don't actually exercise the behavior they
+              claim to (e.g. asserting on mocked-away internals, or
+              trivially-true assertions) — these look like coverage but
+              aren't.
+            - Flag any "done"/"complete" claim in the PR description that
+              isn't backed by evidence in the diff (test output, or an
+              evidence bundle under docs/evidence/<feature>/ with
+              screenshots + results.md from the browser-tester agent).
+            - General code quality, bugs, and security implications.
+
+            Use `gh pr comment` for top-level feedback.
+            Use `mcp__github_inline_comment__create_inline_comment` (with
+            `confirmed: true`) to highlight specific issues inline.
+            Only post GitHub comments — don't submit review text as plain
+            messages.
+
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
