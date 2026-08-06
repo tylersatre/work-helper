@@ -49,12 +49,22 @@ async function onSubmit(): Promise<void> {
   emit('update:notes', localNotes.value);
   text.value = '';
 }
+
+async function onDelete(noteId: number): Promise<void> {
+  const response = await fetch(`/api/tasks/${props.taskId}/notes/${noteId}`, { method: 'DELETE' });
+  if (!response.ok) {
+    return;
+  }
+
+  localNotes.value = localNotes.value.filter((note) => note.id !== noteId);
+  emit('update:notes', localNotes.value);
+}
 </script>
 
 <template>
   <div>
     <ul class="notes-list">
-      <NoteItem v-for="note in localNotes" :key="note.id" :note="note" :now="now" />
+      <NoteItem v-for="note in localNotes" :key="note.id" :note="note" :now="now" @delete="onDelete" />
     </ul>
 
     <form @submit.prevent="onSubmit">

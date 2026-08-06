@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
-import { addNote, createTask, getTaskDetail, linkPerson, unlinkPerson } from '../services/tasks.js';
+import { addNote, createTask, deleteNote, getTaskDetail, linkPerson, unlinkPerson } from '../services/tasks.js';
 
 export async function taskRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/tasks', async (request, reply) => {
@@ -45,6 +45,19 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
 
     reply.status(201);
     return result.note;
+  });
+
+  app.delete('/api/tasks/:id/notes/:noteId', async (request, reply) => {
+    const { id, noteId } = request.params as { id: string; noteId: string };
+
+    const result = deleteNote(app.db, Number(id), Number(noteId));
+    if (!result.ok) {
+      reply.status(404);
+      return { error: { message: result.error === 'task-not-found' ? 'Task not found' : 'Note not found' } };
+    }
+
+    reply.status(204);
+    return null;
   });
 
   app.post('/api/tasks/:id/people', async (request, reply) => {

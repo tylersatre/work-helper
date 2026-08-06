@@ -5,10 +5,18 @@ import { absoluteLocal, relativeTime } from '../utils/time.js';
 
 const props = defineProps<{ note: Note; now: number }>();
 
+const emit = defineEmits<{ delete: [noteId: number] }>();
+
 const sourceLabel = computed(() => (props.note.source === 'ui' ? 'You' : 'via MCP'));
 const isoDatetime = computed(() => new Date(props.note.createdAt).toISOString());
 const hoverTitle = computed(() => absoluteLocal(props.note.createdAt));
 const relativeLabel = computed(() => relativeTime(props.note.createdAt, props.now));
+
+function onDelete(): void {
+  if (window.confirm('Delete this note?')) {
+    emit('delete', props.note.id);
+  }
+}
 </script>
 
 <template>
@@ -16,6 +24,7 @@ const relativeLabel = computed(() => relativeTime(props.note.createdAt, props.no
     <span data-testid="note-source">{{ sourceLabel }}</span>
     <time :datetime="isoDatetime" :title="hoverTitle">{{ relativeLabel }}</time>
     <div class="note-text">{{ note.text }}</div>
+    <button type="button" @click="onDelete">Delete</button>
   </li>
 </template>
 

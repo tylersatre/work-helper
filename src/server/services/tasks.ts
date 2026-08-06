@@ -86,6 +86,24 @@ export function addNote(db: AppDb, taskId: number, rawText: unknown): AddNoteRes
   return { ok: true, note: note! };
 }
 
+export type DeleteNoteResult = { ok: true } | { ok: false; error: 'task-not-found' | 'note-not-found' };
+
+export function deleteNote(db: AppDb, taskId: number, noteId: number): DeleteNoteResult {
+  const [task] = db.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, taskId)).limit(1).all();
+  if (!task) {
+    return { ok: false, error: 'task-not-found' };
+  }
+
+  const [note] = db.select({ id: taskNotes.id }).from(taskNotes).where(and(eq(taskNotes.id, noteId), eq(taskNotes.taskId, taskId))).limit(1).all();
+  if (!note) {
+    return { ok: false, error: 'note-not-found' };
+  }
+
+  db.delete(taskNotes).where(eq(taskNotes.id, noteId)).run();
+
+  return { ok: true };
+}
+
 export type LinkPersonResult =
   | { ok: true; task: NonNullable<ReturnType<typeof getTaskDetail>> }
   | { ok: false; error: 'task-not-found' | 'person-not-found' };

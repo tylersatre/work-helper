@@ -92,4 +92,67 @@ describe('TaskNotes', () => {
     expect(await screen.findByText('Note text is required')).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('each note shows a delete control', () => {
+    const notes: Note[] = [{ id: 1, taskId: 1, text: 'First note', source: 'ui', createdAt: 1 }];
+
+    render(TaskNotes, { props: { taskId: 1, notes } });
+
+    expect(screen.getByRole('button', { name: /delete/i })).toBeTruthy();
+  });
+
+  it('confirming the delete prompt removes only the targeted note', async () => {
+    const notes: Note[] = [
+      { id: 2, taskId: 1, text: 'Second note', source: 'ui', createdAt: 2 },
+      { id: 1, taskId: 1, text: 'First note', source: 'ui', createdAt: 1 },
+    ];
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(TaskNotes, { props: { taskId: 1, notes } });
+
+    const deleteButtons = screen.getAllByRole('button', { name: /delete/i });
+    await fireEvent.click(deleteButtons[0]!);
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/tasks/1/notes/2', expect.objectContaining({ method: 'DELETE' }));
+    const remaining = screen.getAllByTestId('note');
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]?.textContent).toContain('First note');
+  });
+
+  it('cancelling the delete prompt sends no request and leaves other notes untouched', async () => {
+    const notes: Note[] = [
+      { id: 1, taskId: 1, text: 'First note', source: 'ui', createdAt: 1 },
+      { id: 2, taskId: 1, text: 'Second note', source: 'ui', createdAt: 2 },
+    ];
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(TaskNotes, { props: { taskId: 1, notes } });
+
+    const deleteButtons = screen.getAllByRole('button', { name: /delete/i });
+    await fireEvent.click(deleteButtons[0]!);
+    await flushPromises();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.getAllByTestId('note')).toHaveLength(2);
+  });
+
+  it('deleting the only note returns the section to the empty state with the add-note input still present', async () => {
+    const notes: Note[] = [{ id: 1, taskId: 1, text: 'Only note', source: 'ui', createdAt: 1 }];
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(TaskNotes, { props: { taskId: 1, notes } });
+
+    await fireEvent.click(screen.getByRole('button', { name: /delete/i }));
+    await flushPromises();
+
+    expect(screen.queryAllByTestId('note')).toHaveLength(0);
+    expect(screen.getByRole('textbox', { name: /note/i })).toBeTruthy();
+  });
 });
