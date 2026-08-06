@@ -13,6 +13,9 @@ yarn-error.log*
 pnpm-debug.log*
 .pnpm-store/
 
+# Runtime SQLite database
+data/
+
 # Env
 .env
 .env.*
@@ -29,6 +32,18 @@ test-results/
 playwright-report/
 playwright/.cache/
 blob-report/
+.playwright-mcp/
+
+# Claude Code agent worktrees
+.claude/worktrees/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
 
 # OS
 .DS_Store
+Thumbs.db
