@@ -1,11 +1,18 @@
 <script setup lang="ts">
+import { useRouter } from 'vue-router';
 import type { Task } from '../../shared/types.js';
 
-defineProps<{ task: Task }>();
+const props = defineProps<{ task: Task }>();
+
+const router = useRouter();
+
+function onClick(): void {
+  router.push(`/tasks/${props.task.id}`);
+}
 </script>
 
 <template>
-  <li class="task-card" data-testid="task-card">{{ task.title }}</li>
+  <li class="task-card" data-testid="task-card" @click="onClick">{{ task.title }}</li>
 </template>
 
 <style scoped>

@@ -11,6 +11,7 @@ export function createDb(path: string) {
   }
 
   const sqlite = new Database(path);
+  sqlite.pragma('foreign_keys = ON');
   const db = drizzle(sqlite, { schema });
 
   migrate(db, { migrationsFolder: 'drizzle' });

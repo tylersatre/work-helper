@@ -7,5 +7,13 @@ export default defineConfig({
     environment: 'node',
     setupFiles: ['./tests/component/setup.ts'],
     css: true,
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/cypress/**',
+      '**/.{idea,git,cache,output,temp}/**',
+      '**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cjs,mocha,phpunit}.config.*',
+      '.claude/worktrees/**',
+    ],
   },
 });
