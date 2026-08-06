@@ -155,4 +155,36 @@ describe('TaskNotes', () => {
     expect(screen.queryAllByTestId('note')).toHaveLength(0);
     expect(screen.getByRole('textbox', { name: /note/i })).toBeTruthy();
   });
+
+  it('renders markdown formatting with zero raw markdown characters visible', () => {
+    const markdownText =
+      '**Urgent:** call *Sam* about [pricing](https://example.com/pricing) — see `deck.pdf`\n\n- one\n- two';
+    const notes: Note[] = [{ id: 1, taskId: 1, text: markdownText, source: 'ui', createdAt: 1 }];
+
+    render(TaskNotes, { props: { taskId: 1, notes } });
+
+    const note = screen.getByTestId('note');
+    expect(note.querySelector('strong')?.textContent).toBe('Urgent:');
+    expect(note.querySelector('em')?.textContent).toBe('Sam');
+    const link = note.querySelector('a');
+    expect(link?.getAttribute('href')).toBe('https://example.com/pricing');
+    expect(link?.textContent).toBe('pricing');
+    expect(note.querySelector('code')?.textContent).toBe('deck.pdf');
+    expect(note.querySelectorAll('li')).toHaveLength(2);
+    expect(note.textContent).not.toContain('**');
+    expect(note.textContent).not.toContain('__');
+  });
+
+  it('renders a note containing script/HTML text as inert DOM text, executing nothing', () => {
+    const notes: Note[] = [
+      { id: 1, taskId: 1, text: 'Note <script>alert(1)</script> and <img onerror=alert(1) src=x>', source: 'ui', createdAt: 1 },
+    ];
+
+    render(TaskNotes, { props: { taskId: 1, notes } });
+
+    const note = screen.getByTestId('note');
+    expect(note.querySelector('script')).toBeNull();
+    expect(note.querySelector('img')).toBeNull();
+    expect(note.textContent).toContain('<script>alert(1)</script>');
+  });
 });
