@@ -13,6 +13,19 @@
   "enabledMcpjsonServers": [
     "playwright"
   ],
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/gate.sh",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  },
   "skillOverrides": {
     "feature-dev:feature-dev": "off"
   },
