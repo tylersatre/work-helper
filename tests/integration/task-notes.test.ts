@@ -36,16 +36,32 @@ describe('POST /api/tasks/:id/notes', () => {
     expect(detail.json().notes[0]).toMatchObject({ text: 'Waiting on budget numbers', source: 'ui' });
   });
 
-  it('returns notes newest first by createdAt, with an id tiebreak for identical timestamps', async () => {
-    const app = buildTestApp();
+  it('returns notes newest first by distinct createdAt', async () => {
+    const { db, sqlite } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
     const task = await createTask(app, 'Follow up with Sam');
 
-    await app.inject({ method: 'POST', url: `/api/tasks/${task.id}/notes`, payload: { text: 'First note' } });
-    await app.inject({ method: 'POST', url: `/api/tasks/${task.id}/notes`, payload: { text: 'Second note' } });
+    const insert = sqlite.prepare('INSERT INTO task_notes (task_id, text, source, created_at) VALUES (?, ?, ?, ?)');
+    insert.run(task.id, 'First note', 'ui', 1_000);
+    insert.run(task.id, 'Second note', 'ui', 2_000);
 
     const detail = await app.inject({ method: 'GET', url: `/api/tasks/${task.id}` });
     const texts = detail.json().notes.map((n: { text: string }) => n.text);
     expect(texts).toEqual(['Second note', 'First note']);
+  });
+
+  it('breaks ties on identical createdAt by higher id first', async () => {
+    const { db, sqlite } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    const task = await createTask(app, 'Follow up with Sam');
+
+    const insert = sqlite.prepare('INSERT INTO task_notes (task_id, text, source, created_at) VALUES (?, ?, ?, ?)');
+    insert.run(task.id, 'Lower id', 'ui', 5_000);
+    insert.run(task.id, 'Higher id', 'ui', 5_000);
+
+    const detail = await app.inject({ method: 'GET', url: `/api/tasks/${task.id}` });
+    const texts = detail.json().notes.map((n: { text: string }) => n.text);
+    expect(texts).toEqual(['Higher id', 'Lower id']);
   });
 
   it('preserves raw text byte-for-byte, including leading indentation and internal newlines', async () => {

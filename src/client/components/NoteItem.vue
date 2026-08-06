@@ -40,7 +40,4 @@ li {
   word-break: break-word;
 }
 
-.note-text {
-  white-space: pre-wrap;
-}
 </style>
