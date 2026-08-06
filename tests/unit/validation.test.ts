@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { personInputSchema, titleSchema } from '../../src/shared/validation.js';
+import { noteTextSchema, personInputSchema, titleSchema } from '../../src/shared/validation.js';
 
 describe('titleSchema', () => {
   it('accepts a non-empty title and returns it trimmed', () => {
@@ -123,5 +123,56 @@ describe('personInputSchema', () => {
     if (result.success) {
       expect(result.data.phone).toBe('555-0100');
     }
+  });
+});
+
+describe('noteTextSchema', () => {
+  it('accepts non-empty text and leaves it byte-for-byte untransformed', () => {
+    const result = noteTextSchema.safeParse('  Waiting on budget numbers  ');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toBe('  Waiting on budget numbers  ');
+    }
+  });
+
+  it('preserves leading indentation and internal newlines', () => {
+    const raw = '    indented code\nline two\n\nline four';
+    const result = noteTextSchema.safeParse(raw);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toBe(raw);
+    }
+  });
+
+  it('rejects an empty string', () => {
+    const result = noteTextSchema.safeParse('');
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a whitespace-only string of spaces', () => {
+    const result = noteTextSchema.safeParse('   ');
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a whitespace-only string of tabs', () => {
+    const result = noteTextSchema.safeParse('\t\t');
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a whitespace-only string of newlines', () => {
+    const result = noteTextSchema.safeParse('\n\n');
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a missing value', () => {
+    const result = noteTextSchema.safeParse(undefined);
+
+    expect(result.success).toBe(false);
   });
 });

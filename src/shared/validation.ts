@@ -14,6 +14,10 @@ const optionalTrimmedText = z
     return trimmed === '' ? null : trimmed;
   });
 
+export const noteTextSchema = z
+  .string()
+  .refine((value) => value.trim().length > 0, 'Note text is required');
+
 export const personInputSchema = z.object({
   firstName: z.string().trim().min(1, 'First and last name are required'),
   lastName: z.string().trim().min(1, 'First and last name are required'),
