@@ -1,102 +1,35 @@
 # work-helper — Setup Report
 
-Environment setup for the work-helper spec-driven, verification-gated
-development harness. Claude Code `2.1.223` (native, darwin-arm64),
-`claude doctor` reports no installation issues.
+Environment setup for the work-helper spec-driven, verification-gated development harness. Claude Code `2.1.223` (native, darwin-arm64), `claude doctor` reports no installation issues.
 
 ## 1. Configured
 
-**Phase 0 — Audit.** `docs/setup/environment-audit.md`: full inventory of
-global plugins, marketplaces, MCP servers, hooks, memory, and personal
-agents/skills that could load into this project, with per-item action or
-rationale for why none was possible. Commit `bccb1c2`.
+**Phase 0 — Audit.** `docs/setup/environment-audit.md`: full inventory of global plugins, marketplaces, MCP servers, hooks, memory, and personal agents/skills that could load into this project, with per-item action or rationale for why none was possible. Commit `bccb1c2`.
 
 **Phase 1 — Repo + isolation.**
-- `git init -b main`; `.gitignore` covering Node/TS build artifacts,
-  `.env*`, `.claude/settings.local.json`, `docs/evidence/`, Playwright
-  output.
-- `.claude/settings.json`: `extraKnownMarketplaces` declares
-  `superpowers-marketplace` → `obra/superpowers-marketplace`;
-  `enabledPlugins` sets `superpowers@superpowers-marketplace: true` and an
-  explicit `false` for every other plugin found (enabled or not) in the
-  Phase 0 audit; `enabledMcpjsonServers: ["playwright"]`; conservative
-  `permissions.allow` (`git`, `npm`, `pnpm`, `npx`).
-- `~/.claude.json` → `projects["/Users/tyler/work-helper"].disabledMcpServers`
-  extended to cover every non-approved MCP server visible from this
-  directory. Verified with a before/after diff that only this project's
-  entry changed (all 38 other project entries and all 112 other top-level
-  keys byte-identical). Evidence: `docs/setup/environment-audit.md`
-  ("MCP servers visible from this directory" table).
-- `skillOverrides: {"feature-dev:feature-dev": "off"}` added as
-  defense-in-depth (see Deviations — this key's actual effectiveness is
-  unverified against a reported bug).
+- `git init -b main`; `.gitignore` covering Node/TS build artifacts, `.env*`, `.claude/settings.local.json`, `docs/evidence/`, Playwright output.
+- `.claude/settings.json`: `extraKnownMarketplaces` declares `superpowers-marketplace` → `obra/superpowers-marketplace`; `enabledPlugins` sets `superpowers@superpowers-marketplace: true` and an explicit `false` for every other plugin found (enabled or not) in the Phase 0 audit; `enabledMcpjsonServers: ["playwright"]`; conservative `permissions.allow` (`git`, `npm`, `pnpm`, `npx`).
+- `~/.claude.json` → `projects["/Users/tyler/work-helper"].disabledMcpServers` extended to cover every non-approved MCP server visible from this directory. Verified with a before/after diff that only this project's entry changed (all 38 other project entries and all 112 other top-level keys byte-identical). Evidence: `docs/setup/environment-audit.md` ("MCP servers visible from this directory" table).
+- `skillOverrides: {"feature-dev:feature-dev": "off"}` added as defense-in-depth (see Deviations — this key's actual effectiveness is unverified against a reported bug).
 Commit `bccb1c2`.
 
-**Phase 2 — Spec Kit.** `uv tool install specify-cli --from
-git+https://github.com/github/spec-kit.git` (already had `uv 0.7.3`);
-`specify check` confirmed Claude Code detected; `specify init --here
---integration claude --force` scaffolded `.specify/` (templates, scripts,
-workflow) and `.claude/skills/speckit-*/` (see Deviations — this version
-installs skills, not `.claude/commands/speckit.*`). Constitution filled in
-at `.specify/memory/constitution.md`: spec-is-truth, mandatory TDD,
-evidence-over-assertion definition of done, the architecture constraints,
-small vertical slices via PR. Commit `bccb1c2`.
+**Phase 2 — Spec Kit.** `uv tool install specify-cli --from git+https://github.com/github/spec-kit.git` (already had `uv 0.7.3`); `specify check` confirmed Claude Code detected; `specify init --here --integration claude --force` scaffolded `.specify/` (templates, scripts, workflow) and `.claude/skills/speckit-*/` (see Deviations — this version installs skills, not `.claude/commands/speckit.*`). Constitution filled in at `.specify/memory/constitution.md`: spec-is-truth, mandatory TDD, evidence-over-assertion definition of done, the architecture constraints, small vertical slices via PR. Commit `bccb1c2`.
 
-**Phase 3 — Superpowers.** `claude plugin marketplace add
-obra/superpowers-marketplace` (user scope — permitted exception (b), since
-Tyler's existing `superpowers-dev` marketplace points at his own fork, a
-different source), then `claude plugin install
-superpowers@superpowers-marketplace -s project`. Verified via `claude
-plugin list`: `superpowers@superpowers-marketplace` v6.2.0, scope project,
-enabled — distinct from and not touching Tyler's `superpowers@superpowers-dev`
-(v4.0.3, user scope, stays disabled). Commit `4a3051f`.
+**Phase 3 — Superpowers.** `claude plugin marketplace add obra/superpowers-marketplace` (user scope — permitted exception (b), since Tyler's existing `superpowers-dev` marketplace points at his own fork, a different source), then `claude plugin install superpowers@superpowers-marketplace -s project`. Verified via `claude plugin list`: `superpowers@superpowers-marketplace` v6.2.0, scope project, enabled — distinct from and not touching Tyler's `superpowers@superpowers-dev` (v4.0.3, user scope, stays disabled). Commit `4a3051f`.
 
-**Phase 4 — Verification gate.** `.claude/hooks/gate.sh` (executable):
-loop-guards on `stop_hook_active`, no-ops before `package.json` exists,
-otherwise runs `npm run {lint,typecheck,test,build} --if-present` and
-exits 2 with a truncated failure summary on stderr if any fail. Registered
-under `hooks.Stop` in `.claude/settings.json` (`timeout: 600`).
-`.claude/agents/verifier.md`: read-only (`Read, Grep, Glob, Bash`),
-re-runs checks itself, reports PASS/FAIL per acceptance criterion, never
-fixes anything. Evidence — tested directly:
+**Phase 4 — Verification gate.** `.claude/hooks/gate.sh` (executable): loop-guards on `stop_hook_active`, no-ops before `package.json` exists, otherwise runs `npm run {lint,typecheck,test,build} --if-present` and exits 2 with a truncated failure summary on stderr if any fail. Registered under `hooks.Stop` in `.claude/settings.json` (`timeout: 600`). `.claude/agents/verifier.md`: read-only (`Read, Grep, Glob, Bash`), re-runs checks itself, reports PASS/FAIL per acceptance criterion, never fixes anything. Evidence — tested directly:
   - `echo '{"stop_hook_active": true}' | gate.sh` → exit `0`
   - `echo '{}' | gate.sh` (no `package.json`) → exit `0`
-  - (supplementary, run in an isolated scratch dir, not part of the repo)
-    `package.json` with a failing `lint` script → exit `2`, failure
-    printed to stderr
+  - (supplementary, run in an isolated scratch dir, not part of the repo) `package.json` with a failing `lint` script → exit `2`, failure printed to stderr
 Commit `a46f739`.
 
-**Phase 5 — Browser acceptance testing.** `.mcp.json`: project-scoped
-`playwright` server (`npx @playwright/mcp@latest`), approved via Phase 1's
-`enabledMcpjsonServers`. `.claude/agents/browser-tester.md`:
-`tools: Read, mcp__playwright__*` (server-wildcard grant, confirmed
-current syntax against `code.claude.com/docs/en/sub-agents.md`),
-`isolation: worktree`; drives Given/When/Then criteria against a given
-base URL, writes screenshots + `results.md` to
-`docs/evidence/<feature>/` (gitignored), never edits application code.
-Commit `72cae59`.
+**Phase 5 — Browser acceptance testing.** `.mcp.json`: project-scoped `playwright` server (`npx @playwright/mcp@latest`), approved via Phase 1's `enabledMcpjsonServers`. `.claude/agents/browser-tester.md`: `tools: Read, mcp__playwright__*` (server-wildcard grant, confirmed current syntax against `code.claude.com/docs/en/sub-agents.md`), `isolation: worktree`; drives Given/When/Then criteria against a given base URL, writes screenshots + `results.md` to `docs/evidence/<feature>/` (gitignored), never edits application code. Commit `72cae59`.
 
-**Phase 6 — CI review.** `.github/workflows/claude-review.yml`: triggers
-on `pull_request` (`opened`, `synchronize`); `anthropics/claude-code-action@v1`;
-prompt reviews the diff against `CLAUDE.md` and the feature's spec/
-acceptance criteria, explicitly flagging skipped TDD, hollow tests, and
-unverified "done" claims; references `secrets.ANTHROPIC_API_KEY` (not
-hardcoded). Shape verified live against the action's own README and
-`docs/solutions.md` via `gh api repos/anthropics/claude-code-action/contents/...`
-(current pattern uses `actions/checkout@v6` and the `prompt`/`claude_args`
-inputs — see Deviations). Commit `72cae59`.
+**Phase 6 — CI review.** `.github/workflows/claude-review.yml`: triggers on `pull_request` (`opened`, `synchronize`); `anthropics/claude-code-action@v1`; prompt reviews the diff against `CLAUDE.md` and the feature's spec/acceptance criteria, explicitly flagging skipped TDD, hollow tests, and unverified "done" claims; references `secrets.ANTHROPIC_API_KEY` (not hardcoded). Shape verified live against the action's own README and `docs/solutions.md` via `gh api repos/anthropics/claude-code-action/contents/...` (current pattern uses `actions/checkout@v6` and the `prompt`/`claude_args` inputs — see Deviations). Commit `72cae59`.
 
-**Phase 7 — Operating docs.** `CLAUDE.md` (lean: what/who, the loop,
-definition of done, architecture constraints, conventions);
-`docs/product/brief.md` (full product context); `docs/product/feature-template.md`
-(Given/When/Then PRD template with a filled-in `link-email-to-contact`
-example); `README.md` (what this repo is + the 6-step "how Tyler ships a
-feature" loop, using this install's actual `/speckit-*` command names).
-Commit `792b0ec`.
+**Phase 7 — Operating docs.** `CLAUDE.md` (lean: what/who, the loop, definition of done, architecture constraints, conventions); `docs/product/brief.md` (full product context); `docs/product/feature-template.md` (Given/When/Then PRD template with a filled-in `link-email-to-contact` example); `README.md` (what this repo is + the 6-step "how Tyler ships a feature" loop, using this install's actual `/speckit-*` command names). Commit `792b0ec`.
 
-**Phase 8 — Final verification.** `claude doctor`: no installation
-issues. This report. All work committed; `git status` clean at time of
-writing.
+**Phase 8 — Final verification.** `claude doctor`: no installation issues. This report. All work committed; `git status` clean at time of writing.
 
 ## 2. Disabled at project level
 
@@ -106,10 +39,7 @@ writing.
 | `.claude/settings.json` → `skillOverrides` | `"feature-dev:feature-dev": "off"` (defense-in-depth; see Deviations) |
 | `~/.claude.json` → `projects["/Users/tyler/work-helper"].disabledMcpServers` | `Plans`, `sequential-thinking` (already present — see audit note on the `/mcp` dismissal at session start), plus newly added: `claude.ai Trello`, `claude.ai Outlook`, `claude.ai Stripe`, `claude.ai Microsoft 365`, `claude.ai Todoist`, `claude.ai LE Admin`, `claude.ai Liftosaur`, `claude.ai Google Calendar`, `claude.ai Google Drive`, `claude.ai Gmail`, `claude.ai Ref` |
 
-Intended active set once a fresh session picks this up: **plugins** =
-`superpowers@superpowers-marketplace` only; **MCP** = `playwright` only;
-**agents** = `verifier` + `browser-tester`; **hooks** = the gate (plus the
-two global hooks below, which have no kill switch).
+Intended active set once a fresh session picks this up: **plugins** = `superpowers@superpowers-marketplace` only; **MCP** = `playwright` only; **agents** = `verifier` + `browser-tester`; **hooks** = the gate (plus the two global hooks below, which have no kill switch).
 
 ## 3. Could not be disabled per-project
 
@@ -132,30 +62,14 @@ two global hooks below, which have no kill switch).
 
 ## 5. Needs Tyler
 
-- **Restart Claude Code in this directory** and accept the workspace trust
-  prompt (this session ran in an already-trusted state; a fresh session
-  is what actually activates the project's plugin/MCP/skill config).
+- **Restart Claude Code in this directory** and accept the workspace trust prompt (this session ran in an already-trusted state; a fresh session is what actually activates the project's plugin/MCP/skill config).
 - Then run, in order:
-  - `/plugin` — confirm `superpowers` is the only enabled plugin for this
-    project.
-  - `/mcp` — confirm `playwright` connects, and that `Plans`,
-    `sequential-thinking`, and every `claude.ai *` connector show as
-    disabled (this is the check that resolves the "unconfirmed" row in
-    section 3 above).
+  - `/plugin` — confirm `superpowers` is the only enabled plugin for this project.
+  - `/mcp` — confirm `playwright` connects, and that `Plans`, `sequential-thinking`, and every `claude.ai *` connector show as disabled (this is the check that resolves the "unconfirmed" row in section 3 above).
   - `/agents` — confirm `verifier` and `browser-tester` are listed.
-  - `/hooks` — confirm the gate is registered under Stop (alongside the
-    global one from `~/.ref/`).
+  - `/hooks` — confirm the gate is registered under Stop (alongside the global one from `~/.ref/`).
   - `/context` — confirm nothing unexpected loaded.
-- First Playwright run downloads browsers (via `npx @playwright/mcp@latest`) —
-  expect a delay on the first `browser-tester` invocation.
-- GitHub: create the repo, push this branch, run `/install-github-app` (or
-  add `ANTHROPIC_API_KEY`/`CLAUDE_CODE_OAUTH_TOKEN` manually per
-  `anthropics/claude-code-action`'s setup docs), then confirm
-  `claude-review.yml` actually runs on a test PR.
-- Decide whether the "could not verify claude.ai connector disable"
-  situation (section 3) is acceptable, or whether those connectors should
-  be disconnected from claude.ai's connector settings for real isolation.
-- Optional cleanup: the personal `~/.claude/commands/requirements-*.md`
-  commands and the two global `~/.ref/` hooks are outside this project's
-  control; only touch them if they turn out to be a real nuisance while
-  working in work-helper.
+- First Playwright run downloads browsers (via `npx @playwright/mcp@latest`) — expect a delay on the first `browser-tester` invocation.
+- GitHub: create the repo, push this branch, run `/install-github-app` (or add `ANTHROPIC_API_KEY`/`CLAUDE_CODE_OAUTH_TOKEN` manually per `anthropics/claude-code-action`'s setup docs), then confirm `claude-review.yml` actually runs on a test PR.
+- Decide whether the "could not verify claude.ai connector disable" situation (section 3) is acceptable, or whether those connectors should be disconnected from claude.ai's connector settings for real isolation.
+- Optional cleanup: the personal `~/.claude/commands/requirements-*.md` commands and the two global `~/.ref/` hooks are outside this project's control; only touch them if they turn out to be a real nuisance while working in work-helper.

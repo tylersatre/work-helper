@@ -2,9 +2,7 @@
 
 **Feature**: `001-create-task` | **Date**: 2026-08-06
 
-All endpoints are JSON over HTTP, served by the Fastify app that also
-serves the built client. No authentication (single-user, per spec
-assumptions).
+All endpoints are JSON over HTTP, served by the Fastify app that also serves the built client. No authentication (single-user, per spec assumptions).
 
 ## Shared shape
 
@@ -20,9 +18,7 @@ interface Task {
 
 ## GET `/api/board`
 
-Returns the full board: every configured lane, in configured order, each
-with its tasks in creation order. Lanes with no tasks are included with
-an empty `tasks` array (acceptance scenario US1-1: empty lanes are shown).
+Returns the full board: every configured lane, in configured order, each with its tasks in creation order. Lanes with no tasks are included with an empty `tasks` array (acceptance scenario US1-1: empty lanes are shown).
 
 **Response `200 application/json`**:
 
@@ -45,9 +41,7 @@ Guarantees:
 
 ## POST `/api/tasks`
 
-Creates a task. The server assigns the lane (first configured lane,
-FR-003) and `createdAt`; the client sends only the title (spec: title is
-the only field captured at creation).
+Creates a task. The server assigns the lane (first configured lane, FR-003) and `createdAt`; the client sends only the title (spec: title is the only field captured at creation).
 
 **Request `application/json`**:
 
@@ -61,8 +55,7 @@ the only field captured at creation).
 { "id": 1, "title": "Follow up with Sam", "lane": "To Do", "createdAt": 1754500000000 }
 ```
 
-**Response `400 application/json`** — title missing, empty, or
-whitespace-only after trimming (FR-005); nothing is persisted (SC-003):
+**Response `400 application/json`** — title missing, empty, or whitespace-only after trimming (FR-005); nothing is persisted (SC-003):
 
 ```json
 { "error": { "message": "Title is required" } }
@@ -70,15 +63,10 @@ whitespace-only after trimming (FR-005); nothing is persisted (SC-003):
 
 Notes:
 
-- `title` is trimmed server-side before validation and storage; the `201`
-  body returns the trimmed value.
-- Duplicate titles are allowed and create distinct tasks (spec edge
-  case).
-- Any client-supplied `lane` or `id` field is ignored — not an error, but
-  never honored (no lane picker in this feature).
+- `title` is trimmed server-side before validation and storage; the `201` body returns the trimmed value.
+- Duplicate titles are allowed and create distinct tasks (spec edge case).
+- Any client-supplied `lane` or `id` field is ignored — not an error, but never honored (no lane picker in this feature).
 
 ## Explicitly absent
 
-No `PATCH`/`PUT`/`DELETE` on tasks, no lane endpoints of any kind
-(FR-007, FR-008). Their absence is part of this contract — adding them
-belongs to a future feature spec.
+No `PATCH`/`PUT`/`DELETE` on tasks, no lane endpoints of any kind (FR-007, FR-008). Their absence is part of this contract — adding them belongs to a future feature spec.

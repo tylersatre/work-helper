@@ -2,9 +2,7 @@
 
 ## User story
 
-As Tyler, I want to create a task and see it show up on the kanban board so
-that I have a persistent, visual place to capture things I need to do,
-proving the app's UI and database work together end to end.
+As Tyler, I want to create a task and see it show up on the kanban board so that I have a persistent, visual place to capture things I need to do, proving the app's UI and database work together end to end.
 
 ## Acceptance criteria
 
@@ -44,28 +42,17 @@ proving the app's UI and database work together end to end.
 - Tags and custom fields.
 - Linking a task to a person or an email.
 - The work-helper MCP tools for tasks.
-- Managing lanes through the UI — for this feature, lanes are defined in
-  configuration (an ordered list of names), not created, renamed,
-  reordered, or deleted from the app itself.
+- Managing lanes through the UI — for this feature, lanes are defined in configuration (an ordered list of names), not created, renamed, reordered, or deleted from the app itself.
 - Multiple boards — there is exactly one board.
 - Sorting or filtering cards within a lane.
-- A description field, due dates, priority, assignees, or any other task
-  metadata beyond title.
+- A description field, due dates, priority, assignees, or any other task metadata beyond title.
 - Authentication / multi-user access control.
 
 ## Open questions
 
-- **Assumption to confirm:** every new task lands in the first configured
-  lane ("To Do" in the example above) — there is no lane picker in this
-  feature. Flag this if you want new tasks to land somewhere else, or want
-  a picker even at this stage.
+- **Assumption to confirm:** every new task lands in the first configured lane ("To Do" in the example above) — there is no lane picker in this feature. Flag this if you want new tasks to land somewhere else, or want a picker even at this stage.
   - Starting at the first lane is fine
-- The exact mechanism for lane configuration (config file, env var, seed
-  script, etc.) is a `/speckit-plan` implementation decision, not a product
-  one — left unspecified here on purpose.
+- The exact mechanism for lane configuration (config file, env var, seed script, etc.) is a `/speckit-plan` implementation decision, not a product one — left unspecified here on purpose.
   - Let's do a config file, the lanes are read from it
-- Exact lane names for the real deployment (the "To Do" / "In Progress" /
-  "Done" set above is illustrative for writing concrete, automatable
-  criteria) — confirm or change before `/speckit-specify`, since the
-  acceptance criteria reference them by name.
+- Exact lane names for the real deployment (the "To Do" / "In Progress" / "Done" set above is illustrative for writing concrete, automatable criteria) — confirm or change before `/speckit-specify`, since the acceptance criteria reference them by name.
   - To Do, In Progress, Waiting, Done - these are thelanes

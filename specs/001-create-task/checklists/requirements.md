@@ -31,8 +31,5 @@
 
 ## Notes
 
-- All items pass. The product-owner input (`docs/product/features/create-task.md`)
-  had already resolved the open questions that would otherwise have needed
-  [NEEDS CLARIFICATION] markers (lane source, default landing lane, real
-  lane names), so none were needed here.
+- All items pass. The product-owner input (`docs/product/features/create-task.md`) had already resolved the open questions that would otherwise have needed [NEEDS CLARIFICATION] markers (lane source, default landing lane, real lane names), so none were needed here.
 - Ready for `/speckit-clarify` (optional) or `/speckit-plan`.

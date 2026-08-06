@@ -1,14 +1,8 @@
 # Environment Audit — work-helper
 
-Generated during Phase 0 setup. Inventories everything in the global Claude Code
-environment that could load into sessions run from `/Users/tyler/work-helper`,
-and records what was done about it in later phases (see cross-references).
+Generated during Phase 0 setup. Inventories everything in the global Claude Code environment that could load into sessions run from `/Users/tyler/work-helper`, and records what was done about it in later phases (see cross-references).
 
-Evidence commands run: `claude --version`, `cat ~/.claude/settings.json`,
-`cat ~/.claude/settings.local.json`, `cat ~/.claude/CLAUDE.md`,
-`ls ~/.claude/agents ~/.claude/skills`, `claude plugin list`,
-`claude plugin marketplace list`, `claude mcp list` (run from this directory),
-`claude mcp get <name>`, direct reads of `~/.claude.json`.
+Evidence commands run: `claude --version`, `cat ~/.claude/settings.json`, `cat ~/.claude/settings.local.json`, `cat ~/.claude/CLAUDE.md`, `ls ~/.claude/agents ~/.claude/skills`, `claude plugin list`, `claude plugin marketplace list`, `claude mcp list` (run from this directory), `claude mcp get <name>`, direct reads of `~/.claude.json`.
 
 Claude Code version at audit time: `2.1.223`.
 
@@ -29,28 +23,15 @@ Claude Code version at audit time: `2.1.223`.
 | query | contextify | user | No | Yes | Pinned explicit `false` |
 | typescript-lsp | claude-plugins-official | project (×3, other projects) | No | Yes | Pinned explicit `false` |
 
-Only `feature-dev@claude-code-plugins` was actually active globally; everything
-else was already disabled at the user level. Per the ground rules we still pin
-every known plugin to an explicit `false` in this project's `enabledPlugins`
-map (alongside `superpowers@superpowers-marketplace: true`) so a future global
-enable can't silently light something up here.
+Only `feature-dev@claude-code-plugins` was actually active globally; everything else was already disabled at the user level. Per the ground rules we still pin every known plugin to an explicit `false` in this project's `enabledPlugins` map (alongside `superpowers@superpowers-marketplace: true`) so a future global enable can't silently light something up here.
 
-**Known gotcha confirmed:** `enabledPlugins` must live in the project's
-`settings.json`, not `settings.local.json` — the latter is ignored for this
-key. See Phase 1.
+**Known gotcha confirmed:** `enabledPlugins` must live in the project's `settings.json`, not `settings.local.json` — the latter is ignored for this key. See Phase 1.
 
 ## Marketplaces already known globally
 
-`claude plugin marketplace list`: `superpowers-dev` (github `tylersatre/superpowers`),
-`claude-code-plugins` (github `anthropics/claude-code`), `planning-with-teams`
-(github `OthmanAdi/planning-with-teams`), `claude-plugins-official` (git
-`anthropics/claude-plugins-official`), `tylers-other-marketplace` (directory
-`/Users/tyler/vue-ts-lsp`), `vue-ts-lsp` (github `tylersatre/vue-ts-lsp`),
-`phpstorm-marketplace` (github `jetbrains/phpstorm-claude-marketplace`).
+`claude plugin marketplace list`: `superpowers-dev` (github `tylersatre/superpowers`), `claude-code-plugins` (github `anthropics/claude-code`), `planning-with-teams` (github `OthmanAdi/planning-with-teams`), `claude-plugins-official` (git `anthropics/claude-plugins-official`), `tylers-other-marketplace` (directory `/Users/tyler/vue-ts-lsp`), `vue-ts-lsp` (github `tylersatre/vue-ts-lsp`), `phpstorm-marketplace` (github `jetbrains/phpstorm-claude-marketplace`).
 
-None of these is `obra/superpowers-marketplace`. It was added fresh as
-`superpowers-marketplace` in project settings (Phase 1/3) — permitted
-exception (b), since it doesn't touch any of Tyler's existing marketplaces.
+None of these is `obra/superpowers-marketplace`. It was added fresh as `superpowers-marketplace` in project settings (Phase 1/3) — permitted exception (b), since it doesn't touch any of Tyler's existing marketplaces.
 
 ## MCP servers visible from this directory (`claude mcp list`)
 
@@ -70,30 +51,9 @@ exception (b), since it doesn't touch any of Tyler's existing marketplaces.
 | claude.ai Gmail | claude.ai config | Needs auth (inactive anyway) | Unconfirmed | Added, same caveat |
 | claude.ai Ref | claude.ai config | Needs auth (inactive anyway) | Unconfirmed | Added, same caveat |
 
-**Note on Plans/sequential-thinking already being disabled:** the conversation
-that opened this session began with a `/mcp` command whose stdout was "MCP
-dialog dismissed" before this setup prompt was issued. The project's entry in
-`~/.claude.json` already carries `"disabledMcpServers": ["Plans",
-"sequential-thinking"]` and has non-zero session history for this path even
-though the directory was empty — consistent with Tyler having opened `/mcp`
-and toggled those two off first. Nothing to redo there; it's recorded here for
-traceability.
+**Note on Plans/sequential-thinking already being disabled:** the conversation that opened this session began with a `/mcp` command whose stdout was "MCP dialog dismissed" before this setup prompt was issued. The project's entry in `~/.claude.json` already carries `"disabledMcpServers": ["Plans", "sequential-thinking"]` and has non-zero session history for this path even though the directory was empty — consistent with Tyler having opened `/mcp` and toggled those two off first. Nothing to redo there; it's recorded here for traceability.
 
-**Caveat on `claude.ai *` connectors:** `claude mcp get` reports these at
-`Scope: claude.ai config`, distinct from `Scope: User config` for Plans and
-sequential-thinking. The `disabledMcpServers` project array is the documented
-mechanism (and the CLI has no `claude mcp disable` subcommand — only
-`add`/`remove`/`get`/`list`/`login`/`logout`), so the same array is used for
-both. Whether the claude.ai-scoped connectors actually honor a *project-local*
-disable (versus being pinned on for the whole account) could not be verified
-in this session — MCP activation only takes effect on a fresh session per the
-restart caveat, and `claude mcp list` has no per-project preview mode. **Needs
-Tyler:** after restarting in this directory, run `/mcp` and confirm these are
-listed as off; if any still connect, that confirms account-level connectors
-sit outside local project control and the recommendation is to disconnect
-them from the claude.ai connector settings for any session where they
-shouldn't be reachable (accepting that they'd then be off everywhere, not
-just here).
+**Caveat on `claude.ai *` connectors:** `claude mcp get` reports these at `Scope: claude.ai config`, distinct from `Scope: User config` for Plans and sequential-thinking. The `disabledMcpServers` project array is the documented mechanism (and the CLI has no `claude mcp disable` subcommand — only `add`/`remove`/`get`/`list`/`login`/`logout`), so the same array is used for both. Whether the claude.ai-scoped connectors actually honor a *project-local* disable (versus being pinned on for the whole account) could not be verified in this session — MCP activation only takes effect on a fresh session per the restart caveat, and `claude mcp list` has no per-project preview mode. **Needs Tyler:** after restarting in this directory, run `/mcp` and confirm these are listed as off; if any still connect, that confirms account-level connectors sit outside local project control and the recommendation is to disconnect them from the claude.ai connector settings for any session where they shouldn't be reachable (accepting that they'd then be off everywhere, not just here).
 
 ## Global hooks
 
@@ -104,20 +64,7 @@ just here).
 
 ## `skillOverrides` research (Phase 1 step 4)
 
-Researched via a fresh `claude-code-guide` agent (own web search, not
-memory) since this key isn't documented in anything read so far this
-session: `skillOverrides` is a real `settings.json` key (`"skill-name":
-"off"|"on"|"name-only"|"user-invocable-only"`), but per its GitHub issue
-history it is designed for user-vs-repo skill precedence, not specifically
-for suppressing plugin-provided skills, and a reported bug (issue #54996)
-says `"off"` may not actually prevent invocation in some versions. The
-reliable mechanism for the one plugin-provided skill in scope here
-(`feature-dev:feature-dev`, from the `feature-dev` plugin) is disabling the
-plugin itself via `enabledPlugins` (done above). `skillOverrides` was still
-added to `.claude/settings.json` as a defense-in-depth `"off"` entry for
-that same skill, but it should **not** be treated as the thing actually
-doing the work — verify post-restart via `/context` or by checking that
-`/speckit-specify`-style feature-dev commands don't appear.
+Researched via a fresh `claude-code-guide` agent (own web search, not memory) since this key isn't documented in anything read so far this session: `skillOverrides` is a real `settings.json` key (`"skill-name": "off"|"on"|"name-only"|"user-invocable-only"`), but per its GitHub issue history it is designed for user-vs-repo skill precedence, not specifically for suppressing plugin-provided skills, and a reported bug (issue #54996) says `"off"` may not actually prevent invocation in some versions. The reliable mechanism for the one plugin-provided skill in scope here (`feature-dev:feature-dev`, from the `feature-dev` plugin) is disabling the plugin itself via `enabledPlugins` (done above). `skillOverrides` was still added to `.claude/settings.json` as a defense-in-depth `"off"` entry for that same skill, but it should **not** be treated as the thing actually doing the work — verify post-restart via `/context` or by checking that `/speckit-specify`-style feature-dev commands don't appear.
 
 ## Global memory (`~/.claude/CLAUDE.md`)
 
@@ -127,42 +74,14 @@ document or reconcile with this project's `CLAUDE.md` (Phase 7).
 ## Global personal agents/skills
 
 - `~/.claude/agents/` — empty directory. No personal agents to disable.
-- `~/.claude/skills/` — empty directory. No personal skill-dir skills to
-  disable.
-- `~/.claude/commands/requirements-*.md` (6 files: `requirements-start`,
-  `requirements-current`, `requirements-status`, `requirements-list`,
-  `requirements-remind`, `requirements-end`) — personal user-level slash
-  commands, surfaced to every project (including this one) as invocable
-  skills. **No per-project mechanism exists to hide an individual personal
-  command.** Impact is low: they only run when explicitly invoked
-  (`/requirements-*`), they don't auto-inject behavior, and they don't
-  conflict with Spec Kit's `speckit.*` commands (different names). Documented
-  here per the "no per-project mechanism → document with impact" rule;
-  no action taken. Recommendation: ignore unless Tyler wants a fully sterile
-  command palette, in which case move them out of `~/.claude/commands/`
-  globally (outside this project's control either way).
-- Built-in/product skills (`dataviz`, `artifact-design`, `artifact-diagramming`,
-  `artifact-capabilities`, `update-config`, `keybindings-help`, `simplify`,
-  `fewer-permission-prompts`, `loop`, `schedule`, `claude-api`, `run`, `init`,
-  `security-review`) are bundled with Claude Code itself (no `plugin:` prefix,
-  no marketplace source) — out of scope for "global config" disabling; they
-  ship with every install and aren't part of Tyler's personal customization.
-  `feature-dev:feature-dev` **is** plugin-provided (from the `feature-dev`
-  plugin) and is covered by the plugin disable above.
+- `~/.claude/skills/` — empty directory. No personal skill-dir skills to disable.
+- `~/.claude/commands/requirements-*.md` (6 files: `requirements-start`, `requirements-current`, `requirements-status`, `requirements-list`, `requirements-remind`, `requirements-end`) — personal user-level slash commands, surfaced to every project (including this one) as invocable skills. **No per-project mechanism exists to hide an individual personal command.** Impact is low: they only run when explicitly invoked (`/requirements-*`), they don't auto-inject behavior, and they don't conflict with Spec Kit's `speckit.*` commands (different names). Documented here per the "no per-project mechanism → document with impact" rule; no action taken. Recommendation: ignore unless Tyler wants a fully sterile command palette, in which case move them out of `~/.claude/commands/` globally (outside this project's control either way).
+- Built-in/product skills (`dataviz`, `artifact-design`, `artifact-diagramming`, `artifact-capabilities`, `update-config`, `keybindings-help`, `simplify`, `fewer-permission-prompts`, `loop`, `schedule`, `claude-api`, `run`, `init`, `security-review`) are bundled with Claude Code itself (no `plugin:` prefix, no marketplace source) — out of scope for "global config" disabling; they ship with every install and aren't part of Tyler's personal customization. `feature-dev:feature-dev` **is** plugin-provided (from the `feature-dev` plugin) and is covered by the plugin disable above.
 
 ## Env vars
 
-`~/.claude/settings.json` sets `REF_API_KEY` globally — feeds the (now
-project-disabled) Plans MCP server's auth header. Harmless with Plans off;
-no action needed.
+`~/.claude/settings.json` sets `REF_API_KEY` globally — feeds the (now project-disabled) Plans MCP server's auth header. Harmless with Plans off; no action needed.
 
 ## Summary of what's left after Phase 1
 
-Intended active set for this project once `.claude/settings.json` is in place
-and a fresh session picks it up: plugins = `superpowers@superpowers-marketplace`
-only; MCP = `playwright` only (project `.mcp.json`, approved via
-`enabledMcpjsonServers`); all other plugins pinned `false`; all other
-MCP servers (that can be) listed in `disabledMcpServers` for this project path.
-Un-disable-able residue: the two global hooks above, and the personal
-`requirements-*` commands. See `docs/setup/setup-report.md` for the final,
-consolidated version of this table after all phases ran.
+Intended active set for this project once `.claude/settings.json` is in place and a fresh session picks it up: plugins = `superpowers@superpowers-marketplace` only; MCP = `playwright` only (project `.mcp.json`, approved via `enabledMcpjsonServers`); all other plugins pinned `false`; all other MCP servers (that can be) listed in `disabledMcpServers` for this project path. Un-disable-able residue: the two global hooks above, and the personal `requirements-*` commands. See `docs/setup/setup-report.md` for the final, consolidated version of this table after all phases ran.
