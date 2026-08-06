@@ -1,0 +1,34 @@
+# Node / TypeScript
+node_modules/
+dist/
+build/
+out/
+*.tsbuildinfo
+.turbo/
+.next/
+coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Claude Code local/project-private settings
+.claude/settings.local.json
+
+# Evidence produced by the verifier / browser-tester agents
+docs/evidence/
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+blob-report/
+
+# OS
+.DS_Store
