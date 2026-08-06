@@ -22,3 +22,4 @@ Every acceptance criterion has a passing automated check **and** browser evidenc
 - Conventional Commits.
 - Small vertical slices; one feature per branch; every feature lands via PR (no direct commits to `main`).
 - TDD is mandatory: failing test first, then code. Code written before its failing test is discarded, not retrofitted.
+- Markdown files: never hard-wrap lines. Write each paragraph/sentence as one long line and let the editor soft-wrap; line breaks only where they're semantic (headings, list items, code blocks).

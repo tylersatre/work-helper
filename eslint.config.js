@@ -7,7 +7,7 @@ import globals from 'globals';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'drizzle/**', 'data/**'],
+    ignores: ['dist/**', 'node_modules/**', 'drizzle/**', 'data/**', '.claude/worktrees/**'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,

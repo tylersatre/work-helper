@@ -1,9 +1,10 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createDb } from '../../src/server/db/index.js';
-import { tasks } from '../../src/server/db/schema.js';
+import { people, taskPeople, tasks } from '../../src/server/db/schema.js';
 
 describe('createDb', () => {
   it('creates a tasks table supporting insert + select round-trip on :memory:', () => {
@@ -40,6 +41,63 @@ describe('createDb', () => {
       const { db: db2 } = createDb(dbPath);
       const rows = db2.select().from(tasks).all();
       expect(rows).toHaveLength(1);
+    });
+  });
+
+  describe('people and task_people tables', () => {
+    it('creates the people and task_people tables with foreign key enforcement enabled', () => {
+      const { sqlite } = createDb(':memory:');
+
+      const fkStatus = sqlite.pragma('foreign_keys', { simple: true });
+      expect(fkStatus).toBe(1);
+
+      const tableNames = (
+        sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('people', 'task_people')").all() as {
+          name: string;
+        }[]
+      )
+        .map((row) => row.name)
+        .sort();
+      expect(tableNames).toEqual(['people', 'task_people']);
+    });
+
+    it('rejects a second person whose email differs only by case, while allowing multiple NULL emails', () => {
+      const { db } = createDb(':memory:');
+
+      db.insert(people).values({ firstName: 'Sam', lastName: 'Rivera', email: 'sam@example.com', createdAt: 1 }).run();
+
+      expect(() =>
+        db
+          .insert(people)
+          .values({ firstName: 'Sam2', lastName: 'Rivera', email: 'SAM@example.com', createdAt: 2 })
+          .run(),
+      ).toThrow();
+
+      expect(() => {
+        db.insert(people).values({ firstName: 'Ana', lastName: 'Alvarez', createdAt: 3 }).run();
+        db.insert(people).values({ firstName: 'Bo', lastName: 'Baker', createdAt: 4 }).run();
+      }).not.toThrow();
+    });
+
+    it('rejects a duplicate (task_id, person_id) pair on task_people via the composite primary key', () => {
+      const { db } = createDb(':memory:');
+      const [task] = db.insert(tasks).values({ title: 'Follow up with Sam', lane: 'To Do', createdAt: 1 }).returning().all();
+      const [person] = db.insert(people).values({ firstName: 'Sam', lastName: 'Rivera', createdAt: 1 }).returning().all();
+
+      db.insert(taskPeople).values({ taskId: task!.id, personId: person!.id }).run();
+
+      expect(() => db.insert(taskPeople).values({ taskId: task!.id, personId: person!.id }).run()).toThrow();
+    });
+
+    it('cascades deleting a person to remove its task_people rows', () => {
+      const { db } = createDb(':memory:');
+      const [task] = db.insert(tasks).values({ title: 'Follow up with Sam', lane: 'To Do', createdAt: 1 }).returning().all();
+      const [person] = db.insert(people).values({ firstName: 'Sam', lastName: 'Rivera', createdAt: 1 }).returning().all();
+      db.insert(taskPeople).values({ taskId: task!.id, personId: person!.id }).run();
+
+      db.delete(people).where(eq(people.id, person!.id)).run();
+
+      expect(db.select().from(taskPeople).all()).toHaveLength(0);
     });
   });
 });

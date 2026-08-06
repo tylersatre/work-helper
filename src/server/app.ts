@@ -4,6 +4,7 @@ import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type * as schema from './db/schema.js';
 import { boardRoutes } from './routes/board.js';
+import { peopleRoutes } from './routes/people.js';
 import { taskRoutes } from './routes/tasks.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
@@ -12,12 +13,14 @@ declare module 'fastify' {
   interface FastifyInstance {
     db: AppDb;
     lanes: string[];
+    personFields: string[];
   }
 }
 
 export interface AppOptions {
   db: AppDb;
   lanes: string[];
+  personFields?: string[];
   serveClient?: boolean;
 }
 
@@ -31,9 +34,11 @@ export function buildApp(options: AppOptions): FastifyInstance {
 
   app.decorate('db', options.db);
   app.decorate('lanes', options.lanes);
+  app.decorate('personFields', options.personFields ?? []);
 
   app.register(boardRoutes);
   app.register(taskRoutes);
+  app.register(peopleRoutes);
 
   if (options.serveClient) {
     app.register(fastifyStatic, {

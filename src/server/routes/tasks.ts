@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
-import { createTask } from '../services/tasks.js';
+import { createTask, getTaskDetail, linkPerson, unlinkPerson } from '../services/tasks.js';
 
 export async function taskRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/tasks', async (request, reply) => {
@@ -17,5 +17,38 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       }
       throw error;
     }
+  });
+
+  app.get('/api/tasks/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const task = getTaskDetail(app.db, Number(id));
+    if (!task) {
+      reply.status(404);
+      return { error: { message: 'Task not found' } };
+    }
+    return task;
+  });
+
+  app.post('/api/tasks/:id/people', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { personId } = request.body as { personId: number };
+
+    const result = linkPerson(app.db, Number(id), personId);
+    if (!result.ok) {
+      reply.status(404);
+      return { error: { message: result.error === 'task-not-found' ? 'Task not found' : 'Person not found' } };
+    }
+    return result.task;
+  });
+
+  app.delete('/api/tasks/:id/people/:personId', async (request, reply) => {
+    const { id, personId } = request.params as { id: string; personId: string };
+
+    const result = unlinkPerson(app.db, Number(id), Number(personId));
+    if (!result.ok) {
+      reply.status(404);
+      return { error: { message: 'Task not found' } };
+    }
+    return result.task;
   });
 }
