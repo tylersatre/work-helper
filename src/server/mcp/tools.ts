@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ZodError, z } from 'zod';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import { primaryValue } from '../../shared/contacts.js';
 import { getPerson, listPeople } from '../services/people.js';
 import { addNote, createTask, getTaskDetail, listTasksByLane } from '../services/tasks.js';
 import type * as schema from '../db/schema.js';
@@ -89,7 +90,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
       const people = listPeople(context.db, context.personFields, query).map((person) => ({
         id: person.id,
         name: personName(person),
-        email: person.email,
+        email: primaryValue(person.emails),
       }));
       return { content: [{ type: 'text', text: `Found ${people.length} matching people.` }], structuredContent: { people } };
     },
@@ -118,8 +119,8 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         id: person.id,
         firstName: person.firstName,
         lastName: person.lastName,
-        email: person.email,
-        phone: person.phone,
+        email: primaryValue(person.emails),
+        phone: primaryValue(person.phones),
         extraFields: person.extraFields,
       };
       return { content: [{ type: 'text', text: `${personName(person)}` }], structuredContent };

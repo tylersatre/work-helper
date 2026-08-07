@@ -14,12 +14,19 @@ export interface BoardView {
   lanes: BoardLane[];
 }
 
+export interface ContactEntry {
+  id: number;
+  value: string;
+  isPrimary: boolean;
+  createdAt: number;
+}
+
 export interface Person {
   id: number;
   firstName: string;
   lastName: string;
-  email: string | null;
-  phone: string | null;
+  emails: ContactEntry[];
+  phones: ContactEntry[];
   extraFields: Record<string, string>;
   createdAt: number;
 }
@@ -42,7 +49,17 @@ export interface Note {
   createdAt: number;
 }
 
+export interface LinkedPerson {
+  id: number;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  extraFields: Record<string, string>;
+  createdAt: number;
+}
+
 export interface TaskDetail extends Task {
-  people: Person[];
+  people: LinkedPerson[];
   notes: Note[];
 }

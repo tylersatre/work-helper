@@ -16,111 +16,140 @@ describe('PersonForm', () => {
     vi.unstubAllGlobals();
   });
 
-  it('renders pre-filled existing values in edit mode', async () => {
-    stubFieldsConfig([]);
-    render(PersonForm, {
-      props: {
-        initialValues: { firstName: 'Sam', lastName: 'Rivera', email: 'sam.rivera@example.com', phone: '555-0100' },
-        submitLabel: 'Save changes',
-      },
+  describe('create mode', () => {
+    it('renders the single email and phone inputs', async () => {
+      stubFieldsConfig([]);
+      render(PersonForm, { props: { mode: 'create', submitLabel: 'Add person' } });
+      await flushPromises();
+
+      expect(screen.getByLabelText(/^email/i)).toBeTruthy();
+      expect(screen.getByLabelText(/phone/i)).toBeTruthy();
     });
-    await flushPromises();
 
-    expect((screen.getByLabelText(/first name/i) as HTMLInputElement).value).toBe('Sam');
-    expect((screen.getByLabelText(/last name/i) as HTMLInputElement).value).toBe('Rivera');
-    expect((screen.getByLabelText(/^email/i) as HTMLInputElement).value).toBe('sam.rivera@example.com');
-    expect((screen.getByLabelText(/phone/i) as HTMLInputElement).value).toBe('555-0100');
-  });
+    it('renders one optional free-text input per configured extra field', async () => {
+      stubFieldsConfig(['Nickname']);
+      render(PersonForm, { props: { mode: 'create', submitLabel: 'Add person' } });
+      await flushPromises();
 
-  it('emits changed values on save', async () => {
-    stubFieldsConfig([]);
-    const { emitted } = render(PersonForm, {
-      props: {
-        initialValues: { firstName: 'Sam', lastName: 'Rivera', email: 'sam.rivera@example.com', phone: '555-0100' },
-        submitLabel: 'Save changes',
-      },
+      expect(screen.getByLabelText(/nickname/i)).toBeTruthy();
     });
-    await flushPromises();
 
-    await fireEvent.update(screen.getByLabelText(/phone/i), '555-0199');
-    await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    it('includes a filled-in extra field value in the submitted payload', async () => {
+      stubFieldsConfig(['Nickname']);
+      const { emitted } = render(PersonForm, { props: { mode: 'create', submitLabel: 'Add person' } });
+      await flushPromises();
 
-    expect(emitted().submit).toBeTruthy();
-    expect(emitted().submit[0]).toEqual([
-      { firstName: 'Sam', lastName: 'Rivera', email: 'sam.rivera@example.com', phone: '555-0199' },
-    ]);
-  });
+      await fireEvent.update(screen.getByLabelText(/first name/i), 'Sam');
+      await fireEvent.update(screen.getByLabelText(/last name/i), 'Rivera');
+      await fireEvent.update(screen.getByLabelText(/nickname/i), 'Sammy');
+      await fireEvent.click(screen.getByRole('button', { name: /add person/i }));
 
-  it('shows the rejection message while retaining the displayed values', async () => {
-    stubFieldsConfig([]);
-    render(PersonForm, {
-      props: {
-        initialValues: { firstName: 'Ana', lastName: 'Alvarez', email: 'ana.alvarez@example.com', phone: null },
-        errorMessage: 'That email is already in use',
-        submitLabel: 'Save changes',
-      },
+      expect(emitted().submit[0]).toEqual([
+        { firstName: 'Sam', lastName: 'Rivera', email: '', phone: '', extraFields: { Nickname: 'Sammy' } },
+      ]);
     });
-    await flushPromises();
 
-    expect(screen.getByText(/that email is already in use/i)).toBeTruthy();
-    expect((screen.getByLabelText(/first name/i) as HTMLInputElement).value).toBe('Ana');
-    expect((screen.getByLabelText(/^email/i) as HTMLInputElement).value).toBe('ana.alvarez@example.com');
-  });
+    it('submits successfully when a configured extra field is left blank', async () => {
+      stubFieldsConfig(['Nickname']);
+      const { emitted } = render(PersonForm, { props: { mode: 'create', submitLabel: 'Add person' } });
+      await flushPromises();
 
-  it('renders one optional free-text input per configured extra field on create', async () => {
-    stubFieldsConfig(['Nickname']);
-    render(PersonForm, { props: { submitLabel: 'Add person' } });
-    await flushPromises();
+      await fireEvent.update(screen.getByLabelText(/first name/i), 'Sam');
+      await fireEvent.update(screen.getByLabelText(/last name/i), 'Rivera');
+      await fireEvent.click(screen.getByRole('button', { name: /add person/i }));
 
-    expect(screen.getByLabelText(/nickname/i)).toBeTruthy();
-  });
+      expect(emitted().submit).toBeTruthy();
+      expect(emitted().submit[0]).toEqual([
+        { firstName: 'Sam', lastName: 'Rivera', email: '', phone: '', extraFields: { Nickname: '' } },
+      ]);
+    });
 
-  it('includes a filled-in extra field value in the submitted payload', async () => {
-    stubFieldsConfig(['Nickname']);
-    const { emitted } = render(PersonForm, { props: { submitLabel: 'Add person' } });
-    await flushPromises();
-
-    await fireEvent.update(screen.getByLabelText(/first name/i), 'Sam');
-    await fireEvent.update(screen.getByLabelText(/last name/i), 'Rivera');
-    await fireEvent.update(screen.getByLabelText(/nickname/i), 'Sammy');
-    await fireEvent.click(screen.getByRole('button', { name: /add person/i }));
-
-    expect(emitted().submit[0]).toEqual([
-      { firstName: 'Sam', lastName: 'Rivera', email: '', phone: '', extraFields: { Nickname: 'Sammy' } },
-    ]);
-  });
-
-  it('submits successfully when a configured extra field is left blank', async () => {
-    stubFieldsConfig(['Nickname']);
-    const { emitted } = render(PersonForm, { props: { submitLabel: 'Add person' } });
-    await flushPromises();
-
-    await fireEvent.update(screen.getByLabelText(/first name/i), 'Sam');
-    await fireEvent.update(screen.getByLabelText(/last name/i), 'Rivera');
-    await fireEvent.click(screen.getByRole('button', { name: /add person/i }));
-
-    expect(emitted().submit).toBeTruthy();
-    expect(emitted().submit[0]).toEqual([
-      { firstName: 'Sam', lastName: 'Rivera', email: '', phone: '', extraFields: { Nickname: '' } },
-    ]);
-  });
-
-  it('displays the saved extra field value in edit mode', async () => {
-    stubFieldsConfig(['Nickname']);
-    render(PersonForm, {
-      props: {
-        initialValues: {
-          firstName: 'Sam',
-          lastName: 'Rivera',
-          email: 'sam.rivera@example.com',
-          phone: null,
-          extraFields: { Nickname: 'Sammy' },
+    it('shows a rejection message while retaining the displayed values', async () => {
+      stubFieldsConfig([]);
+      render(PersonForm, {
+        props: {
+          mode: 'create',
+          errorMessage: 'That email is already in use',
+          submitLabel: 'Add person',
         },
-        submitLabel: 'Save changes',
-      },
-    });
-    await flushPromises();
+      });
+      await flushPromises();
 
-    expect((screen.getByLabelText(/nickname/i) as HTMLInputElement).value).toBe('Sammy');
+      await fireEvent.update(screen.getByLabelText(/first name/i), 'Ana');
+      await fireEvent.update(screen.getByLabelText(/^email/i), 'ana.alvarez@example.com');
+
+      expect(screen.getByText(/that email is already in use/i)).toBeTruthy();
+      expect((screen.getByLabelText(/first name/i) as HTMLInputElement).value).toBe('Ana');
+      expect((screen.getByLabelText(/^email/i) as HTMLInputElement).value).toBe('ana.alvarez@example.com');
+    });
+
+    it('surfaces a phone-conflict rejection message from a 409 response, without submitting again', async () => {
+      stubFieldsConfig([]);
+      const { emitted } = render(PersonForm, {
+        props: {
+          mode: 'create',
+          errorMessage: 'That phone number is already in use',
+          submitLabel: 'Add person',
+        },
+      });
+      await flushPromises();
+
+      expect(screen.getByText(/that phone number is already in use/i)).toBeTruthy();
+      expect(emitted().submit).toBeFalsy();
+    });
+  });
+
+  describe('edit mode', () => {
+    it('renders pre-filled existing name and extra fields but no email or phone inputs', async () => {
+      stubFieldsConfig(['Nickname']);
+      render(PersonForm, {
+        props: {
+          mode: 'edit',
+          initialValues: { firstName: 'Sam', lastName: 'Rivera', extraFields: { Nickname: 'Sammy' } },
+          submitLabel: 'Save changes',
+        },
+      });
+      await flushPromises();
+
+      expect((screen.getByLabelText(/first name/i) as HTMLInputElement).value).toBe('Sam');
+      expect((screen.getByLabelText(/last name/i) as HTMLInputElement).value).toBe('Rivera');
+      expect((screen.getByLabelText(/nickname/i) as HTMLInputElement).value).toBe('Sammy');
+      expect(screen.queryByLabelText(/^email/i)).toBeNull();
+      expect(screen.queryByLabelText(/phone/i)).toBeNull();
+    });
+
+    it('emits names and extraFields only on save, without email or phone keys', async () => {
+      stubFieldsConfig([]);
+      const { emitted } = render(PersonForm, {
+        props: {
+          mode: 'edit',
+          initialValues: { firstName: 'Sam', lastName: 'Rivera' },
+          submitLabel: 'Save changes',
+        },
+      });
+      await flushPromises();
+
+      await fireEvent.update(screen.getByLabelText(/first name/i), 'Samuel');
+      await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+      expect(emitted().submit).toBeTruthy();
+      expect(emitted().submit[0]).toEqual([{ firstName: 'Samuel', lastName: 'Rivera' }]);
+    });
+
+    it('shows the rejection message while retaining the displayed values', async () => {
+      stubFieldsConfig([]);
+      render(PersonForm, {
+        props: {
+          mode: 'edit',
+          initialValues: { firstName: 'Ana', lastName: 'Alvarez' },
+          errorMessage: 'First and last name are required',
+          submitLabel: 'Save changes',
+        },
+      });
+      await flushPromises();
+
+      expect(screen.getByText(/first and last name are required/i)).toBeTruthy();
+      expect((screen.getByLabelText(/first name/i) as HTMLInputElement).value).toBe('Ana');
+    });
   });
 });

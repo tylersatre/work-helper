@@ -17,6 +17,7 @@ None known, strictly. The app's Microsoft Graph credentials/registration setup w
 ## Notes
 
 - The architecture constraint is already decided and binding (brief "Architecture constraints"; constitution Principle IV): the work-helper server pulls directly from Microsoft Graph (scheduled polling and/or webhook). Ingestion is a server-side concern — AI agents are consumers of the work-helper MCP's tools only, never the ingestion path.
+- `multiple-emails-and-phones` (specced 2026-08-07) gives a person multiple email addresses, unique across people — so any sender address maps to at most one person, which is the matching foundation this feature (and the later link-email-to-contact work) will rely on.
 - Scope: ingestion only — getting emails from Microsoft Graph into work-helper's store. Linking ingested emails to people is a separate future feature; the feature-template's worked example (`link-email-to-contact` in `docs/product/feature-template.md`) sketches it.
 - Nothing product-level has been decided. Open questions for the future `/new-feature` interview:
   - Which mailbox, and which folders?

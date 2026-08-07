@@ -57,7 +57,15 @@ describe('TaskDetailPage', () => {
         return Promise.resolve({
           ok: true,
           json: async () => [
-            { id: 1, firstName: 'Sam', lastName: 'Rivera', email: 'sam.rivera@example.com', phone: null, extraFields: {}, createdAt: 1 },
+            {
+              id: 1,
+              firstName: 'Sam',
+              lastName: 'Rivera',
+              emails: [{ id: 1, value: 'sam.rivera@example.com', isPrimary: true, createdAt: 1 }],
+              phones: [],
+              extraFields: {},
+              createdAt: 1,
+            },
           ],
         });
       }

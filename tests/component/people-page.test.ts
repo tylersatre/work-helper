@@ -4,12 +4,16 @@ import { flushPromises } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import PeoplePage from '../../src/client/pages/PeoplePage.vue';
 
+function entry(id: number, value: string, isPrimary = true) {
+  return { id, value, isPrimary, createdAt: id };
+}
+
 describe('PeoplePage', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it('renders people rows with name, email, and phone in given order', async () => {
+  it('renders people rows with name, primary email, and primary phone in given order', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -19,8 +23,8 @@ describe('PeoplePage', () => {
             id: 1,
             firstName: 'Ana',
             lastName: 'Alvarez',
-            email: 'ana.alvarez@example.com',
-            phone: '555-0100',
+            emails: [entry(1, 'ana.alvarez@example.com')],
+            phones: [entry(2, '555-0100')],
             extraFields: {},
             createdAt: 1,
           },
@@ -28,8 +32,8 @@ describe('PeoplePage', () => {
             id: 2,
             firstName: 'Sam',
             lastName: 'Rivera',
-            email: 'sam.rivera@example.com',
-            phone: '555-0200',
+            emails: [entry(3, 'sam.rivera@example.com')],
+            phones: [entry(4, '555-0200')],
             extraFields: {},
             createdAt: 2,
           },
@@ -49,6 +53,60 @@ describe('PeoplePage', () => {
     expect(rows[1]?.textContent).toContain('Rivera');
   });
 
+  it('shows an empty cell for a person with no email or phone entries', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [
+          {
+            id: 1,
+            firstName: 'Cy',
+            lastName: 'Cole',
+            emails: [],
+            phones: [],
+            extraFields: {},
+            createdAt: 1,
+          },
+        ],
+      }),
+    );
+
+    render(PeoplePage);
+
+    const row = await screen.findByTestId('person-row');
+    expect(row.textContent).toContain('Cy');
+    expect(row.textContent).toContain('Cole');
+    expect(row.textContent).not.toContain('null');
+    expect(row.textContent).not.toContain('undefined');
+  });
+
+  it('picks the entry marked primary, not necessarily the first in the array', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [
+          {
+            id: 1,
+            firstName: 'Sam',
+            lastName: 'Rivera',
+            emails: [entry(1, 'sam.old@example.com', false), entry(2, 'sam.new@example.com', true)],
+            phones: [],
+            extraFields: {},
+            createdAt: 1,
+          },
+        ],
+      }),
+    );
+
+    render(PeoplePage);
+
+    const row = await screen.findByTestId('person-row');
+    expect(row.textContent).toContain('sam.new@example.com');
+    expect(row.textContent).not.toContain('sam.old@example.com');
+  });
+
   it('submits the four built-in fields when creating a person', async () => {
     const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
       if (options?.method === 'POST') {
@@ -59,8 +117,8 @@ describe('PeoplePage', () => {
             id: 3,
             firstName: 'Bo',
             lastName: 'Baker',
-            email: 'bo.baker@example.com',
-            phone: '555-0300',
+            emails: [entry(1, 'bo.baker@example.com')],
+            phones: [entry(2, '555-0300')],
             extraFields: {},
             createdAt: 3,
           }),
@@ -150,8 +208,8 @@ describe('PeoplePage', () => {
             id: 1,
             firstName: 'Ana',
             lastName: 'Alvarez',
-            email: 'ana.alvarez@example.com',
-            phone: '555-0100',
+            emails: [entry(1, 'ana.alvarez@example.com')],
+            phones: [entry(2, '555-0100')],
             extraFields: {},
             createdAt: 1,
           },

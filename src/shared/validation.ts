@@ -18,10 +18,21 @@ export const noteTextSchema = z
   .string()
   .refine((value) => value.trim().length > 0, 'Note text is required');
 
-export const personInputSchema = z.object({
+export const entryValueSchema = z
+  .string()
+  .trim()
+  .min(1, 'A value is required');
+
+export const createPersonInputSchema = z.object({
   firstName: z.string().trim().min(1, 'First and last name are required'),
   lastName: z.string().trim().min(1, 'First and last name are required'),
   email: optionalTrimmedText,
   phone: optionalTrimmedText,
+  extraFields: z.record(z.string(), z.string()).optional(),
+});
+
+export const updatePersonInputSchema = z.object({
+  firstName: z.string().trim().min(1, 'First and last name are required'),
+  lastName: z.string().trim().min(1, 'First and last name are required'),
   extraFields: z.record(z.string(), z.string()).optional(),
 });

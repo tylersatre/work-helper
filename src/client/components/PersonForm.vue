@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from 'vue';
 
-interface PersonFormValues {
+interface CreatePersonFormValues {
   firstName: string;
   lastName: string;
   email: string;
@@ -9,26 +9,34 @@ interface PersonFormValues {
   extraFields?: Record<string, string>;
 }
 
+interface EditPersonFormValues {
+  firstName: string;
+  lastName: string;
+  extraFields?: Record<string, string>;
+}
+
 const props = withDefaults(
   defineProps<{
+    mode?: 'create' | 'edit';
     initialValues?: {
       firstName: string;
       lastName: string;
-      email: string | null;
-      phone: string | null;
+      email?: string | null;
+      phone?: string | null;
       extraFields?: Record<string, string>;
     };
     errorMessage?: string;
     submitLabel?: string;
   }>(),
   {
+    mode: 'create',
     initialValues: undefined,
     errorMessage: '',
     submitLabel: 'Add person',
   },
 );
 
-const emit = defineEmits<{ submit: [values: PersonFormValues] }>();
+const emit = defineEmits<{ submit: [values: CreatePersonFormValues | EditPersonFormValues] }>();
 
 const fieldLabels = ref<string[]>([]);
 
@@ -60,17 +68,27 @@ async function fetchFieldLabels(): Promise<void> {
 
 onMounted(fetchFieldLabels);
 
-function onSubmit(): void {
-  const values: PersonFormValues = { firstName: form.firstName, lastName: form.lastName, email: form.email, phone: form.phone };
+function extraFieldsPayload(): Record<string, string> | undefined {
+  if (fieldLabels.value.length === 0) return undefined;
+  const extraFields: Record<string, string> = {};
+  for (const label of fieldLabels.value) {
+    extraFields[label] = form.extraFields[label] ?? '';
+  }
+  return extraFields;
+}
 
-  if (fieldLabels.value.length > 0) {
-    const extraFields: Record<string, string> = {};
-    for (const label of fieldLabels.value) {
-      extraFields[label] = form.extraFields[label] ?? '';
-    }
-    values.extraFields = extraFields;
+function onSubmit(): void {
+  const extraFields = extraFieldsPayload();
+
+  if (props.mode === 'edit') {
+    const values: EditPersonFormValues = { firstName: form.firstName, lastName: form.lastName };
+    if (extraFields) values.extraFields = extraFields;
+    emit('submit', values);
+    return;
   }
 
+  const values: CreatePersonFormValues = { firstName: form.firstName, lastName: form.lastName, email: form.email, phone: form.phone };
+  if (extraFields) values.extraFields = extraFields;
   emit('submit', values);
 }
 </script>
@@ -83,11 +101,13 @@ function onSubmit(): void {
     <label for="person-last-name">Last name</label>
     <input id="person-last-name" v-model="form.lastName" type="text" name="lastName" />
 
-    <label for="person-email">Email</label>
-    <input id="person-email" v-model="form.email" type="text" name="email" />
+    <template v-if="mode === 'create'">
+      <label for="person-email">Email</label>
+      <input id="person-email" v-model="form.email" type="text" name="email" />
 
-    <label for="person-phone">Phone</label>
-    <input id="person-phone" v-model="form.phone" type="text" name="phone" />
+      <label for="person-phone">Phone</label>
+      <input id="person-phone" v-model="form.phone" type="text" name="phone" />
+    </template>
 
     <template v-for="label in fieldLabels" :key="label">
       <label :for="`person-extra-${label}`">{{ label }}</label>

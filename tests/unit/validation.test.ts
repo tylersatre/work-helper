@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { noteTextSchema, personInputSchema, titleSchema } from '../../src/shared/validation.js';
+import {
+  createPersonInputSchema,
+  entryValueSchema,
+  noteTextSchema,
+  titleSchema,
+  updatePersonInputSchema,
+} from '../../src/shared/validation.js';
 
 describe('titleSchema', () => {
   it('accepts a non-empty title and returns it trimmed', () => {
@@ -36,33 +42,33 @@ describe('titleSchema', () => {
   });
 });
 
-describe('personInputSchema', () => {
+describe('createPersonInputSchema', () => {
   it('rejects a blank first name', () => {
-    const result = personInputSchema.safeParse({ firstName: '', lastName: 'Rivera' });
+    const result = createPersonInputSchema.safeParse({ firstName: '', lastName: 'Rivera' });
 
     expect(result.success).toBe(false);
   });
 
   it('rejects a whitespace-only first name', () => {
-    const result = personInputSchema.safeParse({ firstName: '   ', lastName: 'Rivera' });
+    const result = createPersonInputSchema.safeParse({ firstName: '   ', lastName: 'Rivera' });
 
     expect(result.success).toBe(false);
   });
 
   it('rejects a blank last name', () => {
-    const result = personInputSchema.safeParse({ firstName: 'Sam', lastName: '' });
+    const result = createPersonInputSchema.safeParse({ firstName: 'Sam', lastName: '' });
 
     expect(result.success).toBe(false);
   });
 
   it('rejects a whitespace-only last name', () => {
-    const result = personInputSchema.safeParse({ firstName: 'Sam', lastName: '   ' });
+    const result = createPersonInputSchema.safeParse({ firstName: 'Sam', lastName: '   ' });
 
     expect(result.success).toBe(false);
   });
 
   it('trims first and last name', () => {
-    const result = personInputSchema.safeParse({ firstName: '  Sam  ', lastName: '  Rivera  ' });
+    const result = createPersonInputSchema.safeParse({ firstName: '  Sam  ', lastName: '  Rivera  ' });
 
     expect(result.success).toBe(true);
     if (result.success) {
@@ -72,7 +78,7 @@ describe('personInputSchema', () => {
   });
 
   it('normalizes a blank-after-trim email to null', () => {
-    const result = personInputSchema.safeParse({ firstName: 'Sam', lastName: 'Rivera', email: '   ' });
+    const result = createPersonInputSchema.safeParse({ firstName: 'Sam', lastName: 'Rivera', email: '   ' });
 
     expect(result.success).toBe(true);
     if (result.success) {
@@ -81,7 +87,7 @@ describe('personInputSchema', () => {
   });
 
   it('normalizes a missing email to null', () => {
-    const result = personInputSchema.safeParse({ firstName: 'Sam', lastName: 'Rivera' });
+    const result = createPersonInputSchema.safeParse({ firstName: 'Sam', lastName: 'Rivera' });
 
     expect(result.success).toBe(true);
     if (result.success) {
@@ -90,7 +96,11 @@ describe('personInputSchema', () => {
   });
 
   it('trims a provided email', () => {
-    const result = personInputSchema.safeParse({ firstName: 'Sam', lastName: 'Rivera', email: '  sam@example.com  ' });
+    const result = createPersonInputSchema.safeParse({
+      firstName: 'Sam',
+      lastName: 'Rivera',
+      email: '  sam@example.com  ',
+    });
 
     expect(result.success).toBe(true);
     if (result.success) {
@@ -99,7 +109,7 @@ describe('personInputSchema', () => {
   });
 
   it('accepts any non-blank string as an email with no format rule', () => {
-    const result = personInputSchema.safeParse({ firstName: 'Sam', lastName: 'Rivera', email: 'not-an-email' });
+    const result = createPersonInputSchema.safeParse({ firstName: 'Sam', lastName: 'Rivera', email: 'not-an-email' });
 
     expect(result.success).toBe(true);
     if (result.success) {
@@ -108,7 +118,7 @@ describe('personInputSchema', () => {
   });
 
   it('normalizes a blank-after-trim phone to null', () => {
-    const result = personInputSchema.safeParse({ firstName: 'Sam', lastName: 'Rivera', phone: '   ' });
+    const result = createPersonInputSchema.safeParse({ firstName: 'Sam', lastName: 'Rivera', phone: '   ' });
 
     expect(result.success).toBe(true);
     if (result.success) {
@@ -117,11 +127,102 @@ describe('personInputSchema', () => {
   });
 
   it('trims a provided phone', () => {
-    const result = personInputSchema.safeParse({ firstName: 'Sam', lastName: 'Rivera', phone: '  555-0100  ' });
+    const result = createPersonInputSchema.safeParse({
+      firstName: 'Sam',
+      lastName: 'Rivera',
+      phone: '  555-0100  ',
+    });
 
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.phone).toBe('555-0100');
+    }
+  });
+});
+
+describe('updatePersonInputSchema', () => {
+  it('accepts names and extraFields only', () => {
+    const result = updatePersonInputSchema.safeParse({ firstName: 'Sam', lastName: 'Rivera' });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a blank first name', () => {
+    const result = updatePersonInputSchema.safeParse({ firstName: '', lastName: 'Rivera' });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a blank last name', () => {
+    const result = updatePersonInputSchema.safeParse({ firstName: 'Sam', lastName: '' });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('strips an email key if sent, rather than erroring or applying it', () => {
+    const result = updatePersonInputSchema.safeParse({
+      firstName: 'Sam',
+      lastName: 'Rivera',
+      email: 'sam@example.com',
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty('email');
+    }
+  });
+
+  it('strips a phone key if sent, rather than erroring or applying it', () => {
+    const result = updatePersonInputSchema.safeParse({ firstName: 'Sam', lastName: 'Rivera', phone: '555-0100' });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty('phone');
+    }
+  });
+
+  it('keeps a provided extraFields value', () => {
+    const result = updatePersonInputSchema.safeParse({
+      firstName: 'Sam',
+      lastName: 'Rivera',
+      extraFields: { Nickname: 'Sammy' },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.extraFields).toEqual({ Nickname: 'Sammy' });
+    }
+  });
+});
+
+describe('entryValueSchema', () => {
+  it('trims leading and trailing whitespace', () => {
+    const result = entryValueSchema.safeParse('  sam.p@example.com  ');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toBe('sam.p@example.com');
+    }
+  });
+
+  it('rejects an empty string', () => {
+    const result = entryValueSchema.safeParse('');
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a whitespace-only value', () => {
+    const result = entryValueSchema.safeParse('   ');
+
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a non-blank value with no format rule', () => {
+    const result = entryValueSchema.safeParse('555-0100');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toBe('555-0100');
     }
   });
 });

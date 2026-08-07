@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { primaryValue } from '../../shared/contacts.js';
 import type { Person } from '../../shared/types.js';
 import PersonForm from '../components/PersonForm.vue';
 
@@ -16,7 +17,7 @@ async function onDelete(id: number): Promise<void> {
   await fetchPeople();
 }
 
-async function onSubmit(values: { firstName: string; lastName: string; email: string; phone: string }): Promise<void> {
+async function onSubmit(values: { firstName: string; lastName: string; email?: string; phone?: string }): Promise<void> {
   const response = await fetch('/api/people', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -43,7 +44,7 @@ onMounted(fetchPeople);
     <ul class="people-list">
       <li v-for="person in people" :key="person.id" class="person-row" data-testid="person-row">
         <RouterLink :to="`/people/${person.id}`">{{ person.firstName }} {{ person.lastName }}</RouterLink>
-        — {{ person.email }} — {{ person.phone }}
+        — {{ primaryValue(person.emails) }} — {{ primaryValue(person.phones) }}
         <button type="button" @click="onDelete(person.id)">Delete</button>
       </li>
     </ul>
