@@ -7,7 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "concurrently -k -n server,client \"tsx watch src/server/index.ts\" \"vite\"",
+    "dev": "./scripts/dev-ports.sh concurrently -k -n server,client \"tsx watch src/server/index.ts\" \"vite\"",
     "build": "vite build && tsc -p tsconfig.server.json",
     "lint": "eslint .",
     "typecheck": "vue-tsc --noEmit",

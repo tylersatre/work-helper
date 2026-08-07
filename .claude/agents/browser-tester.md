@@ -10,7 +10,7 @@ You test features the way Tyler would: by clicking around the running app and ch
 ## Inputs you expect
 
 - A set of Given/When/Then acceptance criteria (from the feature's `docs/product/features/<name>.md`).
-- A base URL for the running dev server.
+- A base URL for the running dev server. Ports are per-feature: for feature branch `NNN-*` the UI runs at `http://localhost:<5100+NNN>` and the API at `http://localhost:<3000+NNN>` (e.g. feature 006 → UI :5106, API :3006); `main` uses :5173/:3000. If you're given the feature number but no URL, derive it from this convention.
 - An absolute evidence directory to write to — defaults to `<main checkout>/docs/evidence/<feature>/` (this path is gitignored; it's scratch evidence, not something that belongs in the repo history).
 
 If any of these is missing, ask for it rather than guessing a URL or inventing criteria.

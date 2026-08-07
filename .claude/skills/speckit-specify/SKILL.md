@@ -88,7 +88,7 @@ Given that feature description, do this:
    2. Otherwise, auto-generate it under `specs/`:
       - Check `.specify/init-options.json` for `feature_numbering` (preferred) or `branch_numbering` (deprecated, migration only — will be removed in a future release)
       - If `"timestamp"`: prefix is `YYYYMMDD-HHMMSS` (current timestamp)
-      - If `"sequential"` or absent: prefix is `NNN` (next available 3-digit number after scanning existing directories in `specs/`)
+      - If `"sequential"` or absent: prefix is `NNN` — obtain it by running `scripts/next-feature-number.sh` (from the repo root). Do NOT compute the number by scanning `specs/` yourself: parallel worktrees each see their own `specs/`, so a directory scan lets two in-flight features claim the same number. The script also scans local and origin branch names, which is what makes numbering race-free. <!-- work-helper patch: re-apply this bullet if a spec-kit re-init overwrites this file -->
       - Construct the directory name: `<prefix>-<short-name>` (e.g., `003-user-auth` or `20260319-143022-user-auth`)
       - Set `SPECIFY_FEATURE_DIRECTORY` to `specs/<directory-name>`
       - If `branch_numbering` was used (and `feature_numbering` was absent), emit a one-line warning: "⚠️ `branch_numbering` in init-options.json is deprecated. Rename to `feature_numbering`."
@@ -111,6 +111,11 @@ Given that feature description, do this:
    - You must only create one feature per `/speckit-specify` invocation
    - The spec directory name and the git branch name are independent — they may be the same but that is the user's choice
    - The spec directory and file are always created by this command, never by the hook
+
+   **Align the git branch (work-helper convention)** <!-- work-helper patch: re-apply after a spec-kit re-init -->:
+   - This project keeps the feature branch named exactly like the spec directory (e.g. branch `006-user-auth` for `specs/006-user-auth/`).
+   - If the current branch is `main`: create and switch to the feature branch with `git checkout -b <spec-dir-name>`. (Normally you won't be on `main` — feature sessions run in a worktree on an auto-named branch.)
+   - Otherwise (the usual case — an auto-named worktree branch): rename it with `git branch -m <spec-dir-name>`.
 
 4. Load the resolved active `spec-template` file to understand required sections.
 

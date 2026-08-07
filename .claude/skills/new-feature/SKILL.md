@@ -45,8 +45,9 @@ If the idea in $ARGUMENTS is already fully or partly covered by an existing feat
 - Filename: kebab-case slug of the feature, e.g. `docs/product/features/track-people.md`.
 ## Finish
  
-1. Write the file.
+1. Write the file. This command runs in the main checkout, parked on `main`.
 2. Record deferred work (REQUIRED — do this while the interview context is fresh): for every named follow-up from the scope split, and every Out of scope item that is a real future feature rather than a permanent non-goal, write a stub in `docs/product/future/<name>.md` following `docs/product/future-template.md`. Capture why it was deferred and any decisions the interview already made about it. If a matching stub already exists, update it instead of duplicating. If this feature itself came from a stub, delete that stub.
 3. Show Tyler the full doc, a two-line summary of the scope decisions (what's in, what got split out), and the list of stubs created, updated, or deleted.
 4. Revise per his feedback until he approves.
-5. Stop. Do not run any speckit commands, do not write code, do not create branches. Remind him the next step is a fresh session from clean `main`, big model, `/speckit.specify @docs/product/features/<file>.md`.
+5. Once approved, commit the feature doc and any created/updated/deleted stubs directly to `main` and push. Product docs are the one exception to the no-direct-commits rule: worktrees branch from `main`, so the doc must be on `main` before the feature session starts. Commit nothing else.
+6. Stop. Do not run any speckit commands, do not write code, do not create branches. Remind him the next step is a worktree session on a big model — a new desktop-app session (worktree is automatic) or `claude -w <feature-slug>` from the main checkout — then `/speckit.specify @docs/product/features/<file>.md` inside it.
