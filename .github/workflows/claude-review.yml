@@ -16,6 +16,11 @@ jobs:
         with:
           fetch-depth: 1
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -23,16 +28,30 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            Review this pull request against CLAUDE.md and this repo's spec-driven workflow. The PR branch is already checked out in the current working directory.
+            You are reviewing a PR in a spec-driven TDD project where all engineering is done by Claude Code agents; Tyler (the product owner) writes specs and acceptance criteria, never code. Your review is consumed by the agent that will push fixes — every finding must be actionable: what is wrong, where (file:line), why it matters, and what a fix looks like. The PR branch is checked out in the working directory.
 
-            Specifically:
-            - Find the feature spec this PR implements (look for docs/product/features/<name>.md referenced in the PR description, or a recently-touched spec under docs/product/features/). Check the diff against its Given/When/Then acceptance criteria.
-            - Flag any implementation code that has no corresponding failing-test-first commit — this project requires TDD (red before green); code that shows up without a preceding test looks like the test was skipped or backfilled.
-            - Flag tests that don't actually exercise the behavior they claim to (e.g. asserting on mocked-away internals, or trivially-true assertions) — these look like coverage but aren't.
-            - Flag any "done"/"complete" claim in the PR description that isn't backed by evidence in the diff (test output, or an evidence bundle under docs/evidence/<feature>/ with screenshots + results.md from the browser-tester agent).
-            - General code quality, bugs, and security implications.
+            Verify, don't hedge. You have a full checkout and npm. Run the verification gate yourself and report real output:
+            `npm ci`, then `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`.
+            Any failure is a blocking finding — quote the failing output. Never write "I couldn't verify X" for something these commands can verify. To confirm a suspected bug, prefer demonstrating it (a targeted `npx vitest run <file>`, or reasoning from the actual code path) over speculating.
 
-            Use `gh pr comment` for top-level feedback. Use `mcp__github_inline_comment__create_inline_comment` (with `confirmed: true`) to highlight specific issues inline. Only post GitHub comments — don't submit review text as plain messages.
+            Review priorities, highest value first:
+            1. Real bugs in the changed code: logic errors, missed edge cases, state-transition mistakes, security issues (injection, auth gaps in routes or MCP tools). This matters more than everything below.
+            2. Spec conformance: find the feature spec (`docs/product/features/<name>.md` and `specs/<NNN-name>/spec.md`). Every Given/When/Then acceptance criterion must be traceable to at least one test in the diff — name any criterion that has none. Flag implemented behavior that no spec asked for.
+            3. Test quality: flag tests that would still pass if the implementation were broken — assertions against mocks of the code under test, trivially-true assertions, tests that don't exercise the behavior their name claims. Flag changed behavior with no covering test. This is how TDD skips are caught here — judge the tests, not the commit history.
+            4. Evidence integrity: if the PR description or tasks.md claims browser-tester evidence or verifier sign-off, the bundle must actually exist in the PR under `docs/evidence/<feature>/` (screenshots + results.md). A claimed-but-absent evidence bundle is blocking (constitution Principle III: evidence over assertion).
+            5. Constitution and architecture (`.specify/memory/constitution.md`): TypeScript throughout; MCP server on the official `@modelcontextprotocol/sdk` only; email ingestion lives inside the server, never in AI agents; Conventional Commit PR title.
+
+            Do NOT:
+            - Flag squashed or single-commit history as a TDD violation. PRs are squash-merged and the clone is shallow; red-before-green is enforced by session hooks and is not reviewable from git history. Priority 3 above is the reviewable proxy.
+            - Request data-preserving migrations, backfills, backups, or data-loss warnings. Dev-phase policy (CLAUDE.md, constitution): no real data exists; schema changes may be freely lossy and the dev DB is reset at will. Flagging effort spent on data preservation as unnecessary IS in scope.
+            - Narrate everything that was fine. One line per area ("checked X — no issues") is the maximum; spend the words on findings.
+            - Restate the spec, the workflow, or the diff back at the reader.
+            - Duplicate feedback: first read existing claude[bot] comments (`gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments`). On a re-run after new commits, review what changed, mark previously-raised findings that are now fixed as resolved, and don't re-post ones that still stand.
+
+            Output:
+            - One inline comment per concrete finding via `mcp__github_inline_comment__create_inline_comment` (with `confirmed: true`), each tagged with a severity — `blocking` (bug, failing gate, spec violation, false evidence claim), `should-fix` (real issue, mergeable without), or `nit` — and a concrete suggested fix.
+            - One summary comment via `gh pr comment`: gate results (each command, pass/fail), findings ranked by severity with file:line references, and a one-line verdict (ready to merge / fix blocking items first). If there are no findings, the entire summary is a few lines — do not manufacture feedback to justify the review.
+            - Only post GitHub comments — never leave review content as plain response text.
 
           claude_args: |
-            --model opus --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --model opus --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr checks:*),Bash(gh api:*),Bash(npm ci),Bash(npm run lint),Bash(npm run typecheck),Bash(npm run build),Bash(npm test),Bash(npx vitest run:*)"
