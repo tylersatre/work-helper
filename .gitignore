@@ -24,8 +24,12 @@ data/
 # Claude Code local/project-private settings
 .claude/settings.local.json
 
-# Evidence produced by the verifier / browser-tester agents
-docs/evidence/
+# Evidence produced by the verifier / browser-tester agents — screenshots are
+# local-only; the written *results.md summaries are committed with the PR.
+docs/evidence/*
+!docs/evidence/*/
+docs/evidence/*/*
+!docs/evidence/*/*results.md
 
 # Playwright
 test-results/
