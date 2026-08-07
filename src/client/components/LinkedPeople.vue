@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import type { Person } from '../../shared/types.js';
+import { primaryValue } from '../../shared/contacts.js';
+import type { LinkedPerson, Person } from '../../shared/types.js';
 
-const props = defineProps<{ taskId: number; people: Person[] }>();
+const props = defineProps<{ taskId: number; people: LinkedPerson[] }>();
 
-const emit = defineEmits<{ 'update:people': [people: Person[]] }>();
+const emit = defineEmits<{ 'update:people': [people: LinkedPerson[]] }>();
 
 const query = ref('');
 const results = ref<Person[]>([]);
@@ -51,7 +52,7 @@ async function unlinkPerson(personId: number): Promise<void> {
 
     <ul v-if="results.length" class="people-list">
       <li v-for="person in results" :key="person.id" class="person-row" data-testid="search-result">
-        {{ person.firstName }} {{ person.lastName }} — {{ person.email }}
+        {{ person.firstName }} {{ person.lastName }} — {{ primaryValue(person.emails) }}
         <button type="button" @click="linkPerson(person.id)">Link</button>
       </li>
     </ul>

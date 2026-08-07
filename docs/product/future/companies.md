@@ -16,6 +16,8 @@ Track companies as CRM entities — the other half of Tyler's original "people A
 
 ## Notes
 
+Re-flagged by Tyler on 2026-08-07 during the `multiple-emails-and-phones` interview as part of the broader "what should be a model" effort — a priority signal, but no new decisions were made.
+
 Nothing about companies was decided in the interview where it was deferred — the split itself is the only decision. Open questions for the future `/new-feature` interview:
 
 - What fields does a company have? (Undiscussed. If person fields are any guide, the config-driven core-plus-extras pattern from track-people may be worth considering, but that was never proposed for companies.)

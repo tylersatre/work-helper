@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import type { Note, Person, TaskDetail } from '../../shared/types.js';
+import type { LinkedPerson, Note, TaskDetail } from '../../shared/types.js';
 import LinkedPeople from '../components/LinkedPeople.vue';
 import TaskNotes from '../components/TaskNotes.vue';
 
@@ -13,7 +13,7 @@ async function fetchTask(): Promise<void> {
   task.value = await response.json();
 }
 
-function onUpdatePeople(people: Person[]): void {
+function onUpdatePeople(people: LinkedPerson[]): void {
   if (task.value) {
     task.value.people = people;
   }

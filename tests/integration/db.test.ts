@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createDb } from '../../src/server/db/index.js';
-import { people, taskPeople, tasks } from '../../src/server/db/schema.js';
+import { people, personEmails, taskPeople, tasks } from '../../src/server/db/schema.js';
 
 describe('createDb', () => {
   it('creates a tasks table supporting insert + select round-trip on :memory:', () => {
@@ -61,22 +61,21 @@ describe('createDb', () => {
       expect(tableNames).toEqual(['people', 'task_people']);
     });
 
-    it('rejects a second person whose email differs only by case, while allowing multiple NULL emails', () => {
+    it('rejects a second person email entry differing only by case, while allowing multiple people with no email', () => {
       const { db } = createDb(':memory:');
 
-      db.insert(people).values({ firstName: 'Sam', lastName: 'Rivera', email: 'sam@example.com', createdAt: 1 }).run();
+      const [sam] = db.insert(people).values({ firstName: 'Sam', lastName: 'Rivera', createdAt: 1 }).returning().all();
+      const [ana] = db.insert(people).values({ firstName: 'Ana', lastName: 'Alvarez', createdAt: 2 }).returning().all();
+      db.insert(people).values({ firstName: 'Bo', lastName: 'Baker', createdAt: 3 }).run();
+
+      db.insert(personEmails).values({ personId: sam!.id, value: 'sam@example.com', isPrimary: true, createdAt: 1 }).run();
 
       expect(() =>
         db
-          .insert(people)
-          .values({ firstName: 'Sam2', lastName: 'Rivera', email: 'SAM@example.com', createdAt: 2 })
+          .insert(personEmails)
+          .values({ personId: ana!.id, value: 'SAM@example.com', isPrimary: true, createdAt: 2 })
           .run(),
       ).toThrow();
-
-      expect(() => {
-        db.insert(people).values({ firstName: 'Ana', lastName: 'Alvarez', createdAt: 3 }).run();
-        db.insert(people).values({ firstName: 'Bo', lastName: 'Baker', createdAt: 4 }).run();
-      }).not.toThrow();
     });
 
     it('rejects a duplicate (task_id, person_id) pair on task_people via the composite primary key', () => {

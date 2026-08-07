@@ -2,16 +2,19 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { eq } from 'drizzle-orm';
+import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
-import { tasks } from '../../src/server/db/schema.js';
+import { personEmails, tasks } from '../../src/server/db/schema.js';
+import type * as schema from '../../src/server/db/schema.js';
 import { connectThroughPasswordGate } from './helpers/oauth-client.js';
 
 const LANES = ['To Do', 'In Progress', 'Waiting', 'Done'];
 const PASSWORD = 'correct-horse-battery';
 
 let app: FastifyInstance;
+let db: BetterSQLite3Database<typeof schema>;
 let client: Client;
 let serverUrl: string;
 let sam: number;
@@ -28,7 +31,8 @@ async function createTaskViaApi(title: string): Promise<number> {
 }
 
 beforeEach(async () => {
-  const { db } = createDb(':memory:');
+  const created = createDb(':memory:');
+  db = created.db;
   app = buildApp({ db, lanes: LANES, personFields: ['Nickname'], connectorPassword: PASSWORD });
 
   await app.inject({ method: 'POST', url: '/api/tasks', payload: { title: 'Follow up with Sam' } });
@@ -102,7 +106,7 @@ describe('US2: read tools', () => {
       title: string;
       lane: string;
       notes: { text: string; source: string; createdAt: number }[];
-      people: { firstName: string; lastName: string }[];
+      people: { firstName: string; lastName: string; email: string | null }[];
     };
     expect(task.title).toBe('Prep board deck');
     expect(task.lane).toBe('To Do');
@@ -110,6 +114,8 @@ describe('US2: read tools', () => {
     expect(task.notes[0]).toMatchObject({ text: 'Kickoff call went well', source: 'ui' });
     expect(typeof task.notes[0]!.createdAt).toBe('number');
     expect(task.people.map((p) => `${p.firstName} ${p.lastName}`)).toContain('Sam Rivera');
+    const samLinked = task.people.find((p) => `${p.firstName} ${p.lastName}` === 'Sam Rivera');
+    expect(samLinked?.email).toBe('sam.rivera@example.com');
   });
 
   it('get-task errors for an unknown task id', async () => {
@@ -150,5 +156,46 @@ describe('US2: read tools', () => {
     const result = await client.callTool({ name: 'get-person', arguments: { personId: 999999 } });
     expect(result.isError).toBe(true);
     expect(JSON.stringify(result.content)).toContain('Person 999999 not found');
+  });
+
+  it('get-person and search-people return the primary email when a person has two, the second marked primary (mcp-tools contract assertion 1)', async () => {
+    db.update(personEmails).set({ isPrimary: false }).where(eq(personEmails.personId, sam)).run();
+    db.insert(personEmails)
+      .values({ personId: sam, value: 'sam.personal@example.com', isPrimary: true, createdAt: Date.now() })
+      .run();
+
+    const personResult = await client.callTool({ name: 'get-person', arguments: { personId: sam } });
+    expect((personResult.structuredContent as { email: string | null }).email).toBe('sam.personal@example.com');
+
+    const searchResult = await client.callTool({ name: 'search-people', arguments: { query: 'sam' } });
+    const { people } = searchResult.structuredContent as { people: { email: string | null }[] };
+    expect(people[0]?.email).toBe('sam.personal@example.com');
+  });
+
+  it('get-person returns null email and phone for a person with neither (mcp-tools contract assertion 2)', async () => {
+    const noneId = await createPerson({ firstName: 'Cy', lastName: 'Cole' });
+
+    const result = await client.callTool({ name: 'get-person', arguments: { personId: noneId } });
+
+    expect(result.structuredContent).toMatchObject({ email: null, phone: null });
+  });
+
+  it('get-person and search-people immediately return the promoted survivor after the primary email is removed (mcp-tools contract assertion 3)', async () => {
+    await app.inject({
+      method: 'POST',
+      url: `/api/people/${sam}/emails`,
+      payload: { value: 'sam.personal@example.com' },
+    });
+    const beforeRemoval = await app.inject({ method: 'GET', url: `/api/people/${sam}` });
+    const primaryId = (beforeRemoval.json().emails as { id: number; isPrimary: boolean }[]).find((e) => e.isPrimary)!.id;
+
+    await app.inject({ method: 'DELETE', url: `/api/people/${sam}/emails/${primaryId}` });
+
+    const personResult = await client.callTool({ name: 'get-person', arguments: { personId: sam } });
+    expect((personResult.structuredContent as { email: string | null }).email).toBe('sam.personal@example.com');
+
+    const searchResult = await client.callTool({ name: 'search-people', arguments: { query: 'sam' } });
+    const { people } = searchResult.structuredContent as { people: { email: string | null }[] };
+    expect(people[0]?.email).toBe('sam.personal@example.com');
   });
 });

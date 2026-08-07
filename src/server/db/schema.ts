@@ -8,21 +8,49 @@ export const tasks = sqliteTable('tasks', {
   createdAt: integer('created_at').notNull(),
 });
 
-export const people = sqliteTable(
-  'people',
+export const people = sqliteTable('people', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  firstName: text('first_name').notNull(),
+  lastName: text('last_name').notNull(),
+  extraFields: text('extra_fields', { mode: 'json' })
+    .$type<Record<string, string>>()
+    .notNull()
+    .default({}),
+  createdAt: integer('created_at').notNull(),
+});
+
+export const personEmails = sqliteTable(
+  'person_emails',
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
-    firstName: text('first_name').notNull(),
-    lastName: text('last_name').notNull(),
-    email: text('email'),
-    phone: text('phone'),
-    extraFields: text('extra_fields', { mode: 'json' })
-      .$type<Record<string, string>>()
+    personId: integer('person_id')
       .notNull()
-      .default({}),
+      .references(() => people.id, { onDelete: 'cascade' }),
+    value: text('value').notNull(),
+    isPrimary: integer('is_primary', { mode: 'boolean' }).notNull().default(false),
     createdAt: integer('created_at').notNull(),
   },
-  (t) => [uniqueIndex('people_email_unique').on(sql`lower(${t.email})`).where(sql`${t.email} IS NOT NULL`)],
+  (t) => [
+    uniqueIndex('person_emails_value_unique').on(sql`lower(${t.value})`),
+    uniqueIndex('person_emails_one_primary').on(t.personId).where(sql`${t.isPrimary} = 1`),
+  ],
+);
+
+export const personPhones = sqliteTable(
+  'person_phones',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    personId: integer('person_id')
+      .notNull()
+      .references(() => people.id, { onDelete: 'cascade' }),
+    value: text('value').notNull(),
+    isPrimary: integer('is_primary', { mode: 'boolean' }).notNull().default(false),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('person_phones_value_unique').on(t.value),
+    uniqueIndex('person_phones_one_primary').on(t.personId).where(sql`${t.isPrimary} = 1`),
+  ],
 );
 
 export const taskPeople = sqliteTable(

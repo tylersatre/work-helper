@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
+import { personEmails } from '../../src/server/db/schema.js';
 
 const LANES = ['To Do', 'In Progress', 'Waiting', 'Done'];
 
 function buildTestApp() {
   const { db } = createDb(':memory:');
-  return buildApp({ db, lanes: LANES });
+  const app = buildApp({ db, lanes: LANES });
+  return Object.assign(app, { db });
 }
 
 async function seedPeople(app: ReturnType<typeof buildTestApp>) {
@@ -93,5 +95,22 @@ describe('GET /api/people?q=', () => {
 
     const names = response.json().map((p: { firstName: string; lastName: string }) => `${p.firstName} ${p.lastName}`);
     expect(names).toEqual(['Ana Alvarez', 'Bo Baker', 'Sam Rivera']);
+  });
+
+  it('does not match a non-primary email — search only reaches the primary entry', async () => {
+    const app = buildTestApp();
+    await seedPeople(app);
+    const sam = (await app.inject({ method: 'GET', url: '/api/people?q=sam' })).json()[0];
+
+    app.db.insert(personEmails).values({
+      personId: sam.id,
+      value: 'sam.personal@example.com',
+      isPrimary: false,
+      createdAt: Date.now(),
+    }).run();
+
+    const response = await app.inject({ method: 'GET', url: '/api/people?q=sam.personal' });
+
+    expect(response.json()).toEqual([]);
   });
 });

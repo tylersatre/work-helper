@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { noteTextSchema, titleSchema } from '../../shared/validation.js';
-import { people, taskNotes, taskPeople, tasks } from '../db/schema.js';
+import { people, personEmails, personPhones, taskNotes, taskPeople, tasks } from '../db/schema.js';
 import type * as schema from '../db/schema.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
@@ -38,21 +38,36 @@ export function getTaskDetail(db: AppDb, id: number) {
     return undefined;
   }
 
+  const primaryEmail = db
+    .select({ personId: personEmails.personId, value: personEmails.value })
+    .from(personEmails)
+    .where(eq(personEmails.isPrimary, true))
+    .as('primary_email');
+
+  const primaryPhone = db
+    .select({ personId: personPhones.personId, value: personPhones.value })
+    .from(personPhones)
+    .where(eq(personPhones.isPrimary, true))
+    .as('primary_phone');
+
   const linkedPeople = db
     .select({
       id: people.id,
       firstName: people.firstName,
       lastName: people.lastName,
-      email: people.email,
-      phone: people.phone,
+      email: primaryEmail.value,
+      phone: primaryPhone.value,
       extraFields: people.extraFields,
       createdAt: people.createdAt,
     })
     .from(taskPeople)
     .innerJoin(people, eq(taskPeople.personId, people.id))
+    .leftJoin(primaryEmail, eq(primaryEmail.personId, people.id))
+    .leftJoin(primaryPhone, eq(primaryPhone.personId, people.id))
     .where(eq(taskPeople.taskId, id))
     .orderBy(asc(sql`${people.lastName} COLLATE NOCASE`), asc(sql`${people.firstName} COLLATE NOCASE`))
-    .all();
+    .all()
+    .map((row) => ({ ...row, email: row.email ?? null, phone: row.phone ?? null }));
 
   const notes = db
     .select()
