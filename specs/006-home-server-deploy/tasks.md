@@ -137,12 +137,12 @@ Single project at the repository root: app code in `src/`, tests in `tests/`, Do
 
 ### Tests for User Story 5 (write first, confirm RED)
 
-- [ ] T026 [US5] Write failing deploy test `tests/deploy/recovery.test.ts` using the harness (research R6): `docker exec <container> pkill -9 node`, then assert a genuine restart happened — `docker inspect` shows `RestartCount` ≥ 1 (or `StartedAt` changed) — and the published port responds again within 30 s with no compose command run (SC-003). The restart assertion is what makes this RED today: without `init: true`, node is PID 1 and ignores the kill (RestartCount stays 0); with init but no restart policy the container would stay exited
+- [X] T026 [US5] Write failing deploy test `tests/deploy/recovery.test.ts` using the harness (research R6): `docker exec <container> pkill -9 node`, then assert a genuine restart happened — `docker inspect` shows `RestartCount` ≥ 1 (or `StartedAt` changed) — and the published port responds again within 30 s with no compose command run (SC-003). The restart assertion is what makes this RED today: without `init: true`, node is PID 1 and ignores the kill (RestartCount stays 0); with init but no restart policy the container would stay exited
 
 ### Implementation for User Story 5
 
-- [ ] T027 [US5] Add `restart: unless-stopped` and `init: true` to the `work-helper` service in `compose.yaml` (research R6; `procps`/`pkill` already in the runtime image from T011)
-- [ ] T028 [US5] Run `npm run test:deploy -- recovery` — GREEN
+- [X] T027 [US5] Add `restart: unless-stopped` and `init: true` to the `work-helper` service in `compose.yaml` (research R6; `procps`/`pkill` already in the runtime image from T011)
+- [X] T028 [US5] Run `npm run test:deploy -- recovery` — GREEN
 
 **Checkpoint**: Crash/reboot recovery is hands-off.
 
