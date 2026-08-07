@@ -99,11 +99,11 @@ Single project at the repository root: app code in `src/`, tests in `tests/`, Do
 
 ### Tests for User Story 3
 
-- [ ] T020 [US3] Write deploy test `tests/deploy/mcp-connect.test.ts` using the harness: drive the feature-004 connector password flow against the deployed stack's published port with the harness's `.env` password — password page reachable, correct password succeeds, and a follow-up MCP tools-list call succeeds (SC-005). Run it — this story verifies existing behavior in the deployed environment, so it may pass immediately; a failure pinpoints a packaging gap
+- [X] T020 [US3] Write deploy test `tests/deploy/mcp-connect.test.ts` using the harness: drive the feature-004 connector password flow against the deployed stack's published port with the harness's `.env` password — password page reachable, correct password succeeds, and a follow-up MCP tools-list call succeeds (SC-005). Run it — this story verifies existing behavior in the deployed environment, so it may pass immediately; a failure pinpoints a packaging gap
 
 ### Implementation for User Story 3
 
-- [ ] T021 [US3] Only if T020 is RED: fix the packaging gap it identifies (e.g. env plumbing in `compose.yaml`/`Dockerfile`, missing artifact in the runtime image) and re-run to GREEN; if T020 passed immediately, record that outcome and mark this task complete with no code change
+- [X] T021 [US3] Only if T020 is RED: fix the packaging gap it identifies (e.g. env plumbing in `compose.yaml`/`Dockerfile`, missing artifact in the runtime image) and re-run to GREEN; if T020 passed immediately, record that outcome and mark this task complete with no code change
 
 **Checkpoint**: MCP works on the deployed stack exactly as in development.
 
