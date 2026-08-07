@@ -21,6 +21,8 @@ Features land in small, independently shippable vertical slices. Every change la
 
 Technology stack: TypeScript throughout (app + MCP server). MCP server built on `@modelcontextprotocol/sdk` — no other MCP framework. Self-hosted via Docker; no dependency on a specific cloud provider for the core app.
 
+Data & migrations (development phase): the project holds no real data yet, so data loss is not a concern. Schema changes are made by editing the base schema in place and resetting/recreating the dev database — do not accumulate migration files or build data-preserving migration paths, backfills, or backups. This constraint expires once real data exists (first production deployment or real email ingestion begins); at that point this constitution must be amended to require migrations that avoid data loss where possible and explicitly flag any unavoidably lossy step.
+
 ## Development Workflow
 
 feature spec → `/speckit-specify` → `/speckit-plan` → `/speckit-tasks` → `/speckit-implement` (Superpowers TDD loop) → gate hook (lint/typecheck/test/build) → `verifier` agent → `browser-tester` agent evidence → PR (Claude Code CI review) → Tyler acceptance.
@@ -29,4 +31,4 @@ feature spec → `/speckit-specify` → `/speckit-plan` → `/speckit-tasks` →
 
 This constitution supersedes ad hoc practice. Amendments require updating this file, bumping the version below, and recording the change in the amendment's PR description. The verification gate and `verifier` agent enforce Principles II and III mechanically; violations block the Stop hook and are called out by the verifier agent, not silently waved through.
 
-**Version**: 1.0.0 | **Ratified**: 2026-08-06 | **Last Amended**: 2026-08-06
+**Version**: 1.1.0 | **Ratified**: 2026-08-06 | **Last Amended**: 2026-08-07

@@ -19,6 +19,10 @@ Every acceptance criterion has a passing automated check **and** browser evidenc
 - Email ingestion pulls directly from Microsoft Graph (scheduled/webhook) inside the server. AI agents are consumers of the work-helper MCP (query/link/tag tools), never the ingestion path.
 - Deployment target: self-hosted Docker.
 
+## Data & migrations (development phase)
+
+The project is under active development and holds no real data yet, so data loss is not a concern. Do not accumulate migration files: apply schema changes by editing the base schema in place and resetting/recreating the dev database freely. Do not spend effort on data-preserving migration paths, backfills, backups, or loss warnings. This policy ends once real data exists (first production deployment or real email ingestion begins) — at that point this section and the constitution must be updated to require migrations that avoid data loss where possible and flag any unavoidably lossy step.
+
 ## Conventions
 
 - Conventional Commits.
