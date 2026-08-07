@@ -156,13 +156,13 @@ Single project at the repository root: app code in `src/`, tests in `tests/`, Do
 
 ### Tests for User Story 6 (write first, confirm RED)
 
-- [ ] T029 [US6] Write failing deploy test `tests/deploy/config-mount.test.ts` using the harness: edit `config/lanes.json` in the temp copy on the host to insert lane "Blocked" between "Waiting" and "Done", run `docker compose restart`, assert the board reports five lanes in order To Do, In Progress, Waiting, Blocked, Done (SC-004); then write malformed JSON to the host `config/lanes.json`, restart, and assert the container fails startup with `docker compose logs` naming the file (spec edge case — proves the existing loader's error survives packaging), restoring the valid config before teardown. Run — RED because without a config mount the container still reads the config baked into the image for both assertions
+- [X] T029 [US6] Write failing deploy test `tests/deploy/config-mount.test.ts` using the harness: edit `config/lanes.json` in the temp copy on the host to insert lane "Blocked" between "Waiting" and "Done", run `docker compose restart`, assert the board reports five lanes in order To Do, In Progress, Waiting, Blocked, Done (SC-004); then write malformed JSON to the host `config/lanes.json`, restart, and assert the container fails startup with `docker compose logs` naming the file (spec edge case — proves the existing loader's error survives packaging), restoring the valid config before teardown. Run — RED because without a config mount the container still reads the config baked into the image for both assertions
 
 ### Implementation for User Story 6
 
-- [ ] T030 [P] [US6] Add the `./config:/app/config` bind mount to `compose.yaml` (research R5)
-- [ ] T031 [P] [US6] Add the config section to `docs/deploy.md`: which files live in `./config/`, edit + `docker compose restart` to apply, malformed files fail startup with an error naming the file (existing loader behavior — spec edge case), and the local-config-edits vs `git pull` collision note (stash or commit before pulling — research R5)
-- [ ] T032 [US6] Run `npm run test:deploy -- config-mount` — GREEN
+- [X] T030 [P] [US6] Add the `./config:/app/config` bind mount to `compose.yaml` (research R5)
+- [X] T031 [P] [US6] Add the config section to `docs/deploy.md`: which files live in `./config/`, edit + `docker compose restart` to apply, malformed files fail startup with an error naming the file (existing loader behavior — spec edge case), and the local-config-edits vs `git pull` collision note (stash or commit before pulling — research R5)
+- [X] T032 [US6] Run `npm run test:deploy -- config-mount` — GREEN
 
 **Checkpoint**: All six user stories independently done.
 

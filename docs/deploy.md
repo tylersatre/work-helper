@@ -58,6 +58,16 @@ docker network connect work-helper <your-caddy-container-name>
 
 Caddy's `reverse_proxy` sends `X-Forwarded-For`, and work-helper trusts it — so MCP's per-client lockout (below) attributes attempts to the real client IP, not Caddy's, as long as clients go through this documented setup. A client that bypasses Caddy and hits `WORK_HELPER_PORT` directly still works; its lockout is just counted by its own address.
 
+## Configuration files
+
+`./config/lanes.json` (kanban lane names, in order) and `./config/person-fields.json` (custom person fields) are ordinary host files, tracked in your clone. Edit one and apply it with:
+
+```bash
+docker compose restart
+```
+
+A malformed config file fails startup — `docker compose logs` names the file so you know what to fix. If you edit these on the server, `git pull` can conflict with your local changes; commit or stash your edits before pulling.
+
 ## Stop, start, and logs
 
 ```bash
