@@ -29,6 +29,15 @@ The app is now reachable at `http://<your-server>:8080` (or the port you set in 
 | `CONNECTOR_PASSWORD` | yes | — | The password MCP clients enter on the connector password page. `docker compose up` refuses to start without it. |
 | `WORK_HELPER_PORT` | no | `8080` | The host port the stack publishes. Change this if 8080 is already taken on your server. |
 
+## Updating
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+All your data lives in `./data/` on the host, outside the container, so it survives every update — the new image starts up, sees the existing files, and keeps going. (Dev-phase caveat: a schema-changing update may still reset data — this project doesn't yet build data-preserving migrations.)
+
 ## Stop, start, and logs
 
 ```bash

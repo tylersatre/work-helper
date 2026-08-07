@@ -79,13 +79,13 @@ Single project at the repository root: app code in `src/`, tests in `tests/`, Do
 
 ### Tests for User Story 2 (write first, confirm RED)
 
-- [ ] T016 [US2] Write failing deploy test `tests/deploy/persistence.test.ts` using the harness: (a) create task "Deployed task" and person "Sam Rivera" via the published port, `docker compose down` then `up -d`, assert both still present (SC-002); (b) create task "Survives updates", modify a source file in the temp copy (simulated update per research R9), `docker compose up -d --build`, assert the task survives the rebuild. Run — RED because without a data bind mount the database dies with the container on `down`
+- [X] T016 [US2] Write failing deploy test `tests/deploy/persistence.test.ts` using the harness: (a) create task "Deployed task" and person "Sam Rivera" via the published port, `docker compose down` then `up -d`, assert both still present (SC-002); (b) create task "Survives updates", modify a source file in the temp copy (simulated update per research R9), `docker compose up -d --build`, assert the task survives the rebuild. Run — RED because without a data bind mount the database dies with the container on `down`
 
 ### Implementation for User Story 2
 
-- [ ] T017 [P] [US2] Add the `./data:/app/data` bind mount to `compose.yaml` (research R5 — code defaults resolve against `WORKDIR /app`, so no extra env needed; `.dockerignore` already excludes `data/`)
-- [ ] T018 [P] [US2] Add the update-procedure section to `docs/deploy.md`: `git pull` → `docker compose up -d --build`, data stays because it lives in `./data/` on the host (FR-005); note the dev-phase caveat that a schema-changing update may reset data (spec assumption)
-- [ ] T019 [US2] Run `npm run test:deploy -- persistence` — GREEN; re-run `npm run test:deploy -- fresh-deploy` — still GREEN
+- [X] T017 [P] [US2] Add the `./data:/app/data` bind mount to `compose.yaml` (research R5 — code defaults resolve against `WORKDIR /app`, so no extra env needed; `.dockerignore` already excludes `data/`)
+- [X] T018 [P] [US2] Add the update-procedure section to `docs/deploy.md`: `git pull` → `docker compose up -d --build`, data stays because it lives in `./data/` on the host (FR-005); note the dev-phase caveat that a schema-changing update may reset data (spec assumption)
+- [X] T019 [US2] Run `npm run test:deploy -- persistence` — GREEN; re-run `npm run test:deploy -- fresh-deploy` — still GREEN
 
 **Checkpoint**: Both P1 stories done — deploy + persistence make the install trustworthy with test data.
 
