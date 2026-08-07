@@ -47,3 +47,10 @@ export const taskNotes = sqliteTable('task_notes', {
   source: text('source', { enum: ['ui', 'mcp'] }).notNull(),
   createdAt: integer('created_at').notNull(),
 });
+
+export const oauthClients = sqliteTable('oauth_clients', {
+  clientId: text('client_id').primaryKey(),
+  clientName: text('client_name'),
+  redirectUris: text('redirect_uris', { mode: 'json' }).$type<string[]>().notNull(),
+  createdAt: integer('created_at').notNull(),
+});
