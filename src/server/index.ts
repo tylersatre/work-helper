@@ -6,7 +6,13 @@ import { loadPersonFieldsConfig } from './person-fields-config.js';
 const lanes = loadLanesConfig();
 const personFields = loadPersonFieldsConfig();
 const { db } = createDb(process.env.DATABASE_PATH ?? './data/work-helper.db');
-const app = buildApp({ db, lanes, personFields, serveClient: process.env.NODE_ENV === 'production' });
+const app = buildApp({
+  db,
+  lanes,
+  personFields,
+  serveClient: process.env.NODE_ENV === 'production',
+  connectorPassword: process.env.CONNECTOR_PASSWORD,
+});
 
 const port = Number(process.env.PORT ?? 3000);
 

@@ -6,7 +6,7 @@ import type * as schema from '../db/schema.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
 
-export function createTask(db: AppDb, lanes: string[], rawTitle: unknown, rawNote?: unknown) {
+export function createTask(db: AppDb, lanes: string[], rawTitle: unknown, rawNote?: unknown, source: 'ui' | 'mcp' = 'ui') {
   const title = titleSchema.parse(rawTitle);
   const firstLane = lanes[0]!;
   const createdAt = Date.now();
@@ -21,7 +21,7 @@ export function createTask(db: AppDb, lanes: string[], rawTitle: unknown, rawNot
       .all();
 
     if (trimmedNote !== '') {
-      tx.insert(taskNotes).values({ taskId: created!.id, text: rawNote as string, source: 'ui', createdAt }).run();
+      tx.insert(taskNotes).values({ taskId: created!.id, text: rawNote as string, source, createdAt }).run();
     }
 
     return created!;
@@ -66,7 +66,7 @@ export function getTaskDetail(db: AppDb, id: number) {
 
 export type AddNoteResult = { ok: true; note: typeof taskNotes.$inferSelect } | { ok: false; error: 'task-not-found' | 'invalid-text' };
 
-export function addNote(db: AppDb, taskId: number, rawText: unknown): AddNoteResult {
+export function addNote(db: AppDb, taskId: number, rawText: unknown, source: 'ui' | 'mcp' = 'ui'): AddNoteResult {
   const [task] = db.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, taskId)).limit(1).all();
   if (!task) {
     return { ok: false, error: 'task-not-found' };
@@ -79,7 +79,7 @@ export function addNote(db: AppDb, taskId: number, rawText: unknown): AddNoteRes
 
   const [note] = db
     .insert(taskNotes)
-    .values({ taskId, text: result.data, source: 'ui', createdAt: Date.now() })
+    .values({ taskId, text: result.data, source, createdAt: Date.now() })
     .returning()
     .all();
 
