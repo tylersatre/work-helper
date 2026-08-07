@@ -20,3 +20,7 @@ Features are built in parallel, each in its own Claude worktree (`.claude/worktr
 ## Setup
  
 See `docs/setup/setup-report.md` for how this repo's Claude Code environment (plugins, MCP servers, hooks, agents) was configured, what's still pending on your end, and how to verify it after a restart.
+
+## Deploying
+
+See `docs/deploy.md` for running work-helper on a home server with Docker.

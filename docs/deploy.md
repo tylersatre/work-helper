@@ -75,3 +75,11 @@ docker compose down       # stop the stack
 docker compose up -d      # start it again
 docker compose logs -f    # follow logs (startup errors show up here)
 ```
+
+## Troubleshooting
+
+- **Host port already in use** — `docker compose up` reports the port as taken. Set a different `WORK_HELPER_PORT` in `.env` and retry.
+- **Missing `CONNECTOR_PASSWORD`** — `docker compose up` refuses to start any container and prints an error naming `CONNECTOR_PASSWORD`. Set it in `.env` and retry.
+- **Malformed config file** — the container exits at startup; `docker compose logs` shows an error naming the specific file in `./config/`. Fix that file and `docker compose restart`.
+- **"active endpoints" warning on `docker compose down`** — expected and harmless if your Caddy container is attached to the `work-helper` network. The stack still stops; the next `docker compose up -d` reuses the existing network. The documented update procedure (`git pull` + `up -d --build`) never runs `down`, so you'll only see this if you stop the stack manually.
+- **A client bypassing Caddy** — hitting `WORK_HELPER_PORT` directly still works; MCP's per-client lockout just counts that client by its own address instead of a forwarded one.
