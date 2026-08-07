@@ -7,3 +7,7 @@ services:
       CONNECTOR_PASSWORD: ${CONNECTOR_PASSWORD:?CONNECTOR_PASSWORD is required — create .env from .env.example}
     volumes:
       - ./data:/app/data
+
+networks:
+  default:
+    name: work-helper

@@ -38,6 +38,26 @@ docker compose up -d --build
 
 All your data lives in `./data/` on the host, outside the container, so it survives every update — the new image starts up, sees the existing files, and keeps going. (Dev-phase caveat: a schema-changing update may still reset data — this project doesn't yet build data-preserving migrations.)
 
+## Fronting with Caddy
+
+If you already run Caddy on your server, front work-helper with it instead of exposing `WORK_HELPER_PORT` directly. Add this to your Caddyfile, substituting your real hostname for the placeholder — that's the only edit:
+
+```caddy
+work-helper.example.com {
+	reverse_proxy work-helper:8080
+}
+```
+
+`work-helper:8080` is the container's DNS name on the `work-helper` Docker network compose creates — not `WORK_HELPER_PORT`, which is unrelated and only matters for direct (non-Caddy) access.
+
+One-time setup: attach your existing Caddy container to the `work-helper` network so it can resolve that DNS name:
+
+```bash
+docker network connect work-helper <your-caddy-container-name>
+```
+
+Caddy's `reverse_proxy` sends `X-Forwarded-For`, and work-helper trusts it — so MCP's per-client lockout (below) attributes attempts to the real client IP, not Caddy's, as long as clients go through this documented setup. A client that bypasses Caddy and hits `WORK_HELPER_PORT` directly still works; its lockout is just counted by its own address.
+
 ## Stop, start, and logs
 
 ```bash

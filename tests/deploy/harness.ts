@@ -215,10 +215,12 @@ export async function createHarness(opts: CreateHarnessOptions = {}): Promise<Ha
     },
 
     async teardown() {
-      await harness.compose(['down', '-v', '--rmi', 'local']);
+      // Remove tracked out-of-compose containers (Caddy, throwaway clients) first: if any are still
+      // attached to the network, `compose down` cannot remove it and leaks it (research R7).
       for (const containerId of trackedContainers) {
         await run('docker', ['rm', '-f', containerId], dir);
       }
+      await harness.compose(['down', '-v', '--rmi', 'local']);
       rmSync(dir, { recursive: true, force: true });
     },
   };
