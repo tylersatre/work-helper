@@ -1,0 +1,38 @@
+# Deploying work-helper
+
+This is the complete guide to running work-helper on a home server with Docker. Following only the steps below is enough — no other setup is required.
+
+## Prerequisites
+
+- Docker Engine with Compose v2 (`docker compose version` succeeds). That's the only prerequisite — work-helper builds its own image from source, so no other tools or runtimes are needed on the server.
+
+## First deploy
+
+```bash
+git clone <your-fork-or-clone-url>
+cd work-helper
+cp .env.example .env
+```
+
+Edit `.env` and set `CONNECTOR_PASSWORD` to a password of your choice (see [.env settings](#env-settings) below). Then:
+
+```bash
+docker compose up -d --build
+```
+
+The app is now reachable at `http://<your-server>:8080` (or the port you set in `WORK_HELPER_PORT`) — the kanban board, the People page, and the MCP endpoint all live on this one port.
+
+## .env settings
+
+| Setting | Required | Default | Meaning |
+|---|---|---|---|
+| `CONNECTOR_PASSWORD` | yes | — | The password MCP clients enter on the connector password page. `docker compose up` refuses to start without it. |
+| `WORK_HELPER_PORT` | no | `8080` | The host port the stack publishes. Change this if 8080 is already taken on your server. |
+
+## Stop, start, and logs
+
+```bash
+docker compose down       # stop the stack
+docker compose up -d      # start it again
+docker compose logs -f    # follow logs (startup errors show up here)
+```

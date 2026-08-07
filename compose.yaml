@@ -1,0 +1,7 @@
+services:
+  work-helper:
+    build: .
+    ports:
+      - "${WORK_HELPER_PORT:-8080}:8080"
+    environment:
+      CONNECTOR_PASSWORD: ${CONNECTOR_PASSWORD:?CONNECTOR_PASSWORD is required — create .env from .env.example}

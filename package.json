@@ -11,7 +11,8 @@
     "build": "vite build && tsc -p tsconfig.server.json",
     "lint": "eslint .",
     "typecheck": "vue-tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:deploy": "vitest run --config vitest.deploy.config.ts"
   },
   "dependencies": {
     "@fastify/static": "^10.1.3",
