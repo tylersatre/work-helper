@@ -2,6 +2,7 @@ import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { createPersonInputSchema, updatePersonInputSchema } from '../../shared/validation.js';
 import { emailAddresses, people, personPhones } from '../db/schema.js';
+import { isEmailAddressReferenced } from './contact-entries.js';
 import type * as schema from '../db/schema.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
@@ -199,7 +200,18 @@ export function deletePerson(db: AppDb, id: number): DeletePersonResult {
     return { ok: false, error: 'not-found' };
   }
 
-  db.delete(people).where(eq(people.id, id)).run();
+  db.transaction((tx) => {
+    const emails = tx.select({ id: emailAddresses.id }).from(emailAddresses).where(eq(emailAddresses.personId, id)).all();
+    for (const email of emails) {
+      if (isEmailAddressReferenced(tx, email.id)) {
+        tx.update(emailAddresses).set({ personId: null, isPrimary: false }).where(eq(emailAddresses.id, email.id)).run();
+      } else {
+        tx.delete(emailAddresses).where(eq(emailAddresses.id, email.id)).run();
+      }
+    }
+
+    tx.delete(people).where(eq(people.id, id)).run();
+  });
 
   return { ok: true };
 }

@@ -99,6 +99,58 @@ export interface ConversationDetail {
   messages: ConversationMessage[];
 }
 
+export interface PersonEmailAddressRole {
+  address: string;
+  role: 'from' | 'to' | 'cc' | 'bcc';
+}
+
+export interface PersonEmail {
+  messageId: number;
+  conversationId: number;
+  subject: string;
+  sentAt: number;
+  addresses: PersonEmailAddressRole[];
+}
+
+export interface PersonEmailsPage {
+  emails: PersonEmail[];
+  nextCursor: string | null;
+}
+
+export function emailsForPerson(db: AppDb, personId: number, params: { limit: number; cursor?: string }): PersonEmailsPage {
+  const cursor = params.cursor ? decodeCursor(params.cursor) : undefined;
+  const cursorCondition = cursor
+    ? sql`AND (m.sent_at < ${cursor.primary} OR (m.sent_at = ${cursor.primary} AND m.id < ${cursor.id}))`
+    : sql``;
+
+  const rows = db.all<{ id: number; conversationId: number; subject: string; sentAt: number }>(sql`
+    SELECT DISTINCT m.id AS id, m.conversation_id AS conversationId, m.subject AS subject, m.sent_at AS sentAt
+    FROM email_messages m
+    JOIN email_participants ep ON ep.message_id = m.id
+    JOIN email_addresses ea ON ea.id = ep.address_id
+    WHERE ea.person_id = ${personId} ${cursorCondition}
+    ORDER BY m.sent_at DESC, m.id DESC
+    LIMIT ${params.limit + 1}
+  `);
+
+  const hasMore = rows.length > params.limit;
+  const page = hasMore ? rows.slice(0, params.limit) : rows;
+  const last = page[page.length - 1];
+  const nextCursor = hasMore && last ? encodeCursor({ primary: last.sentAt, id: last.id }) : null;
+
+  const emails = page.map((row) => {
+    const addresses = db.all<PersonEmailAddressRole>(sql`
+      SELECT ea.value AS address, ep.role AS role
+      FROM email_participants ep
+      JOIN email_addresses ea ON ea.id = ep.address_id
+      WHERE ep.message_id = ${row.id} AND ea.person_id = ${personId}
+    `);
+    return { messageId: row.id, conversationId: row.conversationId, subject: row.subject, sentAt: row.sentAt, addresses };
+  });
+
+  return { emails, nextCursor };
+}
+
 function participantsForMessage(db: AppDb, messageId: number): ConversationParticipant[] {
   const rows = db
     .select({

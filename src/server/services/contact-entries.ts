@@ -1,7 +1,7 @@
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { entryValueSchema } from '../../shared/validation.js';
-import { emailAddresses, people, type personPhones } from '../db/schema.js';
+import { emailAddresses, emailParticipants, people, type personPhones } from '../db/schema.js';
 import type * as schema from '../db/schema.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
@@ -57,13 +57,50 @@ function entryExists(db: AppDb, table: EntryTable, personId: number, entryId: nu
   return row !== undefined;
 }
 
+/** Whether any synced-mail participant row references this email address — the DB-level guarantee that referenced addresses can't be deleted maps to this service-level unlink-vs-delete decision. */
+export function isEmailAddressReferenced(db: AppDb, addressId: number): boolean {
+  const [row] = db
+    .select({ id: emailParticipants.id })
+    .from(emailParticipants)
+    .where(eq(emailParticipants.addressId, addressId))
+    .limit(1)
+    .all();
+  return row !== undefined;
+}
+
+function findUnlinkedEmailByValue(db: AppDb, value: string): { id: number; personId: number | null } | undefined {
+  const [row] = db
+    .select({ id: emailAddresses.id, personId: emailAddresses.personId })
+    .from(emailAddresses)
+    .where(sql`lower(${emailAddresses.value}) = lower(${value})`)
+    .limit(1)
+    .all();
+  return row;
+}
+
 export function addEntry(db: AppDb, table: EntryTable, personId: number, rawValue: unknown): EntryMutationResult {
   const value = entryValueSchema.parse(rawValue);
 
   if (!personExists(db, personId)) {
     return { ok: false, error: 'person-not-found' };
   }
-  if (conflictExists(db, table, value)) {
+
+  if (table === emailAddresses) {
+    const existing = findUnlinkedEmailByValue(db, value);
+    if (existing) {
+      if (existing.personId !== null) {
+        return { ok: false, error: 'conflict' };
+      }
+      db.transaction((tx) => {
+        const [existingForPerson] = tx.select({ id: table.id }).from(table).where(eq(table.personId, personId)).limit(1).all();
+        tx.update(emailAddresses)
+          .set({ personId, isPrimary: existingForPerson === undefined })
+          .where(eq(emailAddresses.id, existing.id))
+          .run();
+      });
+      return { ok: true, entries: loadEntries(db, table, personId) };
+    }
+  } else if (conflictExists(db, table, value)) {
     return { ok: false, error: 'conflict' };
   }
 
@@ -146,7 +183,11 @@ export function removeEntry(db: AppDb, table: EntryTable, personId: number, entr
       .limit(1)
       .all();
 
-    tx.delete(table).where(eq(table.id, entryId)).run();
+    if (table === emailAddresses && isEmailAddressReferenced(tx, entryId)) {
+      tx.update(emailAddresses).set({ personId: null, isPrimary: false }).where(eq(emailAddresses.id, entryId)).run();
+    } else {
+      tx.delete(table).where(eq(table.id, entryId)).run();
+    }
 
     if (removed?.isPrimary) {
       const [survivor] = tx

@@ -7,7 +7,7 @@ import { addNote, createTask, getTaskDetail, listTasksByLane } from '../services
 import type * as schema from '../db/schema.js';
 import type { MailProvider } from '../services/email/provider.js';
 import { computeSyncWindow, runSync } from '../services/email/sync.js';
-import { getConversation, listConversations } from '../services/email/queries.js';
+import { emailsForPerson, getConversation, listConversations } from '../services/email/queries.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
 
@@ -289,6 +289,54 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         content: [
           { type: 'text', text: `Conversation "${conversation.subject}" has ${conversation.messages.length} message(s).` },
         ],
+        structuredContent,
+      };
+    },
+  );
+
+  server.registerTool(
+    'emails-for-person',
+    {
+      description: "Every synced email involving any of a person's addresses, keyset-paged, each identifying the involved address and its role.",
+      inputSchema: {
+        personId: z.number().int().positive(),
+        limit: z.number().int().min(1).max(200).default(50),
+        cursor: z.string().optional(),
+      },
+      outputSchema: {
+        person: z.object({ id: z.number(), name: z.string() }),
+        emails: z.array(
+          z.object({
+            messageId: z.number(),
+            conversationId: z.number(),
+            subject: z.string(),
+            sentAt: z.number(),
+            addresses: z.array(z.object({ address: z.string(), role: z.enum(['from', 'to', 'cc', 'bcc']) })),
+          }),
+        ),
+        nextCursor: z.string().nullable(),
+      },
+    },
+    async ({ personId, limit, cursor }) => {
+      const person = getPerson(context.db, context.personFields, personId);
+      if (!person) {
+        return toolError(`Person ${personId} not found`);
+      }
+
+      let page;
+      try {
+        page = emailsForPerson(context.db, personId, { limit, cursor });
+      } catch {
+        return toolError('Invalid cursor');
+      }
+
+      const structuredContent = {
+        person: { id: person.id, name: personName(person) },
+        emails: page.emails,
+        nextCursor: page.nextCursor,
+      };
+      return {
+        content: [{ type: 'text', text: `Found ${page.emails.length} email(s) for ${personName(person)}.` }],
         structuredContent,
       };
     },
