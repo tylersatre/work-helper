@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
+    "test:deploy": "vitest run --config vitest.deploy.config.ts",
     "mail:signin": "tsx scripts/mail-signin.ts"
   },
   "dependencies": {

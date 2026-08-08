@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
@@ -29,9 +30,13 @@ export interface AppOptions {
   lanes: string[];
   personFields?: string[];
   serveClient?: boolean;
+  /** Directory containing the built client (with index.html). Defaults to `dist/client` under cwd. */
+  clientDir?: string;
   connectorPassword?: string;
   mailProvider?: MailProvider;
 }
+
+const NON_CLIENT_PATH_PREFIXES = ['/api', '/mcp', '/oauth', '/.well-known'];
 
 export function buildApp(options: AppOptions): FastifyInstance {
   const app = Fastify({ trustProxy: true });
@@ -55,8 +60,23 @@ export function buildApp(options: AppOptions): FastifyInstance {
   app.register(mcpRoutes);
 
   if (options.serveClient) {
+    const clientDir = options.clientDir ?? join(process.cwd(), 'dist/client');
+    const indexHtml = readFileSync(join(clientDir, 'index.html'));
     app.register(fastifyStatic, {
-      root: join(process.cwd(), 'dist/client'),
+      root: clientDir,
+    });
+
+    app.setNotFoundHandler((request, reply) => {
+      const isClientNavigation =
+        (request.method === 'GET' || request.method === 'HEAD') &&
+        !NON_CLIENT_PATH_PREFIXES.some((prefix) => request.url.startsWith(prefix));
+
+      if (isClientNavigation) {
+        reply.type('text/html').send(indexHtml);
+        return;
+      }
+
+      reply.status(404).send({ error: { message: `Route ${request.method}:${request.url} not found` } });
     });
   }
 

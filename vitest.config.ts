@@ -15,6 +15,7 @@ export default defineConfig({
       '**/.{idea,git,cache,output,temp}/**',
       '**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cjs,mocha,phpunit}.config.*',
       '.claude/worktrees/**',
+      'tests/deploy/**',
     ],
   },
 });
