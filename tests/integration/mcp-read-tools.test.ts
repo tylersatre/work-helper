@@ -6,7 +6,7 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
-import { emailAddresses, tasks } from '../../src/server/db/schema.js';
+import { emailAddresses } from '../../src/server/db/schema.js';
 import type * as schema from '../../src/server/db/schema.js';
 import { connectThroughPasswordGate } from './helpers/oauth-client.js';
 
@@ -19,6 +19,8 @@ let client: Client;
 let serverUrl: string;
 let sam: number;
 let prepDeckTaskId: number;
+let followUpTaskId: number;
+let draftTaskId: number;
 
 async function createPerson(payload: Record<string, unknown>): Promise<number> {
   const response = await app.inject({ method: 'POST', url: '/api/people', payload });
@@ -35,9 +37,9 @@ beforeEach(async () => {
   db = created.db;
   app = buildApp({ db, lanes: LANES, personFields: ['Nickname'], connectorPassword: PASSWORD });
 
-  await app.inject({ method: 'POST', url: '/api/tasks', payload: { title: 'Follow up with Sam' } });
-  const draftId = await createTaskViaApi('Draft Q3 goals');
-  db.update(tasks).set({ lane: 'In Progress' }).where(eq(tasks.id, draftId)).run();
+  followUpTaskId = await createTaskViaApi('Follow up with Sam');
+  draftTaskId = await createTaskViaApi('Draft Q3 goals');
+  await app.inject({ method: 'PUT', url: `/api/tasks/${draftTaskId}/placement`, payload: { lane: 'In Progress', index: 0 } });
 
   prepDeckTaskId = await createTaskViaApi('Prep board deck');
   await app.inject({
@@ -197,5 +199,53 @@ describe('US2: read tools', () => {
     const searchResult = await client.callTool({ name: 'search-people', arguments: { query: 'sam' } });
     const { people } = searchResult.structuredContent as { people: { email: string | null }[] };
     expect(people[0]?.email).toBe('sam.personal@example.com');
+  });
+});
+
+describe('US3: position field and board-mirror ordering', () => {
+  it('list-board includes position on every task summary', async () => {
+    const result = await client.callTool({ name: 'list-board', arguments: {} });
+    const board = result.structuredContent as { lanes: { name: string; tasks: { position: number }[] }[] };
+    const toDo = board.lanes.find((lane) => lane.name === 'To Do')!;
+    expect(toDo.tasks.length).toBeGreaterThan(0);
+    for (const lane of board.lanes) {
+      for (const task of lane.tasks) {
+        expect(typeof task.position).toBe('number');
+      }
+    }
+  });
+
+  it('get-task includes position', async () => {
+    const result = await client.callTool({ name: 'get-task', arguments: { taskId: prepDeckTaskId } });
+    const task = result.structuredContent as { position: number };
+    expect(typeof task.position).toBe('number');
+  });
+
+  it('create-task includes position and appends at the bottom of the first configured lane', async () => {
+    const before = await app.inject({ method: 'GET', url: '/api/board' });
+    const toDoLengthBefore = before.json().lanes.find((lane: { name: string }) => lane.name === 'To Do').tasks.length;
+
+    const result = await client.callTool({ name: 'create-task', arguments: { title: 'Send invites' } });
+    const created = result.structuredContent as { lane: string; position: number };
+
+    expect(created.lane).toBe('To Do');
+    expect(created.position).toBe(toDoLengthBefore);
+  });
+
+  it('list-board mirrors GET /api/board lane membership and (position, id) order after arranging the board via the placement endpoint (FR-010/SC-005)', async () => {
+    await app.inject({ method: 'PUT', url: `/api/tasks/${followUpTaskId}/placement`, payload: { lane: 'Waiting', index: 0 } });
+    await app.inject({ method: 'PUT', url: `/api/tasks/${prepDeckTaskId}/placement`, payload: { lane: 'To Do', index: 0 } });
+    await app.inject({ method: 'PUT', url: `/api/tasks/${draftTaskId}/placement`, payload: { lane: 'Waiting', index: 0 } });
+
+    const boardResponse = await app.inject({ method: 'GET', url: '/api/board' });
+    const restBoard = boardResponse.json() as { lanes: { name: string; tasks: { title: string }[] }[] };
+
+    const result = await client.callTool({ name: 'list-board', arguments: {} });
+    const mcpBoard = result.structuredContent as { lanes: { name: string; tasks: { title: string }[] }[] };
+
+    expect(mcpBoard.lanes.map((lane) => lane.name)).toEqual(restBoard.lanes.map((lane) => lane.name));
+    for (let i = 0; i < restBoard.lanes.length; i++) {
+      expect(mcpBoard.lanes[i]!.tasks.map((t) => t.title)).toEqual(restBoard.lanes[i]!.tasks.map((t) => t.title));
+    }
   });
 });

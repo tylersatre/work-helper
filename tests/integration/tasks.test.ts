@@ -1,8 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
+import { tasks } from '../../src/server/db/schema.js';
 
 const LANES = ['To Do', 'In Progress', 'Waiting', 'Done'];
+
+function seed(db: ReturnType<typeof createDb>['db'], rows: { title: string; lane: string; position: number }[]) {
+  return rows.map((row) => db.insert(tasks).values({ ...row, createdAt: Date.now() }).returning().all()[0]!);
+}
+
+async function laneTitles(app: ReturnType<typeof buildApp>, laneName: string): Promise<string[]> {
+  const board = await app.inject({ method: 'GET', url: '/api/board' });
+  const lane = board.json().lanes.find((l: { name: string }) => l.name === laneName);
+  return lane.tasks.map((t: { title: string }) => t.title);
+}
 
 describe('POST /api/tasks', () => {
   it('returns 201 with the created task for a valid title', async () => {
@@ -17,9 +28,26 @@ describe('POST /api/tasks', () => {
 
     expect(response.statusCode).toBe(201);
     const body = response.json();
-    expect(body).toMatchObject({ title: 'Follow up with Sam', lane: 'To Do' });
+    expect(body).toMatchObject({ title: 'Follow up with Sam', lane: 'To Do', position: 0 });
     expect(typeof body.id).toBe('number');
     expect(typeof body.createdAt).toBe('number');
+  });
+
+  it('appends successive tasks at the bottom of the first configured lane (position 0, 1, 2, ...)', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+
+    const first = await app.inject({ method: 'POST', url: '/api/tasks', payload: { title: 'First' } });
+    const second = await app.inject({ method: 'POST', url: '/api/tasks', payload: { title: 'Second' } });
+    const third = await app.inject({ method: 'POST', url: '/api/tasks', payload: { title: 'Third' } });
+
+    expect(first.json().position).toBe(0);
+    expect(second.json().position).toBe(1);
+    expect(third.json().position).toBe(2);
+
+    const board = await app.inject({ method: 'GET', url: '/api/board' });
+    const toDo = board.json().lanes.find((lane: { name: string }) => lane.name === 'To Do');
+    expect(toDo.tasks.map((t: { title: string }) => t.title)).toEqual(['First', 'Second', 'Third']);
   });
 
   it('creates distinct tasks for duplicate titles', async () => {
@@ -139,5 +167,225 @@ describe('POST /api/tasks', () => {
     const board = await app.inject({ method: 'GET', url: '/api/board' });
     const totalTasks = board.json().lanes.reduce((sum: number, lane: { tasks: unknown[] }) => sum + lane.tasks.length, 0);
     expect(totalTasks).toBe(0);
+  });
+});
+
+describe('PUT /api/tasks/:id/placement', () => {
+  it('moves a task to another (empty) lane, removing it from the source (FR-001/FR-006)', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    const [a] = seed(db, [{ title: 'A', lane: 'To Do', position: 0 }]);
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/tasks/${a!.id}/placement`,
+      payload: { lane: 'In Progress', index: 0 },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ id: a!.id, title: 'A', lane: 'In Progress', position: 0 });
+    expect(await laneTitles(app, 'To Do')).toEqual([]);
+    expect(await laneTitles(app, 'In Progress')).toEqual(['A']);
+  });
+
+  it.each([
+    ['To Do', 'Done'],
+    ['Done', 'To Do'],
+  ])('moves a task from %s to %s (FR-002: any lane pair, either direction)', async (from, to) => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    const [a] = seed(db, [{ title: 'A', lane: from, position: 0 }]);
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/tasks/${a!.id}/placement`,
+      payload: { lane: to, index: 0 },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(await laneTitles(app, from)).toEqual([]);
+    expect(await laneTitles(app, to)).toEqual(['A']);
+  });
+
+  it('splices a moved card at the top of a populated destination lane (FR-003)', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    const [x0, x1] = seed(db, [
+      { title: 'X0', lane: 'In Progress', position: 0 },
+      { title: 'X1', lane: 'In Progress', position: 1 },
+    ]);
+    const [d] = seed(db, [{ title: 'D', lane: 'To Do', position: 0 }]);
+    void x0;
+    void x1;
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/tasks/${d!.id}/placement`,
+      payload: { lane: 'In Progress', index: 0 },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(await laneTitles(app, 'In Progress')).toEqual(['D', 'X0', 'X1']);
+  });
+
+  it('splices a moved card between two cards of a populated destination lane (FR-003)', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    seed(db, [
+      { title: 'X0', lane: 'In Progress', position: 0 },
+      { title: 'X1', lane: 'In Progress', position: 1 },
+    ]);
+    const [d] = seed(db, [{ title: 'D', lane: 'To Do', position: 0 }]);
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/tasks/${d!.id}/placement`,
+      payload: { lane: 'In Progress', index: 1 },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(await laneTitles(app, 'In Progress')).toEqual(['X0', 'D', 'X1']);
+  });
+
+  it('splices a moved card at the bottom of a populated destination lane (FR-003)', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    seed(db, [
+      { title: 'X0', lane: 'In Progress', position: 0 },
+      { title: 'X1', lane: 'In Progress', position: 1 },
+    ]);
+    const [d] = seed(db, [{ title: 'D', lane: 'To Do', position: 0 }]);
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/tasks/${d!.id}/placement`,
+      payload: { lane: 'In Progress', index: 2 },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(await laneTitles(app, 'In Progress')).toEqual(['X0', 'X1', 'D']);
+  });
+
+  it('reorders a lane upward: moving the bottom card to index 0 lands it on top (FR-004)', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    const [, , c] = seed(db, [
+      { title: 'A', lane: 'To Do', position: 0 },
+      { title: 'B', lane: 'To Do', position: 1 },
+      { title: 'C', lane: 'To Do', position: 2 },
+    ]);
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/tasks/${c!.id}/placement`,
+      payload: { lane: 'To Do', index: 0 },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(await laneTitles(app, 'To Do')).toEqual(['C', 'A', 'B']);
+  });
+
+  it('reorders a lane downward: moving the top card of a 3-card lane to index 1 lands it between the other two ([A,B,C] -> [B,A,C]) (FR-004)', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    const [a] = seed(db, [
+      { title: 'A', lane: 'To Do', position: 0 },
+      { title: 'B', lane: 'To Do', position: 1 },
+      { title: 'C', lane: 'To Do', position: 2 },
+    ]);
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/tasks/${a!.id}/placement`,
+      payload: { lane: 'To Do', index: 1 },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(await laneTitles(app, 'To Do')).toEqual(['B', 'A', 'C']);
+  });
+
+  it('clamps an index past the end of the destination lane to append', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    seed(db, [
+      { title: 'X0', lane: 'In Progress', position: 0 },
+      { title: 'X1', lane: 'In Progress', position: 1 },
+    ]);
+    const [d] = seed(db, [{ title: 'D', lane: 'To Do', position: 0 }]);
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/tasks/${d!.id}/placement`,
+      payload: { lane: 'In Progress', index: 999 },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(await laneTitles(app, 'In Progress')).toEqual(['X0', 'X1', 'D']);
+  });
+
+  it('dropping a card onto its own current slot is a 200 no-op leaving order identical', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    const [, b] = seed(db, [
+      { title: 'A', lane: 'To Do', position: 0 },
+      { title: 'B', lane: 'To Do', position: 1 },
+    ]);
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/tasks/${b!.id}/placement`,
+      payload: { lane: 'To Do', index: 1 },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(await laneTitles(app, 'To Do')).toEqual(['A', 'B']);
+  });
+
+  it('returns 404 for an unknown task id', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/tasks/999999/placement',
+      payload: { lane: 'To Do', index: 0 },
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({ error: { message: 'Task not found' } });
+  });
+
+  it('returns 400 for a lane not in the configured list', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    const [a] = seed(db, [{ title: 'A', lane: 'To Do', position: 0 }]);
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/tasks/${a!.id}/placement`,
+      payload: { lane: 'Nonexistent', index: 0 },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: { message: 'Unknown lane' } });
+  });
+
+  it.each([
+    ['missing', {}],
+    ['negative', { index: -1 }],
+    ['non-integer', { index: 1.5 }],
+  ])('returns 400 for an invalid index (%s)', async (_label, extra) => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    const [a] = seed(db, [{ title: 'A', lane: 'To Do', position: 0 }]);
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/tasks/${a!.id}/placement`,
+      payload: { lane: 'To Do', ...extra },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: { message: 'Invalid index' } });
   });
 });

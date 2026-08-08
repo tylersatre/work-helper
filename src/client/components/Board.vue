@@ -1,13 +1,87 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import type { BoardView } from '../../shared/types.js';
+import type { BoardView, Task } from '../../shared/types.js';
 import Lane from './Lane.vue';
 
 const board = ref<BoardView>({ lanes: [] });
+const draggedTaskId = ref<number | null>(null);
+const errorMessage = ref<string | null>(null);
+
+let saveChain: Promise<void> = Promise.resolve();
 
 async function fetchBoard(): Promise<void> {
   const response = await fetch('/api/board');
   board.value = await response.json();
+}
+
+function applyMove(current: BoardView, taskId: number, targetLaneName: string, targetIndex: number): BoardView {
+  let movingTask: Task | undefined;
+  const withoutTask = current.lanes.map((lane) => {
+    const index = lane.tasks.findIndex((task) => task.id === taskId);
+    if (index === -1) {
+      return lane;
+    }
+    movingTask = lane.tasks[index];
+    return { ...lane, tasks: [...lane.tasks.slice(0, index), ...lane.tasks.slice(index + 1)] };
+  });
+
+  if (!movingTask) {
+    return current;
+  }
+
+  const updatedTask: Task = { ...movingTask, lane: targetLaneName };
+
+  return {
+    lanes: withoutTask.map((lane) => {
+      if (lane.name !== targetLaneName) {
+        return lane;
+      }
+      const clampedIndex = Math.max(0, Math.min(targetIndex, lane.tasks.length));
+      const tasks = [...lane.tasks];
+      tasks.splice(clampedIndex, 0, updatedTask);
+      return { ...lane, tasks };
+    }),
+  };
+}
+
+function onDrop(taskId: number, laneName: string, index: number): void {
+  board.value = applyMove(board.value, taskId, laneName, index);
+  draggedTaskId.value = null;
+
+  saveChain = saveChain
+    .then(() =>
+      fetch(`/api/tasks/${taskId}/placement`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lane: laneName, index }),
+      }),
+    )
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error('placement save failed');
+      }
+      errorMessage.value = null;
+    })
+    .catch(async () => {
+      errorMessage.value = "Couldn't save that move — the board has been restored.";
+      try {
+        await fetchBoard();
+      } catch {
+        // Server unreachable: the banner alone tells the user the move did not take.
+      }
+    });
+}
+
+function onCardDragStart(taskId: number): void {
+  draggedTaskId.value = taskId;
+}
+
+function onCardDragEnd(): void {
+  draggedTaskId.value = null;
+}
+
+function dismissError(): void {
+  errorMessage.value = null;
 }
 
 defineExpose({ fetchBoard });
@@ -16,8 +90,23 @@ onMounted(fetchBoard);
 </script>
 
 <template>
-  <div class="board">
-    <Lane v-for="lane in board.lanes" :key="lane.name" :name="lane.name" :tasks="lane.tasks" />
+  <div>
+    <div v-if="errorMessage" class="error-banner" data-testid="error-banner">
+      {{ errorMessage }}
+      <button type="button" @click="dismissError">Dismiss</button>
+    </div>
+    <div class="board">
+      <Lane
+        v-for="lane in board.lanes"
+        :key="lane.name"
+        :name="lane.name"
+        :tasks="lane.tasks"
+        :dragged-task-id="draggedTaskId"
+        @drop="onDrop"
+        @card-dragstart="onCardDragStart"
+        @card-dragend="onCardDragEnd"
+      />
+    </div>
   </div>
 </template>
 

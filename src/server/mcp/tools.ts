@@ -26,7 +26,7 @@ function personName(person: { firstName: string; lastName: string }): string {
   return `${person.firstName} ${person.lastName}`;
 }
 
-const taskSummarySchema = { id: z.number(), title: z.string(), lane: z.string(), createdAt: z.number() };
+const taskSummarySchema = { id: z.number(), title: z.string(), lane: z.string(), position: z.number(), createdAt: z.number() };
 
 const noteSchema = { id: z.number(), text: z.string(), source: z.enum(['ui', 'mcp']), createdAt: z.number() };
 
@@ -68,6 +68,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         id: task.id,
         title: task.title,
         lane: task.lane,
+        position: task.position,
         createdAt: task.createdAt,
         notes: task.notes.map((note) => ({ id: note.id, text: note.text, source: note.source, createdAt: note.createdAt })),
         people: task.people.map((person) => ({
@@ -141,7 +142,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
     async ({ title, note }) => {
       try {
         const created = createTask(context.db, context.lanes, title, note, 'mcp');
-        const structuredContent = { id: created.id, title: created.title, lane: created.lane, createdAt: created.createdAt };
+        const structuredContent = { id: created.id, title: created.title, lane: created.lane, position: created.position, createdAt: created.createdAt };
         return {
           content: [{ type: 'text', text: `Created task "${created.title}" in lane "${created.lane}".` }],
           structuredContent,

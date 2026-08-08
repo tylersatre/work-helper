@@ -2,6 +2,7 @@ export interface Task {
   id: number;
   title: string;
   lane: string;
+  position: number;
   createdAt: number;
 }
 
