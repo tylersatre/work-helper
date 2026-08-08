@@ -1,7 +1,15 @@
 import { buildApp } from './app.js';
 import { createDb } from './db/index.js';
+import { validateEnv } from './env.js';
 import { loadLanesConfig } from './lanes-config.js';
 import { loadPersonFieldsConfig } from './person-fields-config.js';
+
+try {
+  validateEnv(process.env);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+}
 
 const lanes = loadLanesConfig();
 const personFields = loadPersonFieldsConfig();
