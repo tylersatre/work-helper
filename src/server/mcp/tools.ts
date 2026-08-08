@@ -7,6 +7,7 @@ import { addNote, createTask, getTaskDetail, listTasksByLane } from '../services
 import type * as schema from '../db/schema.js';
 import type { MailProvider } from '../services/email/provider.js';
 import { computeSyncWindow, runSync } from '../services/email/sync.js';
+import { getConversation, listConversations } from '../services/email/queries.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
 
@@ -214,6 +215,82 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         const message = error instanceof Error ? error.message : String(error);
         return toolError(`Could not reach the mailbox (${message}) — run npm run mail:signin to reconnect.`);
       }
+    },
+  );
+
+  const conversationSummarySchema = {
+    id: z.number(),
+    subject: z.string(),
+    messageCount: z.number(),
+    latestMessageAt: z.number(),
+  };
+
+  const participantSchema = z.object({
+    address: z.string(),
+    role: z.enum(['from', 'to', 'cc', 'bcc']),
+    person: z.object({ id: z.number(), name: z.string() }).nullable(),
+  });
+
+  const conversationMessageSchema = z.object({
+    id: z.number(),
+    subject: z.string(),
+    sentAt: z.number(),
+    bodyText: z.string(),
+    sourceFolder: z.enum(['inbox', 'sent']),
+    participants: z.array(participantSchema),
+  });
+
+  server.registerTool(
+    'list-conversations',
+    {
+      description: 'Lists synced conversations, newest activity first, keyset-paged.',
+      inputSchema: {
+        limit: z.number().int().min(1).max(200).default(50),
+        cursor: z.string().optional(),
+      },
+      outputSchema: {
+        conversations: z.array(z.object(conversationSummarySchema)),
+        nextCursor: z.string().nullable(),
+      },
+    },
+    async ({ limit, cursor }) => {
+      let page;
+      try {
+        page = listConversations(context.db, { limit, cursor });
+      } catch {
+        return toolError('Invalid cursor');
+      }
+      const structuredContent = { conversations: page.conversations, nextCursor: page.nextCursor };
+      return {
+        content: [{ type: 'text', text: `Found ${page.conversations.length} conversation(s).` }],
+        structuredContent,
+      };
+    },
+  );
+
+  server.registerTool(
+    'get-conversation',
+    {
+      description: "Fetches one conversation's full message thread, chronological, with role-tagged participants.",
+      inputSchema: { conversationId: z.number().int().positive() },
+      outputSchema: {
+        id: z.number(),
+        subject: z.string(),
+        messages: z.array(conversationMessageSchema),
+      },
+    },
+    async ({ conversationId }) => {
+      const conversation = getConversation(context.db, conversationId);
+      if (!conversation) {
+        return toolError(`Conversation ${conversationId} not found`);
+      }
+      const structuredContent = { id: conversation.id, subject: conversation.subject, messages: conversation.messages };
+      return {
+        content: [
+          { type: 'text', text: `Conversation "${conversation.subject}" has ${conversation.messages.length} message(s).` },
+        ],
+        structuredContent,
+      };
     },
   );
 
