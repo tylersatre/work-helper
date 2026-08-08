@@ -57,6 +57,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
 
   if (options.serveClient) {
     const clientDir = options.clientDir ?? join(process.cwd(), 'dist/client');
+    const indexHtml = readFileSync(join(clientDir, 'index.html'));
     app.register(fastifyStatic, {
       root: clientDir,
     });
@@ -67,7 +68,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
         !NON_CLIENT_PATH_PREFIXES.some((prefix) => request.url.startsWith(prefix));
 
       if (isClientNavigation) {
-        reply.type('text/html').send(readFileSync(join(clientDir, 'index.html')));
+        reply.type('text/html').send(indexHtml);
         return;
       }
 

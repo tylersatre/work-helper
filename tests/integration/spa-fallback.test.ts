@@ -44,4 +44,9 @@ describe('SPA history fallback (serveClient)', () => {
     expect(response.statusCode).toBe(404);
     expect(response.body).not.toContain('spa-fallback-fixture');
   });
+
+  it('fails at build time, not on first request, when clientDir has no index.html', () => {
+    const { db } = createDb(':memory:');
+    expect(() => buildApp({ db, lanes: LANES, serveClient: true, clientDir: join(FIXTURE_CLIENT_DIR, 'does-not-exist') })).toThrow();
+  });
 });
