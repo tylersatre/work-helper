@@ -266,5 +266,36 @@ describe('US4: fronted by Caddy via the documented snippet', () => {
     expect(toolsList.status).toBe(200);
     const toolsResult = parseSseJson(toolsList.body) as { result: { tools: Array<{ name: string }> } };
     expect(toolsResult.result.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(['list-board']));
+
+    // A hostile client rotating a forged X-Forwarded-For on every attempt must not evade the lockout —
+    // the documented snippet's `header_up` override has to strip it, or the client picks its own bucket forever.
+    const clientCRun = await harness.docker(['run', '-d', '--network', 'work-helper', '--entrypoint', 'sleep', CURL_IMAGE, '600']);
+    expect(clientCRun.code, `docker run clientC failed:\n${clientCRun.stderr}`).toBe(0);
+    const clientC = clientCRun.stdout.trim();
+    harness.trackContainer(clientC);
+
+    async function submitPasswordWithForgedHeader(container: string, password: string, forgedIp: string): Promise<CurlResult> {
+      const body = new URLSearchParams({ ...flowParams, password }).toString();
+      return curlIn(container, [
+        '--resolve',
+        resolveArg,
+        '-k',
+        '-s',
+        '-i',
+        '-X',
+        'POST',
+        '-H',
+        `X-Forwarded-For: ${forgedIp}`,
+        '-d',
+        body,
+        `https://${TEST_HOSTNAME}/oauth/authorize`,
+      ]);
+    }
+
+    expect((await submitPasswordWithForgedHeader(clientC, 'wrong-1', '203.0.113.1')).status).toBe(401);
+    expect((await submitPasswordWithForgedHeader(clientC, 'wrong-2', '203.0.113.2')).status).toBe(401);
+    expect((await submitPasswordWithForgedHeader(clientC, 'wrong-3', '203.0.113.3')).status).toBe(423);
+    // A fourth attempt under yet another forged address is still locked, proving the forged header was ignored.
+    expect((await submitPasswordWithForgedHeader(clientC, harness.password, '203.0.113.4')).status).toBe(423);
   }, 300_000);
 });

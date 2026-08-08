@@ -44,11 +44,13 @@ If you already run Caddy on your server, front work-helper with it instead of ex
 
 ```caddy
 work-helper.example.com {
-	reverse_proxy work-helper:8080
+	reverse_proxy work-helper:8080 {
+		header_up X-Forwarded-For {remote_host}
+	}
 }
 ```
 
-`work-helper:8080` is the container's DNS name on the `work-helper` Docker network compose creates — not `WORK_HELPER_PORT`, which is unrelated and only matters for direct (non-Caddy) access.
+`work-helper:8080` is the container's DNS name on the `work-helper` Docker network compose creates — not `WORK_HELPER_PORT`, which is unrelated and only matters for direct (non-Caddy) access. The `header_up X-Forwarded-For {remote_host}` line makes explicit what Caddy already does by default (overwrite `X-Forwarded-For` with the address it actually observed, discarding anything a client sent) — keep it in place; it's the thing standing between MCP's per-client lockout (below) and a client that tries to forge that header.
 
 One-time setup: attach your existing Caddy container to the `work-helper` network so it can resolve that DNS name:
 
@@ -56,7 +58,7 @@ One-time setup: attach your existing Caddy container to the `work-helper` networ
 docker network connect work-helper <your-caddy-container-name>
 ```
 
-Caddy's `reverse_proxy` sends `X-Forwarded-For`, and work-helper trusts it — so MCP's per-client lockout (below) attributes attempts to the real client IP, not Caddy's, as long as clients go through this documented setup. A client that bypasses Caddy and hits `WORK_HELPER_PORT` directly still works; its lockout is just counted by its own address.
+With the `header_up` override above, work-helper's per-client lockout attributes attempts to the real client IP, not Caddy's, as long as clients go through this documented setup. A client that bypasses Caddy and hits `WORK_HELPER_PORT` directly still works; its lockout is just counted by its own address (and that address is a self-declared header, not cryptographically verified — the documented Caddy setup is the supported configuration for correct attribution).
 
 ## Configuration files
 

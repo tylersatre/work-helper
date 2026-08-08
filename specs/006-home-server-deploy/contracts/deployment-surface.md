@@ -50,11 +50,13 @@ No other settings are **required** by the deployed stack — the app has interna
 
 ```caddy
 work-helper.example.com {
-	reverse_proxy work-helper:8080
+	reverse_proxy work-helper:8080 {
+		header_up X-Forwarded-For {remote_host}
+	}
 }
 ```
 
-Contract with the app: Caddy's `reverse_proxy` sends `X-Forwarded-For`; the app (Fastify `trustProxy: true`) attributes each request to the forwarded client IP, so MCP per-IP lockout counts real clients (FR-010). Proxies that strip forwarding headers degrade lockout to the proxy's address and are unsupported (spec edge case).
+Contract with the app: the `header_up` line makes explicit what Caddy already does by default — overwrite `X-Forwarded-For` with the address it actually observed, discarding whatever a client sent (verified empirically against Caddy 2.11.3; see research.md R8). The app (Fastify `trustProxy: true`) then attributes each request to that forwarded client IP, so MCP per-IP lockout counts real clients (FR-010). A proxy that appends to client-supplied forwarding headers instead of replacing them, or strips them, would degrade lockout to a spoofable or the proxy's own address and is unsupported (spec edge case).
 
 ## HTTP surface behind the single port
 
