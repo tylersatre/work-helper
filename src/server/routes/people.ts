@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { ZodError } from 'zod';
 import { addEntry, editEntry, type EntryTable, markPrimary, removeEntry } from '../services/contact-entries.js';
 import { createPerson, deletePerson, getPerson, listPeople, updatePerson } from '../services/people.js';
-import { personEmails, personPhones } from '../db/schema.js';
+import { emailAddresses, personPhones } from '../db/schema.js';
 
 function conflictMessage(type: 'emails' | 'phones'): string {
   return type === 'emails' ? 'That email is already in use' : 'That phone number is already in use';
@@ -81,7 +81,7 @@ function registerContactEntryRoutes(app: FastifyInstance, type: 'emails' | 'phon
 }
 
 export async function peopleRoutes(app: FastifyInstance): Promise<void> {
-  registerContactEntryRoutes(app, 'emails', personEmails);
+  registerContactEntryRoutes(app, 'emails', emailAddresses);
   registerContactEntryRoutes(app, 'phones', personPhones);
 
   app.get('/api/person-fields', async () => {

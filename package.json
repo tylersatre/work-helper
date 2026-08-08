@@ -11,14 +11,17 @@
     "build": "vite build && tsc -p tsconfig.server.json",
     "lint": "eslint .",
     "typecheck": "vue-tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "mail:signin": "tsx scripts/mail-signin.ts"
   },
   "dependencies": {
+    "@azure/msal-node": "^5.5.0",
     "@fastify/static": "^10.1.3",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "better-sqlite3": "^13.0.3",
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.11.2",
+    "html-to-text": "^10.0.0",
     "markdown-it": "^14.3.0",
     "vue": "^3.5.41",
     "vue-router": "^4.6.4",
@@ -28,6 +31,7 @@
     "@eslint/js": "^9.28.0",
     "@testing-library/vue": "^8.1.0",
     "@types/better-sqlite3": "^9.6.0",
+    "@types/html-to-text": "^9.0.4",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^24.0.0",
     "@vitejs/plugin-vue": "^6.0.8",

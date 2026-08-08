@@ -1,11 +1,11 @@
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { entryValueSchema } from '../../shared/validation.js';
-import { people, personEmails, type personPhones } from '../db/schema.js';
+import { emailAddresses, people, type personPhones } from '../db/schema.js';
 import type * as schema from '../db/schema.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
-export type EntryTable = typeof personEmails | typeof personPhones;
+export type EntryTable = typeof emailAddresses | typeof personPhones;
 
 export interface ContactEntry {
   id: number;
@@ -24,7 +24,7 @@ function personExists(db: AppDb, personId: number): boolean {
 }
 
 function conflictExists(db: AppDb, table: EntryTable, value: string, excludeId?: number): boolean {
-  const isEmailTable = table === personEmails;
+  const isEmailTable = table === emailAddresses;
   const conditions = [isEmailTable ? sql`lower(${table.value}) = lower(${value})` : eq(table.value, value)];
   if (excludeId !== undefined) {
     conditions.push(ne(table.id, excludeId));

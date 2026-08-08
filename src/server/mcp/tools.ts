@@ -5,6 +5,8 @@ import { primaryValue } from '../../shared/contacts.js';
 import { getPerson, listPeople } from '../services/people.js';
 import { addNote, createTask, getTaskDetail, listTasksByLane } from '../services/tasks.js';
 import type * as schema from '../db/schema.js';
+import type { MailProvider } from '../services/email/provider.js';
+import { computeSyncWindow, runSync } from '../services/email/sync.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
 
@@ -12,6 +14,7 @@ export interface McpToolsContext {
   db: AppDb;
   lanes: string[];
   personFields: string[];
+  mailProvider?: MailProvider;
 }
 
 function toolError(message: string) {
@@ -169,6 +172,48 @@ export function createMcpServer(context: McpToolsContext): McpServer {
       const { note: created } = result;
       const structuredContent = { id: created.id, taskId: created.taskId, text: created.text, source: created.source, createdAt: created.createdAt };
       return { content: [{ type: 'text', text: `Added a note to task ${taskId}.` }], structuredContent };
+    },
+  );
+
+  server.registerTool(
+    'sync-emails',
+    {
+      description: 'Pulls Inbox + Sent messages for a date range (inclusive, server-local timezone) from the connected mailbox into the store.',
+      inputSchema: { startDate: z.string().optional(), endDate: z.string().optional() },
+      outputSchema: {
+        status: z.enum(['complete', 'interrupted']),
+        syncedCount: z.number(),
+        error: z.string().optional(),
+      },
+    },
+    async ({ startDate, endDate }) => {
+      if (!startDate || !endDate) {
+        return toolError('A start date and end date are required');
+      }
+
+      let window;
+      try {
+        window = computeSyncWindow(startDate, endDate);
+      } catch {
+        return toolError('startDate and endDate must be valid YYYY-MM-DD dates, with endDate not before startDate');
+      }
+
+      if (!context.mailProvider) {
+        return toolError('Mailbox is not connected — run npm run mail:signin');
+      }
+
+      try {
+        const result = await runSync(context.db, context.mailProvider, window);
+        const text =
+          result.status === 'complete'
+            ? `Synced ${result.syncedCount} email(s).`
+            : `Sync interrupted after storing ${result.syncedCount} email(s): ${result.error}`;
+        const structuredContent = { status: result.status, syncedCount: result.syncedCount, error: result.error };
+        return { content: [{ type: 'text', text }], structuredContent };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return toolError(`Could not reach the mailbox (${message}) — run npm run mail:signin to reconnect.`);
+      }
     },
   );
 

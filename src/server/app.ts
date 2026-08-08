@@ -9,6 +9,7 @@ import { mcpRoutes } from './mcp/routes.js';
 import { boardRoutes } from './routes/board.js';
 import { peopleRoutes } from './routes/people.js';
 import { taskRoutes } from './routes/tasks.js';
+import type { MailProvider } from './services/email/provider.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
 
@@ -19,6 +20,7 @@ declare module 'fastify' {
     personFields: string[];
     connectorPassword?: string;
     mcpKey?: Buffer;
+    mailProvider?: MailProvider;
   }
 }
 
@@ -28,6 +30,7 @@ export interface AppOptions {
   personFields?: string[];
   serveClient?: boolean;
   connectorPassword?: string;
+  mailProvider?: MailProvider;
 }
 
 export function buildApp(options: AppOptions): FastifyInstance {
@@ -43,6 +46,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
   app.decorate('personFields', options.personFields ?? []);
   app.decorate('connectorPassword', options.connectorPassword);
   app.decorate('mcpKey', options.connectorPassword ? deriveKey(options.connectorPassword) : undefined);
+  app.decorate('mailProvider', options.mailProvider);
 
   app.register(boardRoutes);
   app.register(taskRoutes);

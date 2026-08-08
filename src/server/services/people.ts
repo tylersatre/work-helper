@@ -1,12 +1,12 @@
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { createPersonInputSchema, updatePersonInputSchema } from '../../shared/validation.js';
-import { people, personEmails, personPhones } from '../db/schema.js';
+import { emailAddresses, people, personPhones } from '../db/schema.js';
 import type * as schema from '../db/schema.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
 type PersonRow = typeof people.$inferSelect;
-type EntryTable = typeof personEmails | typeof personPhones;
+type EntryTable = typeof emailAddresses | typeof personPhones;
 
 export interface ContactEntry {
   id: number;
@@ -30,13 +30,13 @@ export type CreatePersonResult =
   | { ok: false; error: 'email-conflict' | 'phone-conflict' };
 
 function emailConflictExists(db: AppDb, email: string, excludeId?: number): boolean {
-  const conditions = [sql`lower(${personEmails.value}) = lower(${email})`];
+  const conditions = [sql`lower(${emailAddresses.value}) = lower(${email})`];
   if (excludeId !== undefined) {
-    conditions.push(ne(personEmails.id, excludeId));
+    conditions.push(ne(emailAddresses.id, excludeId));
   }
   const [row] = db
-    .select({ id: personEmails.id })
-    .from(personEmails)
+    .select({ id: emailAddresses.id })
+    .from(emailAddresses)
     .where(and(...conditions))
     .limit(1)
     .all();
@@ -90,7 +90,7 @@ function toPersonRecord(db: AppDb, row: PersonRow, personFields: string[]): Pers
     id: row.id,
     firstName: row.firstName,
     lastName: row.lastName,
-    emails: loadEntries(db, personEmails, row.id),
+    emails: loadEntries(db, emailAddresses, row.id),
     phones: loadEntries(db, personPhones, row.id),
     extraFields,
     createdAt: row.createdAt,
@@ -121,7 +121,7 @@ export function createPerson(db: AppDb, personFields: string[], rawInput: unknow
 
     const createdAt = Date.now();
     if (input.email !== null) {
-      tx.insert(personEmails).values({ personId: created!.id, value: input.email, isPrimary: true, createdAt }).run();
+      tx.insert(emailAddresses).values({ personId: created!.id, value: input.email, isPrimary: true, createdAt }).run();
     }
     if (input.phone !== null) {
       tx.insert(personPhones).values({ personId: created!.id, value: input.phone, isPrimary: true, createdAt }).run();
@@ -138,9 +138,9 @@ export function listPeople(db: AppDb, personFields: string[], q?: string) {
   const trimmed = q?.trim();
 
   const primaryEmail = db
-    .select({ personId: personEmails.personId, value: personEmails.value })
-    .from(personEmails)
-    .where(eq(personEmails.isPrimary, true))
+    .select({ personId: emailAddresses.personId, value: emailAddresses.value })
+    .from(emailAddresses)
+    .where(eq(emailAddresses.isPrimary, true))
     .as('primary_email');
 
   const query = db

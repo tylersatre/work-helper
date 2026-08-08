@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [vue()],
   test: {
     environment: 'node',
+    env: { TZ: 'America/Denver' },
     setupFiles: ['./tests/component/setup.ts'],
     css: true,
     exclude: [
