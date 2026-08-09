@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { NButton } from 'naive-ui';
 import { onMounted, ref } from 'vue';
 import type { BoardView, Task } from '../../shared/types.js';
+import CreateTaskForm from './CreateTaskForm.vue';
 import Lane from './Lane.vue';
 
 const board = ref<BoardView>({ lanes: [] });
@@ -116,6 +118,12 @@ function dismissError(): void {
   errorMessage.value = null;
 }
 
+function onTaskCreated(): void {
+  void fetchBoard().catch(() => {
+    // If the refetch fails, the board keeps showing what it had before the create.
+  });
+}
+
 defineExpose({ fetchBoard });
 
 onMounted(() => {
@@ -126,14 +134,14 @@ onMounted(() => {
 </script>
 
 <template>
-  <div>
+  <div class="board-wrapper">
     <div v-if="errorMessage" class="error-banner" data-testid="error-banner">
       {{ errorMessage }}
-      <button type="button" @click="dismissError">Dismiss</button>
+      <NButton size="small" @click="dismissError">Dismiss</NButton>
     </div>
     <div class="board">
       <Lane
-        v-for="lane in board.lanes"
+        v-for="(lane, index) in board.lanes"
         :key="lane.name"
         :name="lane.name"
         :tasks="lane.tasks"
@@ -141,14 +149,42 @@ onMounted(() => {
         @drop="onDrop"
         @card-dragstart="onCardDragStart"
         @card-dragend="onCardDragEnd"
-      />
+      >
+        <template v-if="index === 0" #footer>
+          <CreateTaskForm @created="onTaskCreated" />
+        </template>
+      </Lane>
     </div>
   </div>
 </template>
 
 <style scoped>
+.board-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
 .board {
   display: flex;
+  gap: 0.75rem;
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
+  padding: 0.75rem;
+}
+
+.error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  margin: 0.75rem 0.75rem 0;
+  border-radius: 4px;
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.4);
 }
 </style>

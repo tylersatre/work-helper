@@ -692,6 +692,83 @@ describe('Board', () => {
     expect(cardTitles(laneByName('Done'))).toEqual(['C']);
   });
 
+  it('a lane with zero tasks renders the empty placeholder; a lane with tasks does not', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          lanes: [
+            { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 }] },
+            { name: 'In Progress', tasks: [] },
+            { name: 'Waiting', tasks: [] },
+            { name: 'Done', tasks: [] },
+          ],
+        }),
+      }),
+    );
+
+    render(Board);
+    await screen.findByRole('heading', { level: 2, name: 'To Do' });
+
+    expect(within(laneByName('To Do')).queryByTestId('lane-empty')).toBeNull();
+    expect(within(laneByName('In Progress')).queryByTestId('lane-empty')).not.toBeNull();
+  });
+
+  it('each lane renders its header plus a dedicated scrolling card-list container', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          lanes: [
+            { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 }] },
+            { name: 'In Progress', tasks: [] },
+            { name: 'Waiting', tasks: [] },
+            { name: 'Done', tasks: [] },
+          ],
+        }),
+      }),
+    );
+
+    render(Board);
+    await screen.findByRole('heading', { level: 2, name: 'To Do' });
+
+    const lane = laneByName('To Do');
+    expect(lane.querySelector('h2')?.textContent).toBe('To Do');
+    const list = lane.querySelector('.lane-tasks');
+    expect(list).toBeTruthy();
+    expect(getComputedStyle(list as HTMLElement).overflowY).toBe('auto');
+  });
+
+  it('dragging a card over an empty lane still shows a drop indicator', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          lanes: [
+            { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 }] },
+            { name: 'In Progress', tasks: [] },
+            { name: 'Waiting', tasks: [] },
+            { name: 'Done', tasks: [] },
+          ],
+        }),
+      }),
+    );
+
+    render(Board);
+    await screen.findByRole('heading', { level: 2, name: 'To Do' });
+
+    const card = screen.getByTestId('task-card');
+    await fireEvent.dragStart(card, { dataTransfer: makeDataTransfer(1) });
+
+    const inProgress = laneByName('In Progress');
+    await fireDragOver(inProgress, 50);
+
+    expect(within(inProgress).queryByTestId('drop-indicator')).not.toBeNull();
+  });
+
   it('fetchBoard rejects instead of assigning board.value to a non-2xx error body', async () => {
     vi.stubGlobal(
       'fetch',

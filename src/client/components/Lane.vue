@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { NEmpty } from 'naive-ui';
 import { ref } from 'vue';
 import type { Task } from '../../shared/types.js';
 import { computeDropIndex } from '../utils/drop-index.js';
@@ -62,27 +63,64 @@ function onCardDragEnd(): void {
 
 <template>
   <section class="lane" data-testid="lane" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
-    <h2>{{ name }}</h2>
+    <h2 class="lane-header">{{ name }}</h2>
     <ul class="lane-tasks" ref="listEl">
+      <li v-if="dropIndex !== null && displayIndex(dropIndex) === 0" class="drop-indicator" data-testid="drop-indicator"></li>
+      <li v-if="tasks.length === 0" class="lane-empty-item">
+        <NEmpty data-testid="lane-empty" description="No tasks" size="small" />
+      </li>
       <template v-for="(task, index) in tasks" :key="task.id">
-        <li v-if="dropIndex !== null && displayIndex(dropIndex) === index" class="drop-indicator" data-testid="drop-indicator"></li>
+        <li v-if="dropIndex !== null && index > 0 && displayIndex(dropIndex) === index" class="drop-indicator" data-testid="drop-indicator"></li>
         <TaskCard :task="task" @dragstart="emit('card-dragstart', $event)" @dragend="onCardDragEnd" />
       </template>
-      <li v-if="dropIndex !== null && displayIndex(dropIndex) === tasks.length" class="drop-indicator" data-testid="drop-indicator"></li>
+      <li v-if="dropIndex !== null && tasks.length > 0 && displayIndex(dropIndex) === tasks.length" class="drop-indicator" data-testid="drop-indicator"></li>
     </ul>
+    <div v-if="$slots.footer" class="lane-footer">
+      <slot name="footer" />
+    </div>
   </section>
 </template>
 
 <style scoped>
 .lane {
-  min-width: 200px;
-  flex: 1;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 280px;
+  width: 280px;
+  height: 100%;
+  min-height: 0;
+  background: #1b1b20;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.lane-header {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .lane-tasks {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   list-style: none;
-  padding: 0;
   margin: 0;
+  padding: 0.5rem;
+}
+
+.lane-footer {
+  flex: 0 0 auto;
+  padding: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.lane-empty-item {
+  padding: 1.5rem 0;
 }
 
 .drop-indicator {

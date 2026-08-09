@@ -4,12 +4,36 @@ import { flushPromises } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import CreateTaskForm from '../../src/client/components/CreateTaskForm.vue';
 
+async function expandForm(): Promise<void> {
+  await fireEvent.click(screen.getByTestId('add-task-toggle'));
+  await flushPromises();
+}
+
 describe('CreateTaskForm', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it('posts the title and clears the input when a valid title is submitted', async () => {
+  it('renders collapsed behind a "+ Add task" toggle, with no form visible', () => {
+    render(CreateTaskForm);
+
+    expect(screen.getByTestId('add-task-toggle')).toBeTruthy();
+    expect(screen.queryByTestId('add-task-form')).toBeNull();
+  });
+
+  it('expanding the toggle reveals the form with a labeled title input and note textarea', async () => {
+    render(CreateTaskForm);
+
+    await expandForm();
+
+    expect(screen.getByTestId('add-task-form')).toBeTruthy();
+    expect(screen.getByLabelText(/title/i)).toBeTruthy();
+    const noteField = screen.getByLabelText(/note/i) as HTMLTextAreaElement;
+    expect(noteField.tagName).toBe('TEXTAREA');
+    expect(noteField.hasAttribute('required')).toBe(false);
+  });
+
+  it('posts the title and collapses back with cleared fields when a valid title is submitted', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 201,
@@ -17,11 +41,12 @@ describe('CreateTaskForm', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(CreateTaskForm);
+    const { emitted } = render(CreateTaskForm);
+    await expandForm();
 
     const input = screen.getByLabelText(/title/i) as HTMLInputElement;
     await fireEvent.update(input, 'Follow up with Sam');
-    await fireEvent.click(screen.getByRole('button', { name: /add task/i }));
+    await fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
     await flushPromises();
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -31,43 +56,7 @@ describe('CreateTaskForm', () => {
         body: JSON.stringify({ title: 'Follow up with Sam' }),
       }),
     );
-    expect(input.value).toBe('');
-  });
-
-  it('shows a validation message and does not POST when the title is empty', async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-
-    render(CreateTaskForm);
-
-    await fireEvent.click(screen.getByRole('button', { name: /add task/i }));
-    await flushPromises();
-
-    expect(await screen.findByText(/title is required/i)).toBeTruthy();
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it('shows a validation message and does not POST when the title is whitespace-only', async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-
-    render(CreateTaskForm);
-
-    const input = screen.getByLabelText(/title/i) as HTMLInputElement;
-    await fireEvent.update(input, '   ');
-    await fireEvent.click(screen.getByRole('button', { name: /add task/i }));
-    await flushPromises();
-
-    expect(await screen.findByText(/title is required/i)).toBeTruthy();
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it('shows an optional multiline note field', () => {
-    render(CreateTaskForm);
-
-    const noteField = screen.getByLabelText(/note/i) as HTMLTextAreaElement;
-    expect(noteField.tagName).toBe('TEXTAREA');
-    expect(noteField.hasAttribute('required')).toBe(false);
+    expect(emitted().created).toBeTruthy();
   });
 
   it('includes the note in the request body when filled', async () => {
@@ -79,10 +68,11 @@ describe('CreateTaskForm', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(CreateTaskForm);
+    await expandForm();
 
     await fireEvent.update(screen.getByLabelText(/title/i), 'Prep board deck');
     await fireEvent.update(screen.getByLabelText(/note/i), 'Kickoff call went well');
-    await fireEvent.click(screen.getByRole('button', { name: /add task/i }));
+    await fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
     await flushPromises();
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -103,10 +93,11 @@ describe('CreateTaskForm', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(CreateTaskForm);
+    await expandForm();
 
     await fireEvent.update(screen.getByLabelText(/title/i), 'Book flights');
     await fireEvent.update(screen.getByLabelText(/note/i), note);
-    await fireEvent.click(screen.getByRole('button', { name: /add task/i }));
+    await fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
     await flushPromises();
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -116,5 +107,56 @@ describe('CreateTaskForm', () => {
         body: JSON.stringify({ title: 'Book flights' }),
       }),
     );
+  });
+
+  it('shows the validation message adjacent to the title input and does not POST when the title is empty', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(CreateTaskForm);
+    await expandForm();
+
+    await fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
+    await flushPromises();
+
+    const message = await screen.findByRole('alert');
+    expect(message.textContent).toMatch(/title is required/i);
+    const titleInput = screen.getByLabelText(/title/i);
+    expect(titleInput.closest('form')?.contains(message)).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('shows the validation message and does not POST when the title is whitespace-only', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(CreateTaskForm);
+    await expandForm();
+
+    await fireEvent.update(screen.getByLabelText(/title/i), '   ');
+    await fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
+    await flushPromises();
+
+    expect(await screen.findByText(/title is required/i)).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('cancel collapses the form without posting, and reopening starts blank', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(CreateTaskForm);
+    await expandForm();
+
+    await fireEvent.update(screen.getByLabelText(/title/i), 'Draft that should not be sent');
+    await fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    await flushPromises();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('add-task-form')).toBeNull();
+    expect(screen.getByTestId('add-task-toggle')).toBeTruthy();
+
+    await expandForm();
+    expect((screen.getByLabelText(/title/i) as HTMLInputElement).value).toBe('');
   });
 });

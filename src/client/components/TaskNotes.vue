@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { NButton, NInput, NModal } from 'naive-ui';
 import { onMounted, onUnmounted, ref } from 'vue';
 import type { Note } from '../../shared/types.js';
 import { noteTextSchema } from '../../shared/validation.js';
@@ -12,6 +13,7 @@ const localNotes = ref<Note[]>([...props.notes]);
 const text = ref('');
 const validationMessage = ref('');
 const now = ref(Date.now());
+const noteIdPendingDeletion = ref<number | null>(null);
 
 let ticker: ReturnType<typeof setInterval> | undefined;
 
@@ -50,8 +52,22 @@ async function onSubmit(): Promise<void> {
   text.value = '';
 }
 
-async function onDelete(noteId: number): Promise<void> {
+function onDeleteRequest(noteId: number): void {
+  noteIdPendingDeletion.value = noteId;
+}
+
+function cancelDeletion(): void {
+  noteIdPendingDeletion.value = null;
+}
+
+async function confirmDeletion(): Promise<void> {
+  const noteId = noteIdPendingDeletion.value;
+  if (noteId === null) {
+    return;
+  }
+
   const response = await fetch(`/api/tasks/${props.taskId}/notes/${noteId}`, { method: 'DELETE' });
+  noteIdPendingDeletion.value = null;
   if (!response.ok) {
     return;
   }
@@ -59,20 +75,46 @@ async function onDelete(noteId: number): Promise<void> {
   localNotes.value = localNotes.value.filter((note) => note.id !== noteId);
   emit('update:notes', localNotes.value);
 }
+
+function onDialogShowChange(show: boolean): void {
+  if (!show) {
+    cancelDeletion();
+  }
+}
 </script>
 
 <template>
-  <div>
+  <div class="task-notes">
     <ul class="notes-list">
-      <NoteItem v-for="note in localNotes" :key="note.id" :note="note" :now="now" @delete="onDelete" />
+      <NoteItem v-for="note in localNotes" :key="note.id" :note="note" :now="now" @delete-request="onDeleteRequest" />
     </ul>
 
-    <form @submit.prevent="onSubmit">
-      <label for="task-note-text">Note</label>
-      <textarea id="task-note-text" v-model="text" name="note"></textarea>
-      <button type="submit">Add note</button>
-      <p v-if="validationMessage" role="alert">{{ validationMessage }}</p>
+    <form class="note-form" @submit.prevent="onSubmit">
+      <label class="note-form-label" for="task-note-text">Note</label>
+      <NInput
+        v-model:value="text"
+        type="textarea"
+        size="small"
+        :autosize="{ minRows: 2, maxRows: 6 }"
+        :input-props="{ id: 'task-note-text', name: 'note' }"
+      />
+      <NButton attr-type="submit" size="small" type="primary" class="note-form-submit">Add note</NButton>
+      <p v-if="validationMessage" role="alert" class="note-form-error">{{ validationMessage }}</p>
     </form>
+
+    <NModal
+      data-testid="confirm-dialog"
+      :show="noteIdPendingDeletion !== null"
+      display-directive="if"
+      preset="dialog"
+      title="Delete this note?"
+      content="This can't be undone."
+      positive-text="Delete"
+      negative-text="Cancel"
+      @positive-click="confirmDeletion"
+      @negative-click="cancelDeletion"
+      @update:show="onDialogShowChange"
+    />
   </div>
 </template>
 
@@ -81,5 +123,26 @@ async function onDelete(noteId: number): Promise<void> {
   list-style: none;
   padding: 0;
   margin: 0;
+}
+
+.note-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.note-form-label {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.note-form-submit {
+  align-self: flex-start;
+}
+
+.note-form-error {
+  margin: 0;
+  color: #fca5a5;
+  font-size: 0.78rem;
 }
 </style>

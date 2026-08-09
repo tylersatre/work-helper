@@ -196,6 +196,47 @@ describe('PeoplePage', () => {
     expect(screen.queryAllByTestId('person-row')).toHaveLength(0);
   });
 
+  it('shows the empty state with no people; creating a person replaces it with the dense list', async () => {
+    let peopleList: unknown[] = [];
+    const fetchMock = vi.fn().mockImplementation((_url: string, options?: RequestInit) => {
+      if (options?.method === 'POST') {
+        const created = {
+          id: 3,
+          firstName: 'Bo',
+          lastName: 'Baker',
+          emails: [entry(1, 'bo.baker@example.com')],
+          phones: [entry(2, '555-0300')],
+          extraFields: {},
+          createdAt: 3,
+        };
+        peopleList = [created];
+        return Promise.resolve({ ok: true, status: 201, json: async () => created });
+      }
+      return Promise.resolve({ ok: true, json: async () => peopleList });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(PeoplePage);
+    await flushPromises();
+
+    expect(screen.getByTestId('people-empty')).toBeTruthy();
+    expect(screen.queryByTestId('person-row')).toBeNull();
+
+    await fireEvent.update(screen.getByLabelText(/first name/i), 'Bo');
+    await fireEvent.update(screen.getByLabelText(/last name/i), 'Baker');
+    await fireEvent.update(screen.getByLabelText(/^email/i), 'bo.baker@example.com');
+    await fireEvent.update(screen.getByLabelText(/phone/i), '555-0300');
+    await fireEvent.click(screen.getByRole('button', { name: /add person/i }));
+    await flushPromises();
+
+    expect(screen.queryByTestId('people-empty')).toBeNull();
+    const row = await screen.findByTestId('person-row');
+    expect(row.textContent).toContain('Bo');
+    expect(row.textContent).toContain('Baker');
+    expect(row.textContent).toContain('bo.baker@example.com');
+    expect(row.textContent).toContain('555-0300');
+  });
+
   it('removes a person from the rendered list when their delete action is activated', async () => {
     const fetchMock = vi.fn().mockImplementation((_url: string, options?: RequestInit) => {
       if (options?.method === 'DELETE') {

@@ -47,35 +47,63 @@ onMounted(fetchPerson);
 </script>
 
 <template>
-  <section v-if="person">
+  <section v-if="person" class="person-detail">
     <h2 class="person-name">{{ person.firstName }} {{ person.lastName }}</h2>
-    <ContactEntryList
-      heading="Emails"
-      empty-state-text="No email addresses yet."
-      :api-base="`/api/people/${person.id}/emails`"
-      :entries="person.emails"
-      @update:entries="onUpdateEmails"
-    />
-    <ContactEntryList
-      heading="Phones"
-      empty-state-text="No phone numbers yet."
-      :api-base="`/api/people/${person.id}/phones`"
-      :entries="person.phones"
-      @update:entries="onUpdatePhones"
-    />
-    <PersonForm
-      mode="edit"
-      :initial-values="person"
-      submit-label="Save changes"
-      :error-message="errorMessage"
-      @submit="onSubmit"
-    />
+
+    <div class="person-detail-section">
+      <ContactEntryList
+        heading="Emails"
+        empty-state-text="No email addresses yet."
+        :api-base="`/api/people/${person.id}/emails`"
+        :entries="person.emails"
+        @update:entries="onUpdateEmails"
+      />
+    </div>
+
+    <div class="person-detail-section">
+      <ContactEntryList
+        heading="Phones"
+        empty-state-text="No phone numbers yet."
+        :api-base="`/api/people/${person.id}/phones`"
+        :entries="person.phones"
+        @update:entries="onUpdatePhones"
+      />
+    </div>
+
+    <div class="person-detail-section">
+      <h3>Edit</h3>
+      <PersonForm
+        mode="edit"
+        :initial-values="person"
+        submit-label="Save changes"
+        :error-message="errorMessage"
+        @submit="onSubmit"
+      />
+    </div>
   </section>
 </template>
 
 <style scoped>
+.person-detail {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
 .person-name {
   overflow-wrap: break-word;
   word-break: break-word;
+}
+
+.person-detail-section {
+  margin-top: 1.25rem;
+}
+
+.person-detail-section h3 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 0.5rem;
 }
 </style>

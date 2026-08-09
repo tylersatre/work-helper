@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { NButton, NEmpty } from 'naive-ui';
 import { onMounted, ref } from 'vue';
 import { primaryValue } from '../../shared/contacts.js';
 import type { Person } from '../../shared/types.js';
@@ -38,32 +39,82 @@ onMounted(fetchPeople);
 </script>
 
 <template>
-  <section>
+  <section class="people-page">
     <h2>People</h2>
-    <PersonForm submit-label="Add person" :error-message="errorMessage" @submit="onSubmit" />
-    <ul class="people-list">
-      <li v-for="person in people" :key="person.id" class="person-row" data-testid="person-row">
-        <RouterLink :to="`/people/${person.id}`">{{ person.firstName }} {{ person.lastName }}</RouterLink>
-        — {{ primaryValue(person.emails) }} — {{ primaryValue(person.phones) }}
-        <button type="button" @click="onDelete(person.id)">Delete</button>
-      </li>
-    </ul>
+    <div class="people-page-create">
+      <PersonForm submit-label="Add person" :error-message="errorMessage" @submit="onSubmit" />
+    </div>
+
+    <NEmpty v-if="people.length === 0" data-testid="people-empty" description="No people yet" class="people-empty" />
+    <div v-else class="people-table-wrapper">
+      <table class="people-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th class="people-table-actions"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="person in people" :key="person.id" class="person-row" data-testid="person-row">
+            <td><RouterLink :to="`/people/${person.id}`">{{ person.firstName }} {{ person.lastName }}</RouterLink></td>
+            <td>{{ primaryValue(person.emails) }}</td>
+            <td>{{ primaryValue(person.phones) }}</td>
+            <td class="people-table-actions">
+              <NButton size="small" @click="onDelete(person.id)">Delete</NButton>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </section>
 </template>
 
 <style scoped>
-.people-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+.people-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1rem;
 }
 
-.person-row {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  margin-bottom: 0.5rem;
+.people-page-create {
+  margin-bottom: 1.25rem;
+}
+
+.people-empty {
+  margin-top: 1.5rem;
+}
+
+.people-table-wrapper {
+  overflow-x: auto;
+}
+
+.people-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.people-table th {
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: rgba(255, 255, 255, 0.5);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.people-table td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   overflow-wrap: break-word;
   word-break: break-word;
+}
+
+.people-table-actions {
+  text-align: right;
+  white-space: nowrap;
 }
 </style>
