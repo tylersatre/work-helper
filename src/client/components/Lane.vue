@@ -65,16 +65,15 @@ function onCardDragEnd(): void {
   <section class="lane" data-testid="lane" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
     <h2 class="lane-header">{{ name }}</h2>
     <ul class="lane-tasks" ref="listEl">
+      <li v-if="dropIndex !== null && displayIndex(dropIndex) === 0" class="drop-indicator" data-testid="drop-indicator"></li>
       <li v-if="tasks.length === 0" class="lane-empty-item">
         <NEmpty data-testid="lane-empty" description="No tasks" size="small" />
       </li>
-      <template v-else>
-        <template v-for="(task, index) in tasks" :key="task.id">
-          <li v-if="dropIndex !== null && displayIndex(dropIndex) === index" class="drop-indicator" data-testid="drop-indicator"></li>
-          <TaskCard :task="task" @dragstart="emit('card-dragstart', $event)" @dragend="onCardDragEnd" />
-        </template>
-        <li v-if="dropIndex !== null && displayIndex(dropIndex) === tasks.length" class="drop-indicator" data-testid="drop-indicator"></li>
+      <template v-for="(task, index) in tasks" :key="task.id">
+        <li v-if="dropIndex !== null && index > 0 && displayIndex(dropIndex) === index" class="drop-indicator" data-testid="drop-indicator"></li>
+        <TaskCard :task="task" @dragstart="emit('card-dragstart', $event)" @dragend="onCardDragEnd" />
       </template>
+      <li v-if="dropIndex !== null && tasks.length > 0 && displayIndex(dropIndex) === tasks.length" class="drop-indicator" data-testid="drop-indicator"></li>
     </ul>
     <div v-if="$slots.footer" class="lane-footer">
       <slot name="footer" />

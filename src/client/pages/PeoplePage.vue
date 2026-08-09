@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NEmpty } from 'naive-ui';
+import { NButton, NEmpty } from 'naive-ui';
 import { onMounted, ref } from 'vue';
 import { primaryValue } from '../../shared/contacts.js';
 import type { Person } from '../../shared/types.js';
@@ -62,7 +62,7 @@ onMounted(fetchPeople);
             <td>{{ primaryValue(person.emails) }}</td>
             <td>{{ primaryValue(person.phones) }}</td>
             <td class="people-table-actions">
-              <button type="button" @click="onDelete(person.id)">Delete</button>
+              <NButton size="small" @click="onDelete(person.id)">Delete</NButton>
             </td>
           </tr>
         </tbody>
@@ -116,20 +116,5 @@ onMounted(fetchPeople);
 .people-table-actions {
   text-align: right;
   white-space: nowrap;
-}
-
-.people-table-actions button {
-  background: #26262c;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
-  color: rgba(255, 255, 255, 0.85);
-  font-size: 0.75rem;
-  padding: 0.25rem 0.55rem;
-  cursor: pointer;
-}
-
-.people-table-actions button:hover {
-  border-color: rgba(255, 255, 255, 0.3);
-  background: #2e2e35;
 }
 </style>

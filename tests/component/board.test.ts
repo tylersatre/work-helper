@@ -741,6 +741,34 @@ describe('Board', () => {
     expect(getComputedStyle(list as HTMLElement).overflowY).toBe('auto');
   });
 
+  it('dragging a card over an empty lane still shows a drop indicator', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          lanes: [
+            { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 }] },
+            { name: 'In Progress', tasks: [] },
+            { name: 'Waiting', tasks: [] },
+            { name: 'Done', tasks: [] },
+          ],
+        }),
+      }),
+    );
+
+    render(Board);
+    await screen.findByRole('heading', { level: 2, name: 'To Do' });
+
+    const card = screen.getByTestId('task-card');
+    await fireEvent.dragStart(card, { dataTransfer: makeDataTransfer(1) });
+
+    const inProgress = laneByName('In Progress');
+    await fireDragOver(inProgress, 50);
+
+    expect(within(inProgress).queryByTestId('drop-indicator')).not.toBeNull();
+  });
+
   it('fetchBoard rejects instead of assigning board.value to a non-2xx error body', async () => {
     vi.stubGlobal(
       'fetch',

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { NButton, NInput } from 'naive-ui';
 import { ref, watch } from 'vue';
 import { primaryValue } from '../../shared/contacts.js';
 import type { LinkedPerson, Person } from '../../shared/types.js';
@@ -48,19 +49,24 @@ async function unlinkPerson(personId: number): Promise<void> {
 <template>
   <div class="linked-people">
     <label class="linked-people-label" for="task-detail-search">Search people</label>
-    <input id="task-detail-search" v-model="query" class="linked-people-search" type="text" name="search" />
+    <NInput
+      v-model:value="query"
+      size="small"
+      class="linked-people-search"
+      :input-props="{ id: 'task-detail-search', name: 'search' }"
+    />
 
     <ul v-if="results.length" class="people-list">
       <li v-for="person in results" :key="person.id" class="person-row" data-testid="search-result">
         <span>{{ person.firstName }} {{ person.lastName }} — {{ primaryValue(person.emails) }}</span>
-        <button type="button" @click="linkPerson(person.id)">Link</button>
+        <NButton size="small" @click="linkPerson(person.id)">Link</NButton>
       </li>
     </ul>
 
     <ul class="people-list">
       <li v-for="person in people" :key="person.id" class="person-row" data-testid="linked-person">
         <span>{{ person.firstName }} {{ person.lastName }}</span>
-        <button type="button" @click="unlinkPerson(person.id)">Remove</button>
+        <NButton size="small" @click="unlinkPerson(person.id)">Remove</NButton>
       </li>
     </ul>
   </div>
@@ -77,20 +83,7 @@ async function unlinkPerson(personId: number): Promise<void> {
 .linked-people-search {
   width: 100%;
   max-width: 100%;
-  box-sizing: border-box;
   margin-bottom: 0.5rem;
-  background: #1a1a1f;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
-  color: rgba(255, 255, 255, 0.92);
-  padding: 0.35rem 0.5rem;
-  font-size: 0.85rem;
-  font-family: inherit;
-}
-
-.linked-people-search:focus {
-  outline: none;
-  border-color: #3b82f6;
 }
 
 .people-list {
@@ -112,21 +105,5 @@ async function unlinkPerson(personId: number): Promise<void> {
   font-size: 0.85rem;
   overflow-wrap: break-word;
   word-break: break-word;
-}
-
-.person-row button {
-  background: #26262c;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
-  color: rgba(255, 255, 255, 0.85);
-  font-size: 0.78rem;
-  padding: 0.3rem 0.6rem;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.person-row button:hover {
-  border-color: rgba(255, 255, 255, 0.3);
-  background: #2e2e35;
 }
 </style>

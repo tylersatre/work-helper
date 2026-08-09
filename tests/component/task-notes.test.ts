@@ -140,6 +140,21 @@ describe('TaskNotes', () => {
     expect(remaining[0]?.textContent).toContain('First note');
   });
 
+  it('dismissing the dialog with Escape keeps the note and sends no request', async () => {
+    const notes: Note[] = [{ id: 1, taskId: 1, text: 'First note', source: 'ui', createdAt: 1 }];
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(TaskNotes, { props: { taskId: 1, notes } });
+    await openDeleteDialog();
+
+    await fireEvent.keyDown(document, { key: 'Escape' });
+    await flushPromises();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.queryAllByTestId('note')).toHaveLength(1);
+  });
+
   it('cancelling the dialog sends no request, leaves the note intact, and closes the dialog', async () => {
     const notes: Note[] = [
       { id: 1, taskId: 1, text: 'First note', source: 'ui', createdAt: 1 },

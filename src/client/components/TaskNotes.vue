@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NModal } from 'naive-ui';
+import { NButton, NInput, NModal } from 'naive-ui';
 import { onMounted, onUnmounted, ref } from 'vue';
 import type { Note } from '../../shared/types.js';
 import { noteTextSchema } from '../../shared/validation.js';
@@ -91,8 +91,14 @@ function onDialogShowChange(show: boolean): void {
 
     <form class="note-form" @submit.prevent="onSubmit">
       <label class="note-form-label" for="task-note-text">Note</label>
-      <textarea id="task-note-text" v-model="text" class="note-form-textarea" name="note"></textarea>
-      <button type="submit" class="note-form-submit">Add note</button>
+      <NInput
+        v-model:value="text"
+        type="textarea"
+        size="small"
+        :autosize="{ minRows: 2, maxRows: 6 }"
+        :input-props="{ id: 'task-note-text', name: 'note' }"
+      />
+      <NButton attr-type="submit" size="small" type="primary" class="note-form-submit">Add note</NButton>
       <p v-if="validationMessage" role="alert" class="note-form-error">{{ validationMessage }}</p>
     </form>
 
@@ -130,37 +136,8 @@ function onDialogShowChange(show: boolean): void {
   color: rgba(255, 255, 255, 0.6);
 }
 
-.note-form-textarea {
-  background: #1a1a1f;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
-  color: rgba(255, 255, 255, 0.92);
-  padding: 0.4rem 0.5rem;
-  font-size: 0.85rem;
-  font-family: inherit;
-  resize: vertical;
-  min-height: 3.5rem;
-}
-
-.note-form-textarea:focus {
-  outline: none;
-  border-color: #3b82f6;
-}
-
 .note-form-submit {
   align-self: flex-start;
-  background: #3b82f6;
-  border: 1px solid #3b82f6;
-  border-radius: 4px;
-  color: #fff;
-  font-size: 0.78rem;
-  padding: 0.3rem 0.7rem;
-  cursor: pointer;
-}
-
-.note-form-submit:hover {
-  background: #60a5fa;
-  border-color: #60a5fa;
 }
 
 .note-form-error {

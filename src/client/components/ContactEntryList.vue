@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { NButton, NInput } from 'naive-ui';
 import { reactive, ref, watch } from 'vue';
 import type { ContactEntry } from '../../shared/types.js';
 
@@ -87,10 +88,15 @@ async function onRemove(entryId: number): Promise<void> {
     <ul v-if="localEntries.length" class="contact-entry-rows">
       <li v-for="entry in localEntries" :key="entry.id" class="contact-entry-row" data-testid="contact-entry-row">
         <template v-if="editingId === entry.id">
-          <input v-model="editValue.value" class="contact-entry-edit-input" type="text" :aria-label="`Edit ${heading}`" />
+          <NInput
+            v-model:value="editValue.value"
+            size="small"
+            class="contact-entry-edit-input"
+            :input-props="{ 'aria-label': `Edit ${heading}` }"
+          />
           <div class="contact-entry-actions">
-            <button type="button" @click="onSaveEdit(entry.id)">Save</button>
-            <button type="button" @click="cancelEdit">Cancel</button>
+            <NButton size="small" @click="onSaveEdit(entry.id)">Save</NButton>
+            <NButton size="small" @click="cancelEdit">Cancel</NButton>
           </div>
         </template>
         <template v-else>
@@ -99,9 +105,9 @@ async function onRemove(entryId: number): Promise<void> {
             <span v-if="entry.isPrimary" class="contact-entry-primary" data-testid="primary-marker">Primary</span>
           </span>
           <div class="contact-entry-actions">
-            <button type="button" @click="startEdit(entry)">Edit</button>
-            <button v-if="!entry.isPrimary" type="button" @click="onMarkPrimary(entry.id)">Make primary</button>
-            <button type="button" @click="onRemove(entry.id)">Remove</button>
+            <NButton size="small" @click="startEdit(entry)">Edit</NButton>
+            <NButton v-if="!entry.isPrimary" size="small" @click="onMarkPrimary(entry.id)">Make primary</NButton>
+            <NButton size="small" @click="onRemove(entry.id)">Remove</NButton>
           </div>
         </template>
       </li>
@@ -110,8 +116,8 @@ async function onRemove(entryId: number): Promise<void> {
 
     <div class="contact-entry-add">
       <label :for="`add-${heading}`">{{ `Add ${heading.replace(/s$/, '')}` }}</label>
-      <input :id="`add-${heading}`" v-model="newValue" type="text" />
-      <button type="button" @click="onAdd">Add</button>
+      <NInput v-model:value="newValue" size="small" :input-props="{ id: `add-${heading}` }" />
+      <NButton size="small" @click="onAdd">Add</NButton>
     </div>
 
     <p v-if="errorMessage" role="alert" class="contact-entry-error">{{ errorMessage }}</p>
@@ -183,39 +189,9 @@ async function onRemove(entryId: number): Promise<void> {
   font-size: 0.8rem;
 }
 
-.contact-entry-add input {
-  max-width: 100%;
-  box-sizing: border-box;
-}
-
-.contact-entry-list input[type='text'] {
-  background: #1a1a1f;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
-  color: rgba(255, 255, 255, 0.92);
-  padding: 0.3rem 0.5rem;
-  font-size: 0.82rem;
-  font-family: inherit;
-}
-
-.contact-entry-list input[type='text']:focus {
-  outline: none;
-  border-color: #3b82f6;
-}
-
-.contact-entry-list button {
-  background: #26262c;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
-  color: rgba(255, 255, 255, 0.85);
-  font-size: 0.78rem;
-  padding: 0.3rem 0.6rem;
-  cursor: pointer;
-}
-
-.contact-entry-list button:hover {
-  border-color: rgba(255, 255, 255, 0.3);
-  background: #2e2e35;
+.contact-entry-add label {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .contact-entry-error {
