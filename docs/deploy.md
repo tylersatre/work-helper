@@ -41,7 +41,7 @@ All your data lives in `./data/` on the host, outside the container, so it survi
 
 ## Fronting with Caddy
 
-If you already run Caddy on your server, front work-helper with it instead of exposing `WORK_HELPER_PORT` directly. Add this to your Caddyfile, substituting your real hostname for the placeholder — that's the only edit:
+If you already run Caddy on your server, front work-helper with it instead of exposing `WORK_HELPER_PORT` directly. (If Authentik provides SSO on your server, use [Fronting with Caddy and Authentik](#fronting-with-caddy-and-authentik) below instead — the Caddy snippet is different.) Add this to your Caddyfile, substituting your real hostname for the placeholder — that's the only edit:
 
 ```caddy
 work-helper.example.com {
@@ -60,6 +60,33 @@ docker network connect work-helper <your-caddy-container-name>
 ```
 
 With the `header_up` override above, work-helper's per-client lockout attributes attempts to the real client IP, not Caddy's, as long as clients go through this documented setup. A client that bypasses Caddy and hits `WORK_HELPER_PORT` directly still works; its lockout is just counted by its own address (and that address is a self-declared header, not cryptographically verified — the documented Caddy setup is the supported configuration for correct attribution).
+
+## Fronting with Caddy and Authentik
+
+This is the deployed setup: Authentik sits in front of the web UI, so opening work-helper in a browser requires an Authentik login. The MCP and OAuth endpoints are deliberately carved out of Authentik and keep the app's own protection (the connector password flow plus bearer tokens), because MCP clients are programs — they cannot complete an interactive Authentik login.
+
+Caddy routes the hostname to Authentik's embedded outpost rather than to work-helper directly — Authentik authenticates the request and then proxies it to the app:
+
+```caddy
+work-helper.example.com {
+	reverse_proxy authentik-server:9000
+}
+```
+
+In the Authentik admin UI:
+
+1. Create a **Proxy Provider** with mode **Proxy** (not *Forward auth*), External host `https://work-helper.example.com` (your real hostname), and Upstream `http://work-helper:8080`.
+2. In the provider's advanced protocol settings, add **Unauthenticated Paths** (one regex per line): `^/mcp`, `^/oauth/`, and `^/\.well-known/`. Without these, MCP clients hit Authentik's login redirect and never reach the connector password page.
+3. Create the Application pointing at that provider.
+4. Assign the provider to the embedded outpost: **Applications → Outposts → authentik Embedded Outpost → edit**, and add the application there.
+
+One-time setup: attach the Authentik server container to the `work-helper` network so the outpost can reach the upstream (same idea as the Caddy attach step above):
+
+```bash
+docker network connect work-helper <your-authentik-server-container-name>
+```
+
+To verify the setup end to end: the hostname in a browser should bounce through an Authentik login and land on the kanban board, and `curl https://work-helper.example.com/.well-known/oauth-authorization-server` should return endpoint URLs that start with `https://work-helper.example.com` — that confirms the forwarded host and protocol survive the Caddy → Authentik → app chain. Per-client lockout attribution keeps working through this chain: Caddy records the real client address in `X-Forwarded-For` and Authentik's outpost passes it through.
 
 ## Configuration files
 
@@ -102,3 +129,5 @@ docker compose logs -f    # follow logs (startup errors show up here)
 - **Malformed config file** — the container exits at startup; `docker compose logs` shows an error naming the specific file in `./config/`. Fix that file and `docker compose restart`.
 - **"active endpoints" warning on `docker compose down`** — expected and harmless if your Caddy container is attached to the `work-helper` network. The stack still stops; the next `docker compose up -d` reuses the existing network. The documented update procedure (`git pull` + `up -d --build`) never runs `down`, so you'll only see this if you stop the stack manually.
 - **A client bypassing Caddy** — hitting `WORK_HELPER_PORT` directly still works; MCP's per-client lockout just counts that client by its own address instead of a forwarded one.
+- **Hostname shows the Authentik dashboard instead of work-helper** — the embedded outpost isn't claiming the hostname, so requests fall through to the Authentik core UI. Check the three usual causes: the provider is an OAuth2/OIDC provider instead of a **Proxy Provider**, the provider's mode is *Forward auth* instead of **Proxy**, or the provider was never assigned to the embedded outpost (step 4 above).
+- **MCP client can't connect through Authentik** — check the provider's **Unauthenticated Paths** include `^/mcp`, `^/oauth/`, and `^/\.well-known/` (step 2 above); without them Authentik redirects the MCP client to a login page it cannot use.
