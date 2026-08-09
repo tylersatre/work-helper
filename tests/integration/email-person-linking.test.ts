@@ -336,4 +336,56 @@ describe('US3: connect synced email to people', () => {
     }
     expect(seen.size).toBe(3);
   });
+
+  it('creates a person with an email that already exists as an unlinked synced record, linking it instead of rejecting (CI review: people.ts createPerson)', async () => {
+    buildTestApp(new FakeMailProvider([pricingWithCc()]));
+    await startAndConnect();
+    await syncEmails('2026-07-01', '2026-07-31');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/people',
+      payload: { firstName: 'Ana', lastName: 'Alvarez', email: 'ana.alvarez@example.com' },
+    });
+
+    expect(response.statusCode).toBe(201);
+    const created = response.json();
+    expect(created.emails).toEqual([expect.objectContaining({ value: 'ana.alvarez@example.com', isPrimary: true })]);
+
+    const result = await emailsForPerson({ personId: created.id });
+    const { emails } = result.structuredContent as { emails: { subject: string }[] };
+    expect(emails).toHaveLength(1);
+    expect(emails[0]!.subject).toBe('Pricing question');
+  });
+
+  it('never rewrites a synced-mail-referenced address on edit — it unlinks the old value and links/creates the new one (CI review: contact-entries.ts editEntry)', async () => {
+    buildTestApp(new FakeMailProvider([pricingWithCc()]));
+    const sam = await createPerson({ firstName: 'Sam', lastName: 'Rivera', email: 'sam.rivera@example.com' });
+    await startAndConnect();
+    await syncEmails('2026-07-01', '2026-07-31');
+
+    const before = await app.inject({ method: 'GET', url: `/api/people/${sam}` });
+    const entryId = before.json().emails[0].id;
+
+    const editResponse = await app.inject({
+      method: 'PATCH',
+      url: `/api/people/${sam}/emails/${entryId}`,
+      payload: { value: 'sam.rivera.work@example.com' },
+    });
+    expect(editResponse.statusCode).toBe(200);
+    expect(editResponse.json().entries).toEqual([expect.objectContaining({ value: 'sam.rivera.work@example.com', isPrimary: true })]);
+
+    const [message] = db.select().from(emailMessages).all();
+    const conversation = await getConversation(message!.conversationId);
+    const content = conversation.structuredContent as {
+      messages: { participants: { address: string; role: string; person: { id: number; name: string } | null }[] }[];
+    };
+    const fromParticipant = content.messages[0]!.participants.find((p) => p.role === 'from')!;
+    expect(fromParticipant.address).toBe('sam.rivera@example.com');
+    expect(fromParticipant.person).toBeNull();
+
+    const oldRow = db.select().from(emailAddresses).where(eq(emailAddresses.value, 'sam.rivera@example.com')).all();
+    expect(oldRow).toHaveLength(1);
+    expect(oldRow[0]?.personId).toBeNull();
+  });
 });

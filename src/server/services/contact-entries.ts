@@ -68,7 +68,7 @@ export function isEmailAddressReferenced(db: AppDb, addressId: number): boolean 
   return row !== undefined;
 }
 
-function findUnlinkedEmailByValue(db: AppDb, value: string): { id: number; personId: number | null } | undefined {
+export function findEmailAddressByValue(db: AppDb, value: string): { id: number; personId: number | null } | undefined {
   const [row] = db
     .select({ id: emailAddresses.id, personId: emailAddresses.personId })
     .from(emailAddresses)
@@ -86,7 +86,7 @@ export function addEntry(db: AppDb, table: EntryTable, personId: number, rawValu
   }
 
   if (table === emailAddresses) {
-    const existing = findUnlinkedEmailByValue(db, value);
+    const existing = findEmailAddressByValue(db, value);
     if (existing) {
       if (existing.personId !== null) {
         return { ok: false, error: 'conflict' };
@@ -129,6 +129,19 @@ export function editEntry(
   }
   if (conflictExists(db, table, value, entryId)) {
     return { ok: false, error: 'conflict' };
+  }
+
+  if (table === emailAddresses && isEmailAddressReferenced(db, entryId)) {
+    // Synced mail references this address record — rewriting its value in place would
+    // falsify the permanent message snapshot that reads it live (FR-003). Unlink the old
+    // record instead (preserving it for that snapshot) and create a fresh linked row for
+    // the new value; conflictExists above already guarantees the new value is unclaimed.
+    db.transaction((tx) => {
+      const [current] = tx.select({ isPrimary: emailAddresses.isPrimary }).from(emailAddresses).where(eq(emailAddresses.id, entryId)).limit(1).all();
+      tx.update(emailAddresses).set({ personId: null, isPrimary: false }).where(eq(emailAddresses.id, entryId)).run();
+      tx.insert(emailAddresses).values({ personId, value, isPrimary: current?.isPrimary ?? false, createdAt: Date.now() }).run();
+    });
+    return { ok: true, entries: loadEntries(db, table, personId) };
   }
 
   db.update(table)
