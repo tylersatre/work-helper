@@ -1,10 +1,17 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/vue';
+import { fireEvent, render, screen, within } from '@testing-library/vue';
 import { flushPromises } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import TaskNotes from '../../src/client/components/TaskNotes.vue';
 import { absoluteLocal } from '../../src/client/utils/time.js';
 import type { Note } from '../../src/shared/types.js';
+
+async function openDeleteDialog(index = 0): Promise<HTMLElement> {
+  const deleteButtons = screen.getAllByRole('button', { name: /^delete$/i });
+  await fireEvent.click(deleteButtons[index]!);
+  await flushPromises();
+  return screen.getByTestId('confirm-dialog');
+}
 
 describe('TaskNotes', () => {
   afterEach(() => {
@@ -101,19 +108,30 @@ describe('TaskNotes', () => {
     expect(screen.getByRole('button', { name: /delete/i })).toBeTruthy();
   });
 
-  it('confirming the delete prompt removes only the targeted note', async () => {
+  it('clicking delete opens the confirm dialog without calling window.confirm', async () => {
+    const notes: Note[] = [{ id: 1, taskId: 1, text: 'First note', source: 'ui', createdAt: 1 }];
+    const confirmSpy = vi.spyOn(window, 'confirm');
+    vi.stubGlobal('fetch', vi.fn());
+
+    render(TaskNotes, { props: { taskId: 1, notes } });
+
+    const dialog = await openDeleteDialog();
+    expect(dialog).toBeTruthy();
+    expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
+  it('confirming the dialog deletes only the targeted note', async () => {
     const notes: Note[] = [
       { id: 2, taskId: 1, text: 'Second note', source: 'ui', createdAt: 2 },
       { id: 1, taskId: 1, text: 'First note', source: 'ui', createdAt: 1 },
     ];
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 });
     vi.stubGlobal('fetch', fetchMock);
 
     render(TaskNotes, { props: { taskId: 1, notes } });
 
-    const deleteButtons = screen.getAllByRole('button', { name: /delete/i });
-    await fireEvent.click(deleteButtons[0]!);
+    const dialog = await openDeleteDialog(0);
+    await fireEvent.click(within(dialog).getByRole('button', { name: /^delete$/i }));
     await flushPromises();
 
     expect(fetchMock).toHaveBeenCalledWith('/api/tasks/1/notes/2', expect.objectContaining({ method: 'DELETE' }));
@@ -122,19 +140,18 @@ describe('TaskNotes', () => {
     expect(remaining[0]?.textContent).toContain('First note');
   });
 
-  it('cancelling the delete prompt sends no request and leaves other notes untouched', async () => {
+  it('cancelling the dialog sends no request, leaves the note intact, and closes the dialog', async () => {
     const notes: Note[] = [
       { id: 1, taskId: 1, text: 'First note', source: 'ui', createdAt: 1 },
       { id: 2, taskId: 1, text: 'Second note', source: 'ui', createdAt: 2 },
     ];
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
     render(TaskNotes, { props: { taskId: 1, notes } });
 
-    const deleteButtons = screen.getAllByRole('button', { name: /delete/i });
-    await fireEvent.click(deleteButtons[0]!);
+    const dialog = await openDeleteDialog(0);
+    await fireEvent.click(within(dialog).getByRole('button', { name: /^cancel$/i }));
     await flushPromises();
 
     expect(fetchMock).not.toHaveBeenCalled();
@@ -143,13 +160,13 @@ describe('TaskNotes', () => {
 
   it('deleting the only note returns the section to the empty state with the add-note input still present', async () => {
     const notes: Note[] = [{ id: 1, taskId: 1, text: 'Only note', source: 'ui', createdAt: 1 }];
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 });
     vi.stubGlobal('fetch', fetchMock);
 
     render(TaskNotes, { props: { taskId: 1, notes } });
 
-    await fireEvent.click(screen.getByRole('button', { name: /delete/i }));
+    const dialog = await openDeleteDialog();
+    await fireEvent.click(within(dialog).getByRole('button', { name: /^delete$/i }));
     await flushPromises();
 
     expect(screen.queryAllByTestId('note')).toHaveLength(0);
@@ -203,15 +220,15 @@ describe('TaskNotes', () => {
     expect(items[1]?.querySelector('time')).toBeTruthy();
   });
 
-  it('the confirm-guarded delete flow works identically on a source "mcp" note', async () => {
+  it('the dialog-guarded delete flow works identically on a source "mcp" note', async () => {
     const notes: Note[] = [{ id: 1, taskId: 1, text: 'Synced from assistant', source: 'mcp', createdAt: 1 }];
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 });
     vi.stubGlobal('fetch', fetchMock);
 
     render(TaskNotes, { props: { taskId: 1, notes } });
 
-    await fireEvent.click(screen.getByRole('button', { name: /delete/i }));
+    const dialog = await openDeleteDialog();
+    await fireEvent.click(within(dialog).getByRole('button', { name: /^delete$/i }));
     await flushPromises();
 
     expect(fetchMock).toHaveBeenCalledWith('/api/tasks/1/notes/1', expect.objectContaining({ method: 'DELETE' }));

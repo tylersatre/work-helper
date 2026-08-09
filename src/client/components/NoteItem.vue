@@ -6,7 +6,7 @@ import { absoluteLocal, relativeTime } from '../utils/time.js';
 
 const props = defineProps<{ note: Note; now: number }>();
 
-const emit = defineEmits<{ delete: [noteId: number] }>();
+const emit = defineEmits<{ 'delete-request': [noteId: number] }>();
 
 const sourceLabel = computed(() => (props.note.source === 'ui' ? 'You' : 'via MCP'));
 const isoDatetime = computed(() => new Date(props.note.createdAt).toISOString());
@@ -15,29 +15,57 @@ const relativeLabel = computed(() => relativeTime(props.note.createdAt, props.no
 const renderedText = computed(() => renderNoteMarkdown(props.note.text));
 
 function onDelete(): void {
-  if (window.confirm('Delete this note?')) {
-    emit('delete', props.note.id);
-  }
+  emit('delete-request', props.note.id);
 }
 </script>
 
 <template>
-  <li data-testid="note">
-    <span data-testid="note-source">{{ sourceLabel }}</span>
-    <time :datetime="isoDatetime" :title="hoverTitle">{{ relativeLabel }}</time>
+  <li class="note" data-testid="note">
+    <div class="note-meta">
+      <span class="note-source" data-testid="note-source">{{ sourceLabel }}</span>
+      <time class="note-time" :datetime="isoDatetime" :title="hoverTitle">{{ relativeLabel }}</time>
+    </div>
     <div class="note-text" v-html="renderedText"></div>
-    <button type="button" @click="onDelete">Delete</button>
+    <button type="button" class="note-delete" @click="onDelete">Delete</button>
   </li>
 </template>
 
 <style scoped>
-li {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #ccc;
+.note {
+  padding: 0.5rem 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 4px;
   margin-bottom: 0.5rem;
+  background: #1f1f24;
   overflow-wrap: break-word;
   word-break: break-word;
 }
 
+.note-meta {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 0.25rem;
+}
+
+.note-text {
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.note-delete {
+  margin-top: 0.35rem;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.note-delete:hover {
+  color: #fca5a5;
+}
 </style>

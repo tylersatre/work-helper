@@ -46,20 +46,20 @@ async function unlinkPerson(personId: number): Promise<void> {
 </script>
 
 <template>
-  <div>
-    <label for="task-detail-search">Search people</label>
-    <input id="task-detail-search" v-model="query" type="text" name="search" />
+  <div class="linked-people">
+    <label class="linked-people-label" for="task-detail-search">Search people</label>
+    <input id="task-detail-search" v-model="query" class="linked-people-search" type="text" name="search" />
 
     <ul v-if="results.length" class="people-list">
       <li v-for="person in results" :key="person.id" class="person-row" data-testid="search-result">
-        {{ person.firstName }} {{ person.lastName }} — {{ primaryValue(person.emails) }}
+        <span>{{ person.firstName }} {{ person.lastName }} — {{ primaryValue(person.emails) }}</span>
         <button type="button" @click="linkPerson(person.id)">Link</button>
       </li>
     </ul>
 
     <ul class="people-list">
       <li v-for="person in people" :key="person.id" class="person-row" data-testid="linked-person">
-        {{ person.firstName }} {{ person.lastName }}
+        <span>{{ person.firstName }} {{ person.lastName }}</span>
         <button type="button" @click="unlinkPerson(person.id)">Remove</button>
       </li>
     </ul>
@@ -67,6 +67,20 @@ async function unlinkPerson(personId: number): Promise<void> {
 </template>
 
 <style scoped>
+.linked-people-label {
+  display: block;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 0.25rem;
+}
+
+.linked-people-search {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 0.5rem;
+}
+
 .people-list {
   list-style: none;
   padding: 0;
@@ -74,10 +88,16 @@ async function unlinkPerson(personId: number): Promise<void> {
 }
 
 .person-row {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #ccc;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 4px;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.4rem;
+  background: #1f1f24;
+  font-size: 0.85rem;
   overflow-wrap: break-word;
   word-break: break-word;
 }
