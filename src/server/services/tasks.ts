@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { noteTextSchema, titleSchema } from '../../shared/validation.js';
 import { people, emailAddresses, personPhones, taskNotes, taskPeople, tasks } from '../db/schema.js';
@@ -14,9 +14,16 @@ export function createTask(db: AppDb, lanes: string[], rawTitle: unknown, rawNot
   const trimmedNote = typeof rawNote === 'string' ? rawNote.trim() : '';
 
   return db.transaction((tx) => {
+    const [{ maxPosition } = { maxPosition: null }] = tx
+      .select({ maxPosition: sql<number | null>`max(${tasks.position})` })
+      .from(tasks)
+      .where(eq(tasks.lane, firstLane))
+      .all();
+    const position = maxPosition === null ? 0 : maxPosition + 1;
+
     const [created] = tx
       .insert(tasks)
-      .values({ title, lane: firstLane, createdAt })
+      .values({ title, lane: firstLane, position, createdAt })
       .returning()
       .all();
 
@@ -29,7 +36,57 @@ export function createTask(db: AppDb, lanes: string[], rawTitle: unknown, rawNot
 }
 
 export function listTasksByLane(db: AppDb, lane: string) {
-  return db.select().from(tasks).where(eq(tasks.lane, lane)).orderBy(asc(tasks.id)).all();
+  return db.select().from(tasks).where(eq(tasks.lane, lane)).orderBy(asc(tasks.position), asc(tasks.id)).all();
+}
+
+export type MoveTaskResult =
+  | { ok: true; task: typeof tasks.$inferSelect }
+  | { ok: false; error: 'task-not-found' | 'invalid-lane' };
+
+export function moveTask(db: AppDb, lanes: string[], taskId: number, targetLane: string, targetIndex: number): MoveTaskResult {
+  return db.transaction((tx) => {
+    const [task] = tx.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).all();
+    if (!task) {
+      return { ok: false, error: 'task-not-found' };
+    }
+    if (!lanes.includes(targetLane)) {
+      return { ok: false, error: 'invalid-lane' };
+    }
+
+    const sourceLane = task.lane;
+
+    const destinationIds = tx
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(and(eq(tasks.lane, targetLane), ne(tasks.id, taskId)))
+      .orderBy(asc(tasks.position), asc(tasks.id))
+      .all()
+      .map((row) => row.id);
+
+    const clampedIndex = Math.max(0, Math.min(targetIndex, destinationIds.length));
+    destinationIds.splice(clampedIndex, 0, taskId);
+
+    destinationIds.forEach((id, position) => {
+      tx.update(tasks).set({ lane: targetLane, position }).where(eq(tasks.id, id)).run();
+    });
+
+    if (sourceLane !== targetLane) {
+      const sourceIds = tx
+        .select({ id: tasks.id })
+        .from(tasks)
+        .where(eq(tasks.lane, sourceLane))
+        .orderBy(asc(tasks.position), asc(tasks.id))
+        .all()
+        .map((row) => row.id);
+
+      sourceIds.forEach((id, position) => {
+        tx.update(tasks).set({ position }).where(eq(tasks.id, id)).run();
+      });
+    }
+
+    const [updated] = tx.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).all();
+    return { ok: true, task: updated! };
+  });
 }
 
 export function getTaskDetail(db: AppDb, id: number) {

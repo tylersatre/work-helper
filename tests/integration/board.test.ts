@@ -23,11 +23,11 @@ describe('GET /api/board', () => {
     });
   });
 
-  it('returns tasks in the correct lane in id ASC order on a populated database', async () => {
+  it('returns tasks in each lane ordered by position ASC, id ASC, not insertion order', async () => {
     const { db } = createDb(':memory:');
-    db.insert(tasks).values({ title: 'First', lane: 'To Do', createdAt: 1 }).run();
-    db.insert(tasks).values({ title: 'Second', lane: 'To Do', createdAt: 2 }).run();
-    db.insert(tasks).values({ title: 'Third', lane: 'In Progress', createdAt: 3 }).run();
+    db.insert(tasks).values({ title: 'First', lane: 'To Do', position: 1, createdAt: 1 }).run();
+    db.insert(tasks).values({ title: 'Second', lane: 'To Do', position: 0, createdAt: 2 }).run();
+    db.insert(tasks).values({ title: 'Third', lane: 'In Progress', position: 0, createdAt: 3 }).run();
     const app = buildApp({ db, lanes: LANES });
 
     const response = await app.inject({ method: 'GET', url: '/api/board' });
@@ -36,7 +36,30 @@ describe('GET /api/board', () => {
     const toDo = body.lanes.find((lane: { name: string }) => lane.name === 'To Do');
     const inProgress = body.lanes.find((lane: { name: string }) => lane.name === 'In Progress');
 
-    expect(toDo.tasks.map((t: { title: string }) => t.title)).toEqual(['First', 'Second']);
+    expect(toDo.tasks.map((t: { title: string }) => t.title)).toEqual(['Second', 'First']);
     expect(inProgress.tasks.map((t: { title: string }) => t.title)).toEqual(['Third']);
+  });
+
+  it('falls back to id ASC to break ties on duplicate positions', async () => {
+    const { db } = createDb(':memory:');
+    db.insert(tasks).values({ title: 'First', lane: 'To Do', position: 0, createdAt: 1 }).run();
+    db.insert(tasks).values({ title: 'Second', lane: 'To Do', position: 0, createdAt: 2 }).run();
+    const app = buildApp({ db, lanes: LANES });
+
+    const response = await app.inject({ method: 'GET', url: '/api/board' });
+
+    const toDo = response.json().lanes.find((lane: { name: string }) => lane.name === 'To Do');
+    expect(toDo.tasks.map((t: { title: string }) => t.title)).toEqual(['First', 'Second']);
+  });
+
+  it('includes position on every task in the board payload', async () => {
+    const { db } = createDb(':memory:');
+    db.insert(tasks).values({ title: 'First', lane: 'To Do', position: 0, createdAt: 1 }).run();
+    const app = buildApp({ db, lanes: LANES });
+
+    const response = await app.inject({ method: 'GET', url: '/api/board' });
+
+    const toDo = response.json().lanes.find((lane: { name: string }) => lane.name === 'To Do');
+    expect(toDo.tasks[0]).toMatchObject({ title: 'First', position: 0 });
   });
 });

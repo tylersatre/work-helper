@@ -31,6 +31,7 @@ onMounted(fetchTask);
 <template>
   <section v-if="task">
     <h2>{{ task.title }}</h2>
+    <p data-testid="task-lane">Lane: {{ task.lane }}</p>
     <LinkedPeople :task-id="task.id" :people="task.people" @update:people="onUpdatePeople" />
     <TaskNotes :task-id="task.id" :notes="task.notes" @update:notes="onUpdateNotes" />
   </section>

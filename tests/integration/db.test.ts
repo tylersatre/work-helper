@@ -10,7 +10,7 @@ describe('createDb', () => {
   it('creates a tasks table supporting insert + select round-trip on :memory:', () => {
     const { db } = createDb(':memory:');
 
-    db.insert(tasks).values({ title: 'Follow up with Sam', lane: 'To Do', createdAt: 1754500000000 }).run();
+    db.insert(tasks).values({ title: 'Follow up with Sam', lane: 'To Do', position: 0, createdAt: 1754500000000 }).run();
     const rows = db.select().from(tasks).all();
 
     expect(rows).toHaveLength(1);
@@ -33,7 +33,7 @@ describe('createDb', () => {
       const dbPath = join(dir, 'work-helper.db');
 
       const { db: db1, sqlite: sqlite1 } = createDb(dbPath);
-      db1.insert(tasks).values({ title: 'First', lane: 'To Do', createdAt: 1 }).run();
+      db1.insert(tasks).values({ title: 'First', lane: 'To Do', position: 0, createdAt: 1 }).run();
       sqlite1.close();
 
       expect(() => createDb(dbPath)).not.toThrow();
@@ -80,7 +80,7 @@ describe('createDb', () => {
 
     it('rejects a duplicate (task_id, person_id) pair on task_people via the composite primary key', () => {
       const { db } = createDb(':memory:');
-      const [task] = db.insert(tasks).values({ title: 'Follow up with Sam', lane: 'To Do', createdAt: 1 }).returning().all();
+      const [task] = db.insert(tasks).values({ title: 'Follow up with Sam', lane: 'To Do', position: 0, createdAt: 1 }).returning().all();
       const [person] = db.insert(people).values({ firstName: 'Sam', lastName: 'Rivera', createdAt: 1 }).returning().all();
 
       db.insert(taskPeople).values({ taskId: task!.id, personId: person!.id }).run();
@@ -90,7 +90,7 @@ describe('createDb', () => {
 
     it('cascades deleting a person to remove its task_people rows', () => {
       const { db } = createDb(':memory:');
-      const [task] = db.insert(tasks).values({ title: 'Follow up with Sam', lane: 'To Do', createdAt: 1 }).returning().all();
+      const [task] = db.insert(tasks).values({ title: 'Follow up with Sam', lane: 'To Do', position: 0, createdAt: 1 }).returning().all();
       const [person] = db.insert(people).values({ firstName: 'Sam', lastName: 'Rivera', createdAt: 1 }).returning().all();
       db.insert(taskPeople).values({ taskId: task!.id, personId: person!.id }).run();
 
@@ -127,7 +127,7 @@ describe('createDb', () => {
 
     it('cascades deleting a task to remove its notes', () => {
       const { db, sqlite } = createDb(':memory:');
-      const [task] = db.insert(tasks).values({ title: 'Follow up with Sam', lane: 'To Do', createdAt: 1 }).returning().all();
+      const [task] = db.insert(tasks).values({ title: 'Follow up with Sam', lane: 'To Do', position: 0, createdAt: 1 }).returning().all();
       sqlite
         .prepare('INSERT INTO task_notes (task_id, text, source, created_at) VALUES (?, ?, ?, ?)')
         .run(task!.id, 'First note', 'ui', 1);
