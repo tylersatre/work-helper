@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { eq } from 'drizzle-orm';
@@ -8,16 +8,19 @@ import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
 import { emailAddresses, emailConversations, emailMessages, emailParticipants } from '../../src/server/db/schema.js';
 import type * as schema from '../../src/server/db/schema.js';
-import { connectThroughPasswordGate } from './helpers/oauth-client.js';
+import { createIdentityVerifier } from '../../src/server/mcp/auth/identity.js';
+import { connectThroughApproval } from './helpers/oauth-client.js';
 import { FakeMailProvider, type SeedMessage } from './helpers/fake-mail-provider.js';
+import { startStubIdentityProvider, type StubIdentityProvider } from './helpers/stub-identity-provider.js';
 
 const LANES = ['To Do', 'In Progress', 'Waiting', 'Done'];
-const PASSWORD = 'correct-horse-battery';
+const MCP_TOKEN_SECRET = 'correct-horse-battery';
 
 let app: FastifyInstance;
 let db: BetterSQLite3Database<typeof schema>;
 let client: Client;
 let serverUrl: string;
+let stub: StubIdentityProvider;
 
 function pricingQuestion(): SeedMessage {
   return {
@@ -102,7 +105,7 @@ function invoiceAttached(): SeedMessage {
 function buildTestApp(mailProvider: FakeMailProvider) {
   const created = createDb(':memory:');
   db = created.db;
-  app = buildApp({ db, lanes: LANES, connectorPassword: PASSWORD, mailProvider });
+  app = buildApp({ db, lanes: LANES, mcpTokenSecret: MCP_TOKEN_SECRET, identityVerifier: createIdentityVerifier(stub.url), mailProvider });
 }
 
 async function startAndConnect(): Promise<void> {
@@ -113,7 +116,7 @@ async function startAndConnect(): Promise<void> {
   }
   serverUrl = `http://127.0.0.1:${address.port}`;
 
-  const provider = await connectThroughPasswordGate(`${serverUrl}/mcp`, PASSWORD);
+  const provider = await connectThroughApproval(`${serverUrl}/mcp`, { assertion: stub.mint('tyler') });
   client = new Client({ name: 'test-client', version: '1.0.0' });
   const transport = new StreamableHTTPClientTransport(new URL(`${serverUrl}/mcp`), { authProvider: provider });
   await client.connect(transport);
@@ -143,9 +146,14 @@ function participantsFor(messageId: number) {
     .all();
 }
 
+beforeEach(async () => {
+  stub = await startStubIdentityProvider();
+});
+
 afterEach(async () => {
   await client.close();
   await app.close();
+  await stub.close();
 });
 
 describe('US1: sync-emails', () => {

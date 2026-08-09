@@ -28,8 +28,17 @@ export interface Harness {
   projectName: string;
   /** Dynamically chosen free host port, written into `.env` as WORK_HELPER_PORT. */
   port: number;
-  /** Test CONNECTOR_PASSWORD written into `.env`. */
-  password: string;
+  /** Test MCP_TOKEN_SECRET written into `.env`. */
+  mcpTokenSecret: string;
+  /**
+   * AUTHENTIK_USERINFO_URL written into `.env`, pointing at `identityProviderContainerName`'s
+   * expected DNS name on the `work-helper` network. Written up front so the app container starts
+   * with it configured; a test starts the actual stub identity provider container under this name
+   * before exercising the authorize flow.
+   */
+  identityProviderUrl: string;
+  /** The container name a test must use when starting the throwaway stub identity provider. */
+  identityProviderContainerName: string;
   /** `http://127.0.0.1:<port>` */
   baseUrl: string;
   /** Runs `docker compose -p <project> <args>` in the scratch dir; never throws. */
@@ -111,8 +120,81 @@ async function run(command: string, args: string[], cwd: string): Promise<Compos
 }
 
 export interface CreateHarnessOptions {
-  /** Test CONNECTOR_PASSWORD. Defaults to a random value. */
-  password?: string;
+  /** Test MCP_TOKEN_SECRET. Defaults to a random value. */
+  mcpTokenSecret?: string;
+}
+
+// A self-contained Node script (no repo imports — it runs inside a bare node:22-alpine container)
+// honoring the same simulation contract as tests/integration/helpers/stub-identity-provider.ts:
+// 200 + preferred_username for the one token it was started with, 401 for anything else.
+const STUB_IDENTITY_SCRIPT = `
+const http = require('http');
+const token = process.env.HONORED_TOKEN;
+const username = process.env.STUB_USERNAME || 'tyler';
+http
+  .createServer((req, res) => {
+    const auth = req.headers.authorization;
+    const presented = auth && auth.startsWith('Bearer ') ? auth.slice(7) : undefined;
+    if (presented === token) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ preferred_username: username }));
+    } else {
+      res.writeHead(401, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'invalid_token' }));
+    }
+  })
+  .listen(8080, '0.0.0.0');
+`;
+
+/**
+ * Starts the stub identity provider as a throwaway container on the `work-helper` network, under
+ * `harness.identityProviderContainerName` — the DNS name `harness.identityProviderUrl` already
+ * points at. Tracked for teardown. Returns the container id.
+ */
+export async function startStubIdentityContainer(harness: Harness, honoredToken: string, username = 'tyler'): Promise<string> {
+  const run = await harness.docker([
+    'run',
+    '-d',
+    '--name',
+    harness.identityProviderContainerName,
+    '--network',
+    'work-helper',
+    '-e',
+    `HONORED_TOKEN=${honoredToken}`,
+    '-e',
+    `STUB_USERNAME=${username}`,
+    'node:22-alpine',
+    'node',
+    '-e',
+    STUB_IDENTITY_SCRIPT,
+  ]);
+  if (run.code !== 0) {
+    throw new Error(`docker run stub-identity failed:\n${run.stderr}`);
+  }
+  const containerId = run.stdout.trim();
+  harness.trackContainer(containerId);
+
+  // The container is running as soon as `docker run` returns, but the Node process inside it
+  // (and the network's DNS registration for its name) can lag a beat behind that — wait until the
+  // stub is actually answering before any caller relies on other containers reaching it by name.
+  const deadline = Date.now() + 5_000;
+  let ready = false;
+  while (Date.now() < deadline) {
+    const probe = await harness.docker(['exec', containerId, 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/application/o/userinfo/']);
+    // wget exits non-zero on a non-2xx response too (401 here) — any exit code other than "connection
+    // refused"-style failure proves the server is listening. A cleanly-parsed CurlResult isn't needed;
+    // stderr classifies unreachable vs. merely-unauthorized.
+    if (probe.code === 0 || !/connection refused|could not connect/i.test(probe.stderr)) {
+      ready = true;
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  if (!ready) {
+    throw new Error(`stub identity container ${containerId} never became ready`);
+  }
+
+  return containerId;
 }
 
 export async function createHarness(opts: CreateHarnessOptions = {}): Promise<Harness> {
@@ -122,10 +204,19 @@ export async function createHarness(opts: CreateHarnessOptions = {}): Promise<Ha
 
   const projectName = `wh${randomBytes(4).toString('hex')}`;
   const port = await getFreePort();
-  const password = opts.password ?? `test-${randomBytes(8).toString('hex')}`;
+  const mcpTokenSecret = opts.mcpTokenSecret ?? `test-${randomBytes(8).toString('hex')}`;
+  const identityProviderContainerName = `${projectName}-stub-identity`;
+  const identityProviderUrl = `http://${identityProviderContainerName}:8080/application/o/userinfo/`;
   const trackedContainers: string[] = [];
 
-  writeFileSync(join(dir, '.env'), envFileContents({ CONNECTOR_PASSWORD: password, WORK_HELPER_PORT: String(port) }));
+  writeFileSync(
+    join(dir, '.env'),
+    envFileContents({
+      MCP_TOKEN_SECRET: mcpTokenSecret,
+      AUTHENTIK_USERINFO_URL: identityProviderUrl,
+      WORK_HELPER_PORT: String(port),
+    }),
+  );
 
   const baseUrl = `http://127.0.0.1:${port}`;
 
@@ -133,7 +224,9 @@ export async function createHarness(opts: CreateHarnessOptions = {}): Promise<Ha
     dir,
     projectName,
     port,
-    password,
+    mcpTokenSecret,
+    identityProviderUrl,
+    identityProviderContainerName,
     baseUrl,
 
     compose(args: string[]) {

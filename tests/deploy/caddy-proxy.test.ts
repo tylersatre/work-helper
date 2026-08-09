@@ -1,7 +1,8 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createHarness, type Harness } from './harness.js';
+import { extractTicket } from '../integration/helpers/oauth-client.js';
+import { createHarness, startStubIdentityContainer, type Harness } from './harness.js';
 
 const PLACEHOLDER_HOSTNAME = 'work-helper.example.com';
 const TEST_HOSTNAME = 'work-helper.localhost';
@@ -70,7 +71,7 @@ describe('US4: fronted by Caddy via the documented snippet', () => {
     }
   });
 
-  it("proxies through the doc's Caddyfile snippet with per-client lockout attribution (FR-009, FR-010, SC-005, SC-006)", async () => {
+  it("proxies through the doc's Caddyfile snippet, including the full Authentik-verified connect flow (SC-005)", async () => {
     harness = await createHarness();
     const currentHarness = harness;
 
@@ -99,6 +100,9 @@ describe('US4: fronted by Caddy via the documented snippet', () => {
     const up = await harness.up();
     expect(up.code, `docker compose up -d --build failed:\n${up.stderr}`).toBe(0);
     await harness.waitForHttp('/api/board');
+
+    const token = randomBytes(24).toString('base64url');
+    await startStubIdentityContainer(harness, token);
 
     // The doc's snippet must use the placeholder hostname — the real hostname never lives in the repo (FR-012).
     const docContents = harness.readFile('docs/deploy.md');
@@ -137,23 +141,18 @@ describe('US4: fronted by Caddy via the documented snippet', () => {
     expect(caddyIp, `could not determine Caddy's IP on the work-helper network:\n${inspect.stderr}`).not.toBe('');
     const resolveArg = `${TEST_HOSTNAME}:443:${caddyIp}`;
 
-    const clientARun = await harness.docker(['run', '-d', '--network', 'work-helper', '--entrypoint', 'sleep', CURL_IMAGE, '600']);
-    expect(clientARun.code, `docker run clientA failed:\n${clientARun.stderr}`).toBe(0);
-    const clientA = clientARun.stdout.trim();
-    harness.trackContainer(clientA);
-
-    const clientBRun = await harness.docker(['run', '-d', '--network', 'work-helper', '--entrypoint', 'sleep', CURL_IMAGE, '600']);
-    expect(clientBRun.code, `docker run clientB failed:\n${clientBRun.stderr}`).toBe(0);
-    const clientB = clientBRun.stdout.trim();
-    harness.trackContainer(clientB);
+    const clientRun = await harness.docker(['run', '-d', '--network', 'work-helper', '--entrypoint', 'sleep', CURL_IMAGE, '600']);
+    expect(clientRun.code, `docker run client failed:\n${clientRun.stderr}`).toBe(0);
+    const clientContainer = clientRun.stdout.trim();
+    harness.trackContainer(clientContainer);
 
     // Board reachable through Caddy (SC-005).
-    const board = await curlIn(clientA, ['--resolve', resolveArg, '-k', '-s', '-i', `https://${TEST_HOSTNAME}/api/board`], 20_000);
+    const board = await curlIn(clientContainer, ['--resolve', resolveArg, '-k', '-s', '-i', `https://${TEST_HOSTNAME}/api/board`], 20_000);
     expect(board.status).toBe(200);
     expect(JSON.parse(board.body)).toMatchObject({ lanes: expect.any(Array) });
 
     // Register an MCP client through Caddy.
-    const register = await curlIn(clientA, [
+    const register = await curlIn(clientContainer, [
       '--resolve',
       resolveArg,
       '-k',
@@ -173,54 +172,58 @@ describe('US4: fronted by Caddy via the documented snippet', () => {
     const codeVerifier = randomBytes(32).toString('base64url');
     const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url');
     const state = randomBytes(8).toString('base64url');
-    const flowParams = {
+    const authorizeParams = new URLSearchParams({
       response_type: 'code',
       client_id: clientId,
       redirect_uri: REDIRECT_URI,
       code_challenge: codeChallenge,
       code_challenge_method: 'S256',
       state,
-    };
+    }).toString();
 
-    // The connector password page is reachable through Caddy (SC-005).
-    const passwordPage = await curlIn(clientA, [
+    // The approval page is reachable through Caddy, with the X-authentik-jwt header (simulating the
+    // outpost) surviving the proxy hop intact, and no password field anywhere (SC-005, FR-002/FR-008).
+    const approvalPage = await curlIn(clientContainer, [
       '--resolve',
       resolveArg,
       '-k',
       '-s',
       '-i',
-      `https://${TEST_HOSTNAME}/oauth/authorize?${new URLSearchParams(flowParams).toString()}`,
+      '-H',
+      `X-authentik-jwt: ${token}`,
+      `https://${TEST_HOSTNAME}/oauth/authorize?${authorizeParams}`,
     ]);
-    expect(passwordPage.status).toBe(200);
-    expect(passwordPage.body).toContain('type="password"');
+    expect(approvalPage.status).toBe(200);
+    expect(approvalPage.body).not.toMatch(/type="password"/);
+    const ticket = extractTicket(approvalPage.body);
 
-    async function submitPassword(container: string, password: string): Promise<CurlResult> {
-      const body = new URLSearchParams({ ...flowParams, password }).toString();
-      return curlIn(container, [
-        '--resolve',
-        resolveArg,
-        '-k',
-        '-s',
-        '-i',
-        '-X',
-        'POST',
-        '-d',
-        body,
-        `https://${TEST_HOSTNAME}/oauth/authorize`,
-      ]);
-    }
+    // A direct hit with no X-authentik-jwt header is rejected fail-closed, even through Caddy (US2).
+    const bypassAttempt = await curlIn(clientContainer, [
+      '--resolve',
+      resolveArg,
+      '-k',
+      '-s',
+      '-i',
+      `https://${TEST_HOSTNAME}/oauth/authorize?${authorizeParams}`,
+    ]);
+    expect(bypassAttempt.status).toBe(403);
 
-    // Client A: three consecutive wrong passwords locks it out (FR-010).
-    expect((await submitPassword(clientA, 'wrong-1')).status).toBe(401);
-    expect((await submitPassword(clientA, 'wrong-2')).status).toBe(401);
-    expect((await submitPassword(clientA, 'wrong-3')).status).toBe(423);
-    // Even the correct password no longer works for the locked client.
-    expect((await submitPassword(clientA, harness.password)).status).toBe(423);
-
-    // Client B, a distinct forwarded IP, is unaffected and succeeds with the correct password.
-    const successFromB = await submitPassword(clientB, harness.password);
-    expect(successFromB.status).toBe(302);
-    const code = extractCode(successFromB.headers.location);
+    const approve = await curlIn(clientContainer, [
+      '--resolve',
+      resolveArg,
+      '-k',
+      '-s',
+      '-i',
+      '-X',
+      'POST',
+      '-H',
+      `X-authentik-jwt: ${token}`,
+      '-d',
+      new URLSearchParams({ ticket, action: 'approve' }).toString(),
+      `https://${TEST_HOSTNAME}/oauth/authorize`,
+    ]);
+    expect(approve.status).toBe(302);
+    const code = extractCode(approve.headers.location);
 
     const tokenBody = new URLSearchParams({
       grant_type: 'authorization_code',
@@ -229,7 +232,7 @@ describe('US4: fronted by Caddy via the documented snippet', () => {
       client_id: clientId,
       redirect_uri: REDIRECT_URI,
     }).toString();
-    const token = await curlIn(clientB, [
+    const tokenResponse = await curlIn(clientContainer, [
       '--resolve',
       resolveArg,
       '-k',
@@ -241,11 +244,11 @@ describe('US4: fronted by Caddy via the documented snippet', () => {
       tokenBody,
       `https://${TEST_HOSTNAME}/oauth/token`,
     ]);
-    expect(token.status).toBe(200);
-    const { access_token: accessToken } = JSON.parse(token.body) as { access_token: string };
+    expect(tokenResponse.status).toBe(200);
+    const { access_token: accessToken } = JSON.parse(tokenResponse.body) as { access_token: string };
 
     // The full connect-to-tools-listed flow succeeds through the documented proxy (SC-005).
-    const toolsList = await curlIn(clientB, [
+    const toolsList = await curlIn(clientContainer, [
       '--resolve',
       resolveArg,
       '-k',
@@ -266,36 +269,5 @@ describe('US4: fronted by Caddy via the documented snippet', () => {
     expect(toolsList.status).toBe(200);
     const toolsResult = parseSseJson(toolsList.body) as { result: { tools: Array<{ name: string }> } };
     expect(toolsResult.result.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(['list-board']));
-
-    // A hostile client rotating a forged X-Forwarded-For on every attempt must not evade the lockout —
-    // the documented snippet's `header_up` override has to strip it, or the client picks its own bucket forever.
-    const clientCRun = await harness.docker(['run', '-d', '--network', 'work-helper', '--entrypoint', 'sleep', CURL_IMAGE, '600']);
-    expect(clientCRun.code, `docker run clientC failed:\n${clientCRun.stderr}`).toBe(0);
-    const clientC = clientCRun.stdout.trim();
-    harness.trackContainer(clientC);
-
-    async function submitPasswordWithForgedHeader(container: string, password: string, forgedIp: string): Promise<CurlResult> {
-      const body = new URLSearchParams({ ...flowParams, password }).toString();
-      return curlIn(container, [
-        '--resolve',
-        resolveArg,
-        '-k',
-        '-s',
-        '-i',
-        '-X',
-        'POST',
-        '-H',
-        `X-Forwarded-For: ${forgedIp}`,
-        '-d',
-        body,
-        `https://${TEST_HOSTNAME}/oauth/authorize`,
-      ]);
-    }
-
-    expect((await submitPasswordWithForgedHeader(clientC, 'wrong-1', '203.0.113.1')).status).toBe(401);
-    expect((await submitPasswordWithForgedHeader(clientC, 'wrong-2', '203.0.113.2')).status).toBe(401);
-    expect((await submitPasswordWithForgedHeader(clientC, 'wrong-3', '203.0.113.3')).status).toBe(423);
-    // A fourth attempt under yet another forged address is still locked, proving the forged header was ignored.
-    expect((await submitPasswordWithForgedHeader(clientC, harness.password, '203.0.113.4')).status).toBe(423);
   }, 300_000);
 });

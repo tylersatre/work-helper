@@ -7,5 +7,5 @@ export function originOf(request: FastifyRequest): string {
 }
 
 export function sendUnconfigured(reply: FastifyReply): void {
-  reply.status(503).send({ error: { message: 'The MCP connector is not configured (no CONNECTOR_PASSWORD set)' } });
+  reply.status(503).send({ error: { message: 'The MCP connector is not configured (no MCP_TOKEN_SECRET set)' } });
 }
