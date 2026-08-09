@@ -605,4 +605,90 @@ describe('Board', () => {
 
     expect(within(toDo).queryByTestId('drop-indicator')).toBeNull();
   });
+
+  it('a drop that lands while the failure-recovery refetch is in flight is not silently discarded from the UI', async () => {
+    let served = {
+      lanes: [
+        {
+          name: 'To Do',
+          tasks: [
+            { id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 },
+            { id: 2, title: 'C', lane: 'To Do', position: 1, createdAt: 2 },
+          ],
+        },
+        { name: 'In Progress', tasks: [] },
+        { name: 'Waiting', tasks: [] },
+        { name: 'Done', tasks: [] },
+      ],
+    };
+    let getBoardCalls = 0;
+    let resolveRecoveryGet: ((value: unknown) => void) | null = null;
+    const fetchMock = vi.fn((url: string, options?: { method?: string }) => {
+      if (url === '/api/board' && !options) {
+        getBoardCalls += 1;
+        if (getBoardCalls === 1) {
+          return Promise.resolve({ ok: true, json: async () => served });
+        }
+        // The failure-recovery refetch is held open until the test releases it.
+        return new Promise((resolve) => {
+          resolveRecoveryGet = resolve;
+        });
+      }
+      if (options?.method === 'PUT' && url === '/api/tasks/1/placement') {
+        return Promise.resolve({ ok: false, json: async () => ({ error: { message: 'boom' } }) });
+      }
+      if (options?.method === 'PUT' && url === '/api/tasks/2/placement') {
+        served = {
+          lanes: [
+            { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 }] },
+            { name: 'In Progress', tasks: [] },
+            { name: 'Waiting', tasks: [] },
+            { name: 'Done', tasks: [{ id: 2, title: 'C', lane: 'Done', position: 0, createdAt: 2 }] },
+          ],
+        };
+        return Promise.resolve({ ok: true, json: async () => ({ id: 2, title: 'C', lane: 'Done', position: 0, createdAt: 2 }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(Board);
+    await screen.findByRole('heading', { level: 2, name: 'To Do' });
+
+    // Drop A into In Progress; the PUT fails, triggering the failure-recovery refetch (held open).
+    await fireEvent.drop(laneByName('In Progress'), { dataTransfer: makeDataTransfer(1) });
+    await flushPromises();
+    await flushPromises();
+    expect(resolveRecoveryGet).not.toBeNull();
+
+    // While that refetch is still in flight, drop a DIFFERENT card (C) into Done.
+    await fireEvent.drop(laneByName('Done'), { dataTransfer: makeDataTransfer(2) });
+    await flushPromises();
+    expect(cardTitles(laneByName('Done'))).toEqual(['C']);
+
+    // Now the stale refetch resolves, reflecting server state from BEFORE C's move.
+    resolveRecoveryGet!({
+      ok: true,
+      json: async () => ({
+        lanes: [
+          {
+            name: 'To Do',
+            tasks: [
+              { id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 },
+              { id: 2, title: 'C', lane: 'To Do', position: 1, createdAt: 2 },
+            ],
+          },
+          { name: 'In Progress', tasks: [] },
+          { name: 'Waiting', tasks: [] },
+          { name: 'Done', tasks: [] },
+        ],
+      }),
+    });
+    await flushPromises();
+    await flushPromises();
+    await flushPromises();
+
+    // C's successful move must not have been silently erased by the stale refetch response.
+    expect(cardTitles(laneByName('Done'))).toEqual(['C']);
+  });
 });

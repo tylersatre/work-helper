@@ -81,7 +81,19 @@ function onDrop(taskId: number, laneName: string, index: number): void {
       batchHadFailure = false;
       errorMessage.value = "Couldn't save that move — the board has been restored.";
       try {
-        await fetchBoard();
+        const response = await fetch('/api/board');
+        if (!response.ok) {
+          throw new Error('board refetch failed');
+        }
+        const freshBoard = await response.json();
+        // If a new drop landed while this refetch was in flight, pendingSaves is back above
+        // zero and this response is now stale relative to that drop's optimistic update —
+        // applying it would silently erase that update from the screen. Leave board.value
+        // alone; that drop's own reconciliation cycle (once its pendingSaves next reaches
+        // zero) will run this same check again against fresher data.
+        if (pendingSaves === 0) {
+          board.value = freshBoard;
+        }
       } catch {
         // Server unreachable: the banner alone tells the user the move did not take.
       }
