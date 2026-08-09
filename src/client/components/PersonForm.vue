@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { NButton, NInput } from 'naive-ui';
 import { onMounted, reactive, ref, watch } from 'vue';
 
 interface CreatePersonFormValues {
@@ -68,6 +69,10 @@ async function fetchFieldLabels(): Promise<void> {
 
 onMounted(fetchFieldLabels);
 
+function extraFieldId(label: string): string {
+  return `person-extra-${label}`;
+}
+
 function extraFieldsPayload(): Record<string, string> | undefined {
   if (fieldLabels.value.length === 0) return undefined;
   const extraFields: Record<string, string> = {};
@@ -94,38 +99,68 @@ function onSubmit(): void {
 </script>
 
 <template>
-  <form @submit.prevent="onSubmit">
-    <label for="person-first-name">First name</label>
-    <input id="person-first-name" v-model="form.firstName" type="text" name="firstName" />
+  <form class="person-form" @submit.prevent="onSubmit">
+    <div class="person-form-field">
+      <label for="person-first-name">First name</label>
+      <NInput v-model:value="form.firstName" size="small" :input-props="{ id: 'person-first-name', name: 'firstName' }" />
+    </div>
 
-    <label for="person-last-name">Last name</label>
-    <input id="person-last-name" v-model="form.lastName" type="text" name="lastName" />
+    <div class="person-form-field">
+      <label for="person-last-name">Last name</label>
+      <NInput v-model:value="form.lastName" size="small" :input-props="{ id: 'person-last-name', name: 'lastName' }" />
+    </div>
 
     <template v-if="mode === 'create'">
-      <label for="person-email">Email</label>
-      <input id="person-email" v-model="form.email" type="text" name="email" />
+      <div class="person-form-field">
+        <label for="person-email">Email</label>
+        <NInput v-model:value="form.email" size="small" :input-props="{ id: 'person-email', name: 'email' }" />
+      </div>
 
-      <label for="person-phone">Phone</label>
-      <input id="person-phone" v-model="form.phone" type="text" name="phone" />
+      <div class="person-form-field">
+        <label for="person-phone">Phone</label>
+        <NInput v-model:value="form.phone" size="small" :input-props="{ id: 'person-phone', name: 'phone' }" />
+      </div>
     </template>
 
-    <template v-for="label in fieldLabels" :key="label">
-      <label :for="`person-extra-${label}`">{{ label }}</label>
-      <input :id="`person-extra-${label}`" v-model="form.extraFields[label]" type="text" :name="label" />
-    </template>
+    <div v-for="label in fieldLabels" :key="label" class="person-form-field">
+      <label :for="extraFieldId(label)">{{ label }}</label>
+      <NInput v-model:value="form.extraFields[label]" size="small" :input-props="{ id: extraFieldId(label), name: label }" />
+    </div>
 
-    <button type="submit">{{ submitLabel }}</button>
-    <p v-if="errorMessage" role="alert">{{ errorMessage }}</p>
+    <div class="person-form-actions">
+      <NButton attr-type="submit" size="small" type="primary">{{ submitLabel }}</NButton>
+    </div>
+    <p v-if="errorMessage" role="alert" class="person-form-error">{{ errorMessage }}</p>
   </form>
 </template>
 
 <style scoped>
-input {
-  max-width: 100%;
-  box-sizing: border-box;
+.person-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 420px;
 }
 
-p[role='alert'] {
+.person-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.person-form-field label {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.person-form-actions {
+  margin-top: 0.25rem;
+}
+
+.person-form-error {
+  margin: 0;
+  color: #fca5a5;
+  font-size: 0.8rem;
   overflow-wrap: break-word;
   word-break: break-word;
 }

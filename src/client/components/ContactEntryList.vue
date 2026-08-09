@@ -82,30 +82,116 @@ async function onRemove(entryId: number): Promise<void> {
 
 <template>
   <div class="contact-entry-list">
-    <h3>{{ heading }}</h3>
+    <h3 class="contact-entry-heading">{{ heading }}</h3>
 
-    <ul v-if="localEntries.length">
+    <ul v-if="localEntries.length" class="contact-entry-rows">
       <li v-for="entry in localEntries" :key="entry.id" class="contact-entry-row" data-testid="contact-entry-row">
         <template v-if="editingId === entry.id">
-          <input v-model="editValue.value" type="text" :aria-label="`Edit ${heading}`" />
-          <button type="button" @click="onSaveEdit(entry.id)">Save</button>
-          <button type="button" @click="cancelEdit">Cancel</button>
+          <input v-model="editValue.value" class="contact-entry-edit-input" type="text" :aria-label="`Edit ${heading}`" />
+          <div class="contact-entry-actions">
+            <button type="button" @click="onSaveEdit(entry.id)">Save</button>
+            <button type="button" @click="cancelEdit">Cancel</button>
+          </div>
         </template>
         <template v-else>
-          <span>{{ entry.value }}</span>
-          <span v-if="entry.isPrimary" data-testid="primary-marker">Primary</span>
-          <button type="button" @click="startEdit(entry)">Edit</button>
-          <button v-if="!entry.isPrimary" type="button" @click="onMarkPrimary(entry.id)">Make primary</button>
-          <button type="button" @click="onRemove(entry.id)">Remove</button>
+          <span class="contact-entry-value">
+            {{ entry.value }}
+            <span v-if="entry.isPrimary" class="contact-entry-primary" data-testid="primary-marker">Primary</span>
+          </span>
+          <div class="contact-entry-actions">
+            <button type="button" @click="startEdit(entry)">Edit</button>
+            <button v-if="!entry.isPrimary" type="button" @click="onMarkPrimary(entry.id)">Make primary</button>
+            <button type="button" @click="onRemove(entry.id)">Remove</button>
+          </div>
         </template>
       </li>
     </ul>
-    <p v-else>{{ emptyStateText }}</p>
+    <p v-else class="contact-entry-empty">{{ emptyStateText }}</p>
 
-    <label :for="`add-${heading}`">{{ `Add ${heading.replace(/s$/, '')}` }}</label>
-    <input :id="`add-${heading}`" v-model="newValue" type="text" />
-    <button type="button" @click="onAdd">Add</button>
+    <div class="contact-entry-add">
+      <label :for="`add-${heading}`">{{ `Add ${heading.replace(/s$/, '')}` }}</label>
+      <input :id="`add-${heading}`" v-model="newValue" type="text" />
+      <button type="button" @click="onAdd">Add</button>
+    </div>
 
-    <p v-if="errorMessage" role="alert">{{ errorMessage }}</p>
+    <p v-if="errorMessage" role="alert" class="contact-entry-error">{{ errorMessage }}</p>
   </div>
 </template>
+
+<style scoped>
+.contact-entry-list {
+  margin-bottom: 0.5rem;
+}
+
+.contact-entry-heading {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 0.4rem;
+}
+
+.contact-entry-rows {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.5rem;
+}
+
+.contact-entry-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  margin-bottom: 0.35rem;
+  background: #1f1f24;
+  font-size: 0.82rem;
+}
+
+.contact-entry-value {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.contact-entry-primary {
+  margin-left: 0.4rem;
+  font-size: 0.68rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 3px;
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+}
+
+.contact-entry-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.contact-entry-empty {
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 0.5rem;
+}
+
+.contact-entry-add {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.contact-entry-add input {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.contact-entry-error {
+  color: #fca5a5;
+  font-size: 0.8rem;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+</style>
