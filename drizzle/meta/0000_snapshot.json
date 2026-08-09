@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "cec8ca2e-a1a4-447b-a179-28fc8c4b5040",
+  "id": "877ed8ae-010c-4264-96de-5b002360f9e2",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "email_addresses": {
@@ -617,6 +617,13 @@
         "lane": {
           "name": "lane",
           "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false

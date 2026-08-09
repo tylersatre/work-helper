@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
-import { ZodError } from 'zod';
-import { addNote, createTask, deleteNote, getTaskDetail, linkPerson, unlinkPerson } from '../services/tasks.js';
+import { ZodError, z } from 'zod';
+import { addNote, createTask, deleteNote, getTaskDetail, linkPerson, moveTask, unlinkPerson } from '../services/tasks.js';
+
+const placementIndexSchema = z.number().int().nonnegative();
 
 export async function taskRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/tasks', async (request, reply) => {
@@ -27,6 +29,34 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       return { error: { message: 'Task not found' } };
     }
     return task;
+  });
+
+  app.put('/api/tasks/:id/placement', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as { lane?: unknown; index?: unknown } | undefined;
+
+    const indexResult = placementIndexSchema.safeParse(body?.index);
+    if (!indexResult.success) {
+      reply.status(400);
+      return { error: { message: 'Invalid index' } };
+    }
+
+    if (typeof body?.lane !== 'string') {
+      reply.status(400);
+      return { error: { message: 'Unknown lane' } };
+    }
+
+    const result = moveTask(app.db, app.lanes, Number(id), body.lane, indexResult.data);
+    if (!result.ok) {
+      if (result.error === 'task-not-found') {
+        reply.status(404);
+        return { error: { message: 'Task not found' } };
+      }
+      reply.status(400);
+      return { error: { message: 'Unknown lane' } };
+    }
+
+    return result.task;
   });
 
   app.post('/api/tasks/:id/notes', async (request, reply) => {

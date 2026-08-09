@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from '@testing-library/vue';
 import { flushPromises } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import TaskCard from '../../src/client/components/TaskCard.vue';
 
-const TASK = { id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1 };
+const TASK = { id: 1, title: 'Follow up with Sam', lane: 'To Do', position: 0, createdAt: 1 };
 
 function makeRouter() {
   return createRouter({
@@ -25,6 +25,25 @@ describe('TaskCard', () => {
     const card = screen.getByTestId('task-card');
     expect(card.textContent).toBe('Follow up with Sam');
     expect(card.tagName).toBe('LI');
+  });
+
+  it('renders draggable="true"', () => {
+    const router = makeRouter();
+    render(TaskCard, { props: { task: TASK }, global: { plugins: [router] } });
+
+    const card = screen.getByTestId('task-card');
+    expect(card.getAttribute('draggable')).toBe('true');
+  });
+
+  it('dragstart writes the task id to the dataTransfer', async () => {
+    const router = makeRouter();
+    render(TaskCard, { props: { task: TASK }, global: { plugins: [router] } });
+
+    const card = screen.getByTestId('task-card');
+    const setData = vi.fn();
+    await fireEvent.dragStart(card, { dataTransfer: { setData } });
+
+    expect(setData).toHaveBeenCalledWith('text/plain', '1');
   });
 
   it('navigates to /tasks/:id when clicked', async () => {

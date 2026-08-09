@@ -5,6 +5,7 @@ export const tasks = sqliteTable('tasks', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   title: text('title').notNull(),
   lane: text('lane').notNull(),
+  position: integer('position').notNull(),
   createdAt: integer('created_at').notNull(),
 });
 

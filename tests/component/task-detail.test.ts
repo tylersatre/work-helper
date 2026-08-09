@@ -45,6 +45,27 @@ describe('TaskDetailPage', () => {
     expect(screen.queryByRole('button', { name: /add person/i })).toBeNull();
   });
 
+  it('renders the task lane as read-only text and offers no control to change it (FR-009)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'Waiting', position: 0, createdAt: 1, people: [], notes: [] }),
+      }),
+    );
+
+    const router = makeRouter('/tasks/1');
+    await router.isReady();
+    render(TaskDetailPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(await screen.findByText(/waiting/i)).toBeTruthy();
+    expect(screen.queryByRole('combobox', { name: /lane/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /lane/i })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: /^lane$/i })).toBeNull();
+    expect(screen.queryByLabelText(/^lane$/i)).toBeNull();
+  });
+
   it('search results show each person name and email; selecting a result links them', async () => {
     const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
       if (url === '/api/tasks/1' && !options) {
