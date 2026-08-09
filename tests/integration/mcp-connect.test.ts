@@ -91,6 +91,23 @@ describe('US1: connect through Authentik-verified approval', () => {
     await client.close();
   });
 
+  it('falls back to the client id on the approval page when the client registered with no client_name', async () => {
+    const { serverUrl, stub: identityStub } = await startAppWithStub();
+    const assertion = identityStub.mint('tyler');
+
+    const registerResponse = await fetch(`${serverUrl}/oauth/register`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ redirect_uris: [REDIRECT_URI] }),
+    });
+    const { client_id: clientId } = (await registerResponse.json()) as { client_id: string };
+
+    const approvalResponse = await getAuthorize(new URL(authorizeUrl(serverUrl, clientId, 'fallback-state')), { assertion });
+    expect(approvalResponse.status).toBe(200);
+    const html = await approvalResponse.text();
+    expect(html).toContain(clientId);
+  });
+
   it('renders an approval page naming the verified username, with no password field, no-store, and a single-use code on approval', async () => {
     const { serverUrl, stub: identityStub } = await startAppWithStub();
     const assertion = identityStub.mint('tyler');

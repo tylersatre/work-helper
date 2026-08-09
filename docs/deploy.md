@@ -14,7 +14,7 @@ cd work-helper
 cp .env.example .env
 ```
 
-Edit `.env` and set `MCP_TOKEN_SECRET` to any long random value, and `AUTHENTIK_USERINFO_URL` to your Authentik instance's userinfo endpoint (see [.env settings](#env-settings) below — both are required, `docker compose up` refuses to start without them; if you haven't set up Authentik yet, see [Fronting with Caddy and Authentik](#fronting-with-caddy-and-authentik)). Then:
+Edit `.env` and set `MCP_TOKEN_SECRET` to any long random value, and `AUTHENTIK_USERINFO_URL` to your Authentik instance's userinfo endpoint (see [.env settings](#env-settings) below — both are required: `docker compose up` refuses to start any container without `MCP_TOKEN_SECRET`, and the app exits at startup without `AUTHENTIK_USERINFO_URL`; if you haven't set up Authentik yet, see [Fronting with Caddy and Authentik](#fronting-with-caddy-and-authentik)). Then:
 
 ```bash
 docker compose up -d --build

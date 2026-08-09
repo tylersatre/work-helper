@@ -10,11 +10,6 @@ describe('renderApprovalPage', () => {
     expect(html).toContain('My MCP Client');
   });
 
-  it('falls back to the client id when no client name is given', () => {
-    const html = renderApprovalPage({ ...OPTS, clientName: 'client-uuid-123' });
-    expect(html).toContain('client-uuid-123');
-  });
-
   it('HTML-escapes the username and client name', () => {
     const html = renderApprovalPage({ ...OPTS, username: '<script>alert(1)</script>', clientName: '<b>evil</b>' });
     expect(html).not.toContain('<script>alert(1)</script>');

@@ -66,3 +66,4 @@ All three scenarios were driven live in a real browser session against the runni
 ## Notes
 
 - No application code, configuration, or tests were modified during this evidence run.
+- All three screenshots are force-added into `pr-screenshots/` (overriding the usual local-only evidence policy) so they render inline for PR review on GitHub, matching the precedent set in `docs/evidence/009-ui-refresh/pr-screenshots/`.
