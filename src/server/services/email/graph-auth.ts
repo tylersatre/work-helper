@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { PublicClientApplication, type AccountInfo, type ICachePlugin } from '@azure/msal-node';
 
@@ -6,7 +6,7 @@ const SCOPES = ['Mail.Read', 'offline_access'];
 const AUTHORITY = 'https://login.microsoftonline.com/common';
 const SIGN_IN_ERROR = 'Mailbox sign-in required — run npm run mail:signin';
 
-function fileCachePlugin(path: string): ICachePlugin {
+export function fileCachePlugin(path: string): ICachePlugin {
   return {
     beforeCacheAccess: async (context) => {
       if (existsSync(path)) {
@@ -15,8 +15,10 @@ function fileCachePlugin(path: string): ICachePlugin {
     },
     afterCacheAccess: async (context) => {
       if (context.cacheHasChanged) {
-        mkdirSync(dirname(path), { recursive: true });
-        writeFileSync(path, context.tokenCache.serialize());
+        // Holds a long-lived Graph refresh token — never leave it group/world-readable.
+        mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+        writeFileSync(path, context.tokenCache.serialize(), { mode: 0o600 });
+        chmodSync(path, 0o600);
       }
     },
   };

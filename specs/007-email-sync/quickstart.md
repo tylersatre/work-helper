@@ -48,6 +48,8 @@ MS_CLIENT_ID=<app-registration-client-id> npm run mail:signin
 3. Expected: summary reports within 5 minutes with a plausible `syncedCount`; `list-conversations` / `get-conversation` / `emails-for-person` return the real correspondence; the Outlook mailbox itself is unchanged (no read-status changes, no moves).
 4. If the token cache is missing/expired, `sync-emails` fails with a clear sign-in error and stores nothing; re-run step 1.
 
+For the self-hosted Docker deployment (feature 006), sign-in is still run from a host checkout against the same `./data/` directory the container reads — see `docs/deploy.md`'s "Email sync mailbox sign-in" section.
+
 ## Schema reset note
 
 The schema change squashes drizzle migrations to a fresh baseline (research R8). Existing dev databases must be recreated once:

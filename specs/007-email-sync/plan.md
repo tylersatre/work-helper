@@ -43,6 +43,8 @@ On-demand, date-range email ingestion from Tyler's Outlook mailbox into work-hel
 
 No violations → Complexity Tracking is empty.
 
+**Constitution amendment (1.1.0 → 1.2.0)**: Principle III was amended during this feature's planning to require *surface-appropriate* evidence — browser evidence for criteria with a user-facing UI surface, recorded automated-check output (test runs, command logs) for criteria reachable only through APIs or MCP tools — instead of browser evidence for every criterion unconditionally. This feature is the reason: US1 (`sync-emails`) and US2 (`list-conversations`/`get-conversation`) are MCP-only with no UI surface at all (email UI is explicitly out of scope, per the `email-ui` stub), so the prior wording had no way for those criteria to be satisfied. Only US3's People-page criteria get browser evidence under 1.2.0; US1/US2 are proven by their automated suites (`tests/integration/email-sync.test.ts`, `tests/integration/email-read-tools.test.ts`) per the Principle III row above. `CLAUDE.md`'s Definition of Done was updated to match in the same change.
+
 ## Project Structure
 
 ### Documentation (this feature)
