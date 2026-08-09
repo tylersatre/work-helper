@@ -46,26 +46,28 @@ onMounted(fetchPeople);
     </div>
 
     <NEmpty v-if="people.length === 0" data-testid="people-empty" description="No people yet" class="people-empty" />
-    <table v-else class="people-table">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Email</th>
-          <th>Phone</th>
-          <th class="people-table-actions"></th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="person in people" :key="person.id" class="person-row" data-testid="person-row">
-          <td><RouterLink :to="`/people/${person.id}`">{{ person.firstName }} {{ person.lastName }}</RouterLink></td>
-          <td>{{ primaryValue(person.emails) }}</td>
-          <td>{{ primaryValue(person.phones) }}</td>
-          <td class="people-table-actions">
-            <button type="button" @click="onDelete(person.id)">Delete</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <div v-else class="people-table-wrapper">
+      <table class="people-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th class="people-table-actions"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="person in people" :key="person.id" class="person-row" data-testid="person-row">
+            <td><RouterLink :to="`/people/${person.id}`">{{ person.firstName }} {{ person.lastName }}</RouterLink></td>
+            <td>{{ primaryValue(person.emails) }}</td>
+            <td>{{ primaryValue(person.phones) }}</td>
+            <td class="people-table-actions">
+              <button type="button" @click="onDelete(person.id)">Delete</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </section>
 </template>
 
@@ -82,6 +84,10 @@ onMounted(fetchPeople);
 
 .people-empty {
   margin-top: 1.5rem;
+}
+
+.people-table-wrapper {
+  overflow-x: auto;
 }
 
 .people-table {
