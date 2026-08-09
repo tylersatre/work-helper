@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, within } from '@testing-library/vue';
-import { flushPromises } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import Board from '../../src/client/components/Board.vue';
 
@@ -690,5 +690,21 @@ describe('Board', () => {
 
     // C's successful move must not have been silently erased by the stale refetch response.
     expect(cardTitles(laneByName('Done'))).toEqual(['C']);
+  });
+
+  it('fetchBoard rejects instead of assigning board.value to a non-2xx error body', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: async () => ({ statusCode: 500, error: 'Internal Server Error', message: 'boom' }),
+      }),
+    );
+
+    const wrapper = mount(Board);
+    await flushPromises();
+
+    await expect(wrapper.vm.fetchBoard()).rejects.toThrow();
   });
 });

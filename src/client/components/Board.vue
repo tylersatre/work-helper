@@ -13,6 +13,10 @@ let batchHadFailure = false;
 
 async function fetchBoard(): Promise<void> {
   const response = await fetch('/api/board');
+  if (!response.ok) {
+    // Leave the last-known-good board on screen rather than blanking it with an error body.
+    throw new Error(`Failed to load board: ${response.status}`);
+  }
   board.value = await response.json();
 }
 
@@ -114,7 +118,11 @@ function dismissError(): void {
 
 defineExpose({ fetchBoard });
 
-onMounted(fetchBoard);
+onMounted(() => {
+  void fetchBoard().catch(() => {
+    // Initial load failed: the board stays in its default empty state rather than crashing.
+  });
+});
 </script>
 
 <template>
