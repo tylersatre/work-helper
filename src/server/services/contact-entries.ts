@@ -1,11 +1,11 @@
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { entryValueSchema } from '../../shared/validation.js';
-import { people, personEmails, type personPhones } from '../db/schema.js';
+import { emailAddresses, emailParticipants, people, type personPhones } from '../db/schema.js';
 import type * as schema from '../db/schema.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
-export type EntryTable = typeof personEmails | typeof personPhones;
+export type EntryTable = typeof emailAddresses | typeof personPhones;
 
 export interface ContactEntry {
   id: number;
@@ -24,7 +24,7 @@ function personExists(db: AppDb, personId: number): boolean {
 }
 
 function conflictExists(db: AppDb, table: EntryTable, value: string, excludeId?: number): boolean {
-  const isEmailTable = table === personEmails;
+  const isEmailTable = table === emailAddresses;
   const conditions = [isEmailTable ? sql`lower(${table.value}) = lower(${value})` : eq(table.value, value)];
   if (excludeId !== undefined) {
     conditions.push(ne(table.id, excludeId));
@@ -57,13 +57,50 @@ function entryExists(db: AppDb, table: EntryTable, personId: number, entryId: nu
   return row !== undefined;
 }
 
+/** Whether any synced-mail participant row references this email address — the DB-level guarantee that referenced addresses can't be deleted maps to this service-level unlink-vs-delete decision. */
+export function isEmailAddressReferenced(db: AppDb, addressId: number): boolean {
+  const [row] = db
+    .select({ id: emailParticipants.id })
+    .from(emailParticipants)
+    .where(eq(emailParticipants.addressId, addressId))
+    .limit(1)
+    .all();
+  return row !== undefined;
+}
+
+export function findEmailAddressByValue(db: AppDb, value: string): { id: number; personId: number | null } | undefined {
+  const [row] = db
+    .select({ id: emailAddresses.id, personId: emailAddresses.personId })
+    .from(emailAddresses)
+    .where(sql`lower(${emailAddresses.value}) = lower(${value})`)
+    .limit(1)
+    .all();
+  return row;
+}
+
 export function addEntry(db: AppDb, table: EntryTable, personId: number, rawValue: unknown): EntryMutationResult {
   const value = entryValueSchema.parse(rawValue);
 
   if (!personExists(db, personId)) {
     return { ok: false, error: 'person-not-found' };
   }
-  if (conflictExists(db, table, value)) {
+
+  if (table === emailAddresses) {
+    const existing = findEmailAddressByValue(db, value);
+    if (existing) {
+      if (existing.personId !== null) {
+        return { ok: false, error: 'conflict' };
+      }
+      db.transaction((tx) => {
+        const [existingForPerson] = tx.select({ id: table.id }).from(table).where(eq(table.personId, personId)).limit(1).all();
+        tx.update(emailAddresses)
+          .set({ personId, isPrimary: existingForPerson === undefined })
+          .where(eq(emailAddresses.id, existing.id))
+          .run();
+      });
+      return { ok: true, entries: loadEntries(db, table, personId) };
+    }
+  } else if (conflictExists(db, table, value)) {
     return { ok: false, error: 'conflict' };
   }
 
@@ -92,6 +129,19 @@ export function editEntry(
   }
   if (conflictExists(db, table, value, entryId)) {
     return { ok: false, error: 'conflict' };
+  }
+
+  if (table === emailAddresses && isEmailAddressReferenced(db, entryId)) {
+    // Synced mail references this address record — rewriting its value in place would
+    // falsify the permanent message snapshot that reads it live (FR-003). Unlink the old
+    // record instead (preserving it for that snapshot) and create a fresh linked row for
+    // the new value; conflictExists above already guarantees the new value is unclaimed.
+    db.transaction((tx) => {
+      const [current] = tx.select({ isPrimary: emailAddresses.isPrimary }).from(emailAddresses).where(eq(emailAddresses.id, entryId)).limit(1).all();
+      tx.update(emailAddresses).set({ personId: null, isPrimary: false }).where(eq(emailAddresses.id, entryId)).run();
+      tx.insert(emailAddresses).values({ personId, value, isPrimary: current?.isPrimary ?? false, createdAt: Date.now() }).run();
+    });
+    return { ok: true, entries: loadEntries(db, table, personId) };
   }
 
   db.update(table)
@@ -146,7 +196,11 @@ export function removeEntry(db: AppDb, table: EntryTable, personId: number, entr
       .limit(1)
       .all();
 
-    tx.delete(table).where(eq(table.id, entryId)).run();
+    if (table === emailAddresses && isEmailAddressReferenced(tx, entryId)) {
+      tx.update(emailAddresses).set({ personId: null, isPrimary: false }).where(eq(emailAddresses.id, entryId)).run();
+    } else {
+      tx.delete(table).where(eq(table.id, entryId)).run();
+    }
 
     if (removed?.isPrimary) {
       const [survivor] = tx

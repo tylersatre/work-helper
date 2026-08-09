@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { noteTextSchema, titleSchema } from '../../shared/validation.js';
-import { people, personEmails, personPhones, taskNotes, taskPeople, tasks } from '../db/schema.js';
+import { people, emailAddresses, personPhones, taskNotes, taskPeople, tasks } from '../db/schema.js';
 import type * as schema from '../db/schema.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
@@ -39,9 +39,9 @@ export function getTaskDetail(db: AppDb, id: number) {
   }
 
   const primaryEmail = db
-    .select({ personId: personEmails.personId, value: personEmails.value })
-    .from(personEmails)
-    .where(eq(personEmails.isPrimary, true))
+    .select({ personId: emailAddresses.personId, value: emailAddresses.value })
+    .from(emailAddresses)
+    .where(eq(emailAddresses.isPrimary, true))
     .as('primary_email');
 
   const primaryPhone = db

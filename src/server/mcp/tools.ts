@@ -5,6 +5,9 @@ import { primaryValue } from '../../shared/contacts.js';
 import { getPerson, listPeople } from '../services/people.js';
 import { addNote, createTask, getTaskDetail, listTasksByLane } from '../services/tasks.js';
 import type * as schema from '../db/schema.js';
+import type { MailProvider } from '../services/email/provider.js';
+import { computeSyncWindow, runSync } from '../services/email/sync.js';
+import { emailsForPerson, getConversation, listConversations } from '../services/email/queries.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
 
@@ -12,6 +15,7 @@ export interface McpToolsContext {
   db: AppDb;
   lanes: string[];
   personFields: string[];
+  mailProvider?: MailProvider;
 }
 
 function toolError(message: string) {
@@ -169,6 +173,172 @@ export function createMcpServer(context: McpToolsContext): McpServer {
       const { note: created } = result;
       const structuredContent = { id: created.id, taskId: created.taskId, text: created.text, source: created.source, createdAt: created.createdAt };
       return { content: [{ type: 'text', text: `Added a note to task ${taskId}.` }], structuredContent };
+    },
+  );
+
+  server.registerTool(
+    'sync-emails',
+    {
+      description: 'Pulls Inbox + Sent messages for a date range (inclusive, server-local timezone) from the connected mailbox into the store.',
+      inputSchema: { startDate: z.string().optional(), endDate: z.string().optional() },
+      outputSchema: {
+        status: z.enum(['complete', 'interrupted']),
+        syncedCount: z.number(),
+        error: z.string().optional(),
+      },
+    },
+    async ({ startDate, endDate }) => {
+      if (!startDate || !endDate) {
+        return toolError('A start date and end date are required');
+      }
+
+      let window;
+      try {
+        window = computeSyncWindow(startDate, endDate);
+      } catch {
+        return toolError('startDate and endDate must be valid YYYY-MM-DD dates, with endDate not before startDate');
+      }
+
+      if (!context.mailProvider) {
+        return toolError('Mailbox is not connected — run npm run mail:signin');
+      }
+
+      try {
+        const result = await runSync(context.db, context.mailProvider, window);
+        const text =
+          result.status === 'complete'
+            ? `Synced ${result.syncedCount} email(s).`
+            : `Sync interrupted after storing ${result.syncedCount} email(s): ${result.error}`;
+        const structuredContent = { status: result.status, syncedCount: result.syncedCount, error: result.error };
+        return { content: [{ type: 'text', text }], structuredContent };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return toolError(`Could not reach the mailbox (${message}) — run npm run mail:signin to reconnect.`);
+      }
+    },
+  );
+
+  const conversationSummarySchema = {
+    id: z.number(),
+    subject: z.string(),
+    messageCount: z.number(),
+    latestMessageAt: z.number(),
+  };
+
+  const participantSchema = z.object({
+    address: z.string(),
+    role: z.enum(['from', 'to', 'cc', 'bcc']),
+    person: z.object({ id: z.number(), name: z.string() }).nullable(),
+  });
+
+  const conversationMessageSchema = z.object({
+    id: z.number(),
+    subject: z.string(),
+    sentAt: z.number(),
+    bodyText: z.string(),
+    sourceFolder: z.enum(['inbox', 'sent']),
+    participants: z.array(participantSchema),
+  });
+
+  server.registerTool(
+    'list-conversations',
+    {
+      description: 'Lists synced conversations, newest activity first, keyset-paged.',
+      inputSchema: {
+        limit: z.number().int().min(1).max(200).default(50),
+        cursor: z.string().optional(),
+      },
+      outputSchema: {
+        conversations: z.array(z.object(conversationSummarySchema)),
+        nextCursor: z.string().nullable(),
+      },
+    },
+    async ({ limit, cursor }) => {
+      let page;
+      try {
+        page = listConversations(context.db, { limit, cursor });
+      } catch {
+        return toolError('Invalid cursor');
+      }
+      const structuredContent = { conversations: page.conversations, nextCursor: page.nextCursor };
+      return {
+        content: [{ type: 'text', text: `Found ${page.conversations.length} conversation(s).` }],
+        structuredContent,
+      };
+    },
+  );
+
+  server.registerTool(
+    'get-conversation',
+    {
+      description: "Fetches one conversation's full message thread, chronological, with role-tagged participants.",
+      inputSchema: { conversationId: z.number().int().positive() },
+      outputSchema: {
+        id: z.number(),
+        subject: z.string(),
+        messages: z.array(conversationMessageSchema),
+      },
+    },
+    async ({ conversationId }) => {
+      const conversation = getConversation(context.db, conversationId);
+      if (!conversation) {
+        return toolError(`Conversation ${conversationId} not found`);
+      }
+      const structuredContent = { id: conversation.id, subject: conversation.subject, messages: conversation.messages };
+      return {
+        content: [
+          { type: 'text', text: `Conversation "${conversation.subject}" has ${conversation.messages.length} message(s).` },
+        ],
+        structuredContent,
+      };
+    },
+  );
+
+  server.registerTool(
+    'emails-for-person',
+    {
+      description: "Every synced email involving any of a person's addresses, keyset-paged, each identifying the involved address and its role.",
+      inputSchema: {
+        personId: z.number().int().positive(),
+        limit: z.number().int().min(1).max(200).default(50),
+        cursor: z.string().optional(),
+      },
+      outputSchema: {
+        person: z.object({ id: z.number(), name: z.string() }),
+        emails: z.array(
+          z.object({
+            messageId: z.number(),
+            conversationId: z.number(),
+            subject: z.string(),
+            sentAt: z.number(),
+            addresses: z.array(z.object({ address: z.string(), role: z.enum(['from', 'to', 'cc', 'bcc']) })),
+          }),
+        ),
+        nextCursor: z.string().nullable(),
+      },
+    },
+    async ({ personId, limit, cursor }) => {
+      const person = getPerson(context.db, context.personFields, personId);
+      if (!person) {
+        return toolError(`Person ${personId} not found`);
+      }
+
+      let page;
+      try {
+        page = emailsForPerson(context.db, personId, { limit, cursor });
+      } catch {
+        return toolError('Invalid cursor');
+      }
+
+      const structuredContent = {
+        person: { id: person.id, name: personName(person) },
+        emails: page.emails,
+        nextCursor: page.nextCursor,
+      };
+      return {
+        content: [{ type: 'text', text: `Found ${page.emails.length} email(s) for ${personName(person)}.` }],
+        structuredContent,
+      };
     },
   );
 

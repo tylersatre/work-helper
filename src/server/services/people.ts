@@ -1,12 +1,13 @@
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { createPersonInputSchema, updatePersonInputSchema } from '../../shared/validation.js';
-import { people, personEmails, personPhones } from '../db/schema.js';
+import { emailAddresses, people, personPhones } from '../db/schema.js';
+import { findEmailAddressByValue, isEmailAddressReferenced } from './contact-entries.js';
 import type * as schema from '../db/schema.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
 type PersonRow = typeof people.$inferSelect;
-type EntryTable = typeof personEmails | typeof personPhones;
+type EntryTable = typeof emailAddresses | typeof personPhones;
 
 export interface ContactEntry {
   id: number;
@@ -28,20 +29,6 @@ export interface PersonRecord {
 export type CreatePersonResult =
   | { ok: true; person: PersonRecord }
   | { ok: false; error: 'email-conflict' | 'phone-conflict' };
-
-function emailConflictExists(db: AppDb, email: string, excludeId?: number): boolean {
-  const conditions = [sql`lower(${personEmails.value}) = lower(${email})`];
-  if (excludeId !== undefined) {
-    conditions.push(ne(personEmails.id, excludeId));
-  }
-  const [row] = db
-    .select({ id: personEmails.id })
-    .from(personEmails)
-    .where(and(...conditions))
-    .limit(1)
-    .all();
-  return row !== undefined;
-}
 
 function phoneConflictExists(db: AppDb, phone: string, excludeId?: number): boolean {
   const conditions = [eq(personPhones.value, phone)];
@@ -90,7 +77,7 @@ function toPersonRecord(db: AppDb, row: PersonRow, personFields: string[]): Pers
     id: row.id,
     firstName: row.firstName,
     lastName: row.lastName,
-    emails: loadEntries(db, personEmails, row.id),
+    emails: loadEntries(db, emailAddresses, row.id),
     phones: loadEntries(db, personPhones, row.id),
     extraFields,
     createdAt: row.createdAt,
@@ -100,7 +87,8 @@ function toPersonRecord(db: AppDb, row: PersonRow, personFields: string[]): Pers
 export function createPerson(db: AppDb, personFields: string[], rawInput: unknown): CreatePersonResult {
   const input = createPersonInputSchema.parse(rawInput);
 
-  if (input.email !== null && emailConflictExists(db, input.email)) {
+  const existingEmail = input.email !== null ? findEmailAddressByValue(db, input.email) : undefined;
+  if (existingEmail && existingEmail.personId !== null) {
     return { ok: false, error: 'email-conflict' };
   }
   if (input.phone !== null && phoneConflictExists(db, input.phone)) {
@@ -121,7 +109,13 @@ export function createPerson(db: AppDb, personFields: string[], rawInput: unknow
 
     const createdAt = Date.now();
     if (input.email !== null) {
-      tx.insert(personEmails).values({ personId: created!.id, value: input.email, isPrimary: true, createdAt }).run();
+      if (existingEmail) {
+        // Links the existing unlinked synced-mail record instead of inserting a parallel
+        // row — keeps its stored casing and immediately backfills the person's correspondence.
+        tx.update(emailAddresses).set({ personId: created!.id, isPrimary: true }).where(eq(emailAddresses.id, existingEmail.id)).run();
+      } else {
+        tx.insert(emailAddresses).values({ personId: created!.id, value: input.email, isPrimary: true, createdAt }).run();
+      }
     }
     if (input.phone !== null) {
       tx.insert(personPhones).values({ personId: created!.id, value: input.phone, isPrimary: true, createdAt }).run();
@@ -138,9 +132,9 @@ export function listPeople(db: AppDb, personFields: string[], q?: string) {
   const trimmed = q?.trim();
 
   const primaryEmail = db
-    .select({ personId: personEmails.personId, value: personEmails.value })
-    .from(personEmails)
-    .where(eq(personEmails.isPrimary, true))
+    .select({ personId: emailAddresses.personId, value: emailAddresses.value })
+    .from(emailAddresses)
+    .where(eq(emailAddresses.isPrimary, true))
     .as('primary_email');
 
   const query = db
@@ -199,7 +193,18 @@ export function deletePerson(db: AppDb, id: number): DeletePersonResult {
     return { ok: false, error: 'not-found' };
   }
 
-  db.delete(people).where(eq(people.id, id)).run();
+  db.transaction((tx) => {
+    const emails = tx.select({ id: emailAddresses.id }).from(emailAddresses).where(eq(emailAddresses.personId, id)).all();
+    for (const email of emails) {
+      if (isEmailAddressReferenced(tx, email.id)) {
+        tx.update(emailAddresses).set({ personId: null, isPrimary: false }).where(eq(emailAddresses.id, email.id)).run();
+      } else {
+        tx.delete(emailAddresses).where(eq(emailAddresses.id, email.id)).run();
+      }
+    }
+
+    tx.delete(people).where(eq(people.id, id)).run();
+  });
 
   return { ok: true };
 }

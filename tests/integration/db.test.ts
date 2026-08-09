@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createDb } from '../../src/server/db/index.js';
-import { people, personEmails, taskPeople, tasks } from '../../src/server/db/schema.js';
+import { people, emailAddresses, taskPeople, tasks } from '../../src/server/db/schema.js';
 
 describe('createDb', () => {
   it('creates a tasks table supporting insert + select round-trip on :memory:', () => {
@@ -68,11 +68,11 @@ describe('createDb', () => {
       const [ana] = db.insert(people).values({ firstName: 'Ana', lastName: 'Alvarez', createdAt: 2 }).returning().all();
       db.insert(people).values({ firstName: 'Bo', lastName: 'Baker', createdAt: 3 }).run();
 
-      db.insert(personEmails).values({ personId: sam!.id, value: 'sam@example.com', isPrimary: true, createdAt: 1 }).run();
+      db.insert(emailAddresses).values({ personId: sam!.id, value: 'sam@example.com', isPrimary: true, createdAt: 1 }).run();
 
       expect(() =>
         db
-          .insert(personEmails)
+          .insert(emailAddresses)
           .values({ personId: ana!.id, value: 'SAM@example.com', isPrimary: true, createdAt: 2 })
           .run(),
       ).toThrow();

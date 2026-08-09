@@ -9,7 +9,7 @@ No implementation without a spec'd feature and acceptance criteria. Every featur
 TDD is mandatory: a failing test is written before the code that makes it pass (red → green). Any code written before its failing test exists is discarded, not retrofitted with a test after the fact.
 
 ### III. Definition of Done: Evidence Over Assertion
-A feature is done only when every acceptance criterion in its spec has (a) a passing automated check and (b) browser evidence from the `browser-tester` agent, both independently confirmed by the `verifier` agent. The verifier never trusts a builder's summary — it re-runs checks itself. No feature is reported complete without command output, test results, or screenshots to back the claim.
+A feature is done only when every acceptance criterion in its spec has (a) a passing automated check and (b) evidence matching its surface: browser evidence from the `browser-tester` agent for criteria with a user-facing UI surface, and the recorded output of its automated checks (test runs, command logs) for criteria reachable only through APIs or MCP tools — both independently confirmed by the `verifier` agent. The verifier never trusts a builder's summary — it re-runs checks itself. No feature is reported complete without command output, test results, or screenshots to back the claim.
 
 ### IV. Architecture Constraints
 work-helper is a TypeScript web app that also exposes an MCP server built on the official `@modelcontextprotocol/sdk`. Email ingestion pulls directly from Microsoft Graph (scheduled/webhook) inside the server — AI agents are consumers of the work-helper MCP (query/link/tag tools), never the ingestion path. Deployment target is self-hosted Docker. Deviating from any of these requires updating this constitution first, not working around it in code.
@@ -31,4 +31,4 @@ feature spec → `/speckit-specify` → `/speckit-plan` → `/speckit-tasks` →
 
 This constitution supersedes ad hoc practice. Amendments require updating this file, bumping the version below, and recording the change in the amendment's PR description. The verification gate and `verifier` agent enforce Principles II and III mechanically; violations block the Stop hook and are called out by the verifier agent, not silently waved through.
 
-**Version**: 1.1.0 | **Ratified**: 2026-08-06 | **Last Amended**: 2026-08-07
+**Version**: 1.2.0 | **Ratified**: 2026-08-06 | **Last Amended**: 2026-08-08

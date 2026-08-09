@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
-import { personEmails } from '../../src/server/db/schema.js';
+import { emailAddresses } from '../../src/server/db/schema.js';
 
 const LANES = ['To Do', 'In Progress', 'Waiting', 'Done'];
 
@@ -102,7 +102,7 @@ describe('GET /api/people?q=', () => {
     await seedPeople(app);
     const sam = (await app.inject({ method: 'GET', url: '/api/people?q=sam' })).json()[0];
 
-    app.db.insert(personEmails).values({
+    app.db.insert(emailAddresses).values({
       personId: sam.id,
       value: 'sam.personal@example.com',
       isPrimary: false,

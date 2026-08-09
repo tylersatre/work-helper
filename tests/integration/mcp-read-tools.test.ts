@@ -6,7 +6,7 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
-import { personEmails, tasks } from '../../src/server/db/schema.js';
+import { emailAddresses, tasks } from '../../src/server/db/schema.js';
 import type * as schema from '../../src/server/db/schema.js';
 import { connectThroughPasswordGate } from './helpers/oauth-client.js';
 
@@ -159,8 +159,8 @@ describe('US2: read tools', () => {
   });
 
   it('get-person and search-people return the primary email when a person has two, the second marked primary (mcp-tools contract assertion 1)', async () => {
-    db.update(personEmails).set({ isPrimary: false }).where(eq(personEmails.personId, sam)).run();
-    db.insert(personEmails)
+    db.update(emailAddresses).set({ isPrimary: false }).where(eq(emailAddresses.personId, sam)).run();
+    db.insert(emailAddresses)
       .values({ personId: sam, value: 'sam.personal@example.com', isPrimary: true, createdAt: Date.now() })
       .run();
 

@@ -10,7 +10,7 @@ Each feature runs in its own native Claude worktree (`.claude/worktrees/`, one s
 
 ## Definition of done
 
-Every acceptance criterion has a passing automated check **and** browser evidence, both independently confirmed by the `verifier` agent. Evidence over assertion — no criterion is done because it was asserted to be done. See `.specify/memory/constitution.md` for the full principles.
+Every acceptance criterion has a passing automated check **and** surface-appropriate evidence — browser evidence from the `browser-tester` agent for UI-facing criteria, recorded automated-check output for criteria reachable only through APIs or MCP tools — both independently confirmed by the `verifier` agent. Evidence over assertion — no criterion is done because it was asserted to be done. See `.specify/memory/constitution.md` for the full principles.
 
 ## Architecture constraints
 

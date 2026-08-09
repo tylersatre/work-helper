@@ -28,6 +28,7 @@ The app is now reachable at `http://<your-server>:8080` (or the port you set in 
 |---|---|---|---|
 | `CONNECTOR_PASSWORD` | yes | — | The password MCP clients enter on the connector password page. `docker compose up` refuses to start without it. |
 | `WORK_HELPER_PORT` | no | `8080` | The host port the stack publishes. Change this if 8080 is already taken on your server. |
+| `MS_CLIENT_ID` | no | — | Entra ID app registration client id for email sync. Leave unset to run without email sync — the `sync-emails` tool reports a clear "not connected" error instead of failing to start. See [Email sync mailbox sign-in](#email-sync-mailbox-sign-in) below. |
 
 ## Updating
 
@@ -69,6 +70,22 @@ docker compose restart
 ```
 
 A malformed config file fails startup — `docker compose logs` names the file so you know what to fix. If you edit these on the server, `git pull` can conflict with your local changes; commit or stash your edits before pulling.
+
+## Email sync mailbox sign-in
+
+Email sync (the `sync-emails` MCP tool and friends) needs a one-time interactive sign-in that the container itself can't perform — `npm run mail:signin` opens a device-code flow, and the runtime image doesn't ship the dev tooling (`tsx`, `scripts/`) that command needs. Run it from your host clone instead, against the same `./data/` directory the container reads:
+
+```bash
+MS_CLIENT_ID=<your-app-registration-client-id> npm run mail:signin
+```
+
+This writes `./data/mail-token-cache.json` — the same path the container reads by default. Then set `MS_CLIENT_ID` in `.env` and restart the stack:
+
+```bash
+docker compose up -d
+```
+
+The refresh token in the cache keeps sync working unattended after this; re-run the command above only if the cache is invalidated (the tool's error message says so explicitly, pointing back at this command).
 
 ## Stop, start, and logs
 
