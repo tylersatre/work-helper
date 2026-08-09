@@ -36,16 +36,32 @@ describe('US1: fresh deploy with one documented command', () => {
     expect(await peoplePage.text()).toContain('<div id="app">');
   }, 300_000);
 
-  it('fails before starting any container when .env is missing CONNECTOR_PASSWORD', async () => {
+  it('fails before starting any container when .env is missing MCP_TOKEN_SECRET', async () => {
     harness = await createHarness();
     harness.writeEnv({ WORK_HELPER_PORT: String(harness.port) });
 
     const up = await harness.up();
 
     expect(up.code).not.toBe(0);
-    expect(`${up.stdout}\n${up.stderr}`).toContain('CONNECTOR_PASSWORD');
+    expect(`${up.stdout}\n${up.stderr}`).toContain('MCP_TOKEN_SECRET');
 
     const ps = await harness.compose(['ps', '-q']);
     expect(ps.stdout.trim()).toBe('');
+  }, 300_000);
+
+  it('starts cleanly with only the new variables set — no CONNECTOR_PASSWORD anywhere in .env', async () => {
+    harness = await createHarness();
+
+    const envContents = harness.readFile('.env');
+    expect(envContents).not.toContain('CONNECTOR_PASSWORD');
+    expect(envContents).toContain('MCP_TOKEN_SECRET');
+    expect(envContents).toContain('AUTHENTIK_USERINFO_URL');
+
+    const up = await harness.up();
+    expect(up.code, `docker compose up -d --build failed:\n${up.stderr}`).toBe(0);
+
+    await harness.waitForHttp('/api/board');
+    const board = await harness.fetchApp('/api/board');
+    expect(board.status).toBe(200);
   }, 300_000);
 });

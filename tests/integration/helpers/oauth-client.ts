@@ -73,22 +73,45 @@ export async function startConnect(serverUrl: string, provider: TestOAuthClientP
   return url;
 }
 
-export interface PasswordSubmitOptions {
-  xForwardedFor?: string;
+export interface AuthorizeOptions {
+  /** The value the outpost would set on X-authentik-jwt. Omit to simulate no identity header at all. */
+  assertion?: string;
 }
 
-/** POSTs the password form (as a browser submitting the rendered page would), without following the redirect. */
-export async function submitPassword(authorizationUrl: URL, password: string, opts: PasswordSubmitOptions = {}): Promise<Response> {
-  const body = new URLSearchParams();
-  body.set('password', password);
-  for (const [key, value] of authorizationUrl.searchParams.entries()) {
-    body.set(key, value);
+/** GETs the authorize URL, attaching X-authentik-jwt the way the outpost would, without following redirects. */
+export async function getAuthorize(authorizationUrl: URL, opts: AuthorizeOptions = {}): Promise<Response> {
+  const headers: Record<string, string> = {};
+  if (opts.assertion !== undefined) {
+    headers['x-authentik-jwt'] = opts.assertion;
   }
+  return fetch(authorizationUrl.toString(), { headers, redirect: 'manual' });
+}
 
-  const origin = `${authorizationUrl.protocol}//${authorizationUrl.host}`;
+/** Extracts the hidden `ticket` field's value from a rendered approval page. */
+export function extractTicket(html: string): string {
+  const match = html.match(/name="ticket"\s+value="([^"]+)"/);
+  if (!match) {
+    throw new Error(`no ticket field found in approval page HTML: ${html}`);
+  }
+  return match[1] as string;
+}
+
+export interface ApprovalSubmitOptions {
+  /** The value the outpost would set on X-authentik-jwt. Omit to simulate no identity header at all. */
+  assertion?: string;
+}
+
+/** POSTs the approval form's { ticket, action } as a browser submitting the rendered page would. */
+export async function postApproval(
+  origin: string,
+  ticket: string,
+  action: 'approve' | 'deny',
+  opts: ApprovalSubmitOptions = {},
+): Promise<Response> {
+  const body = new URLSearchParams({ ticket, action });
   const headers: Record<string, string> = { 'content-type': 'application/x-www-form-urlencoded' };
-  if (opts.xForwardedFor) {
-    headers['x-forwarded-for'] = opts.xForwardedFor;
+  if (opts.assertion !== undefined) {
+    headers['x-authentik-jwt'] = opts.assertion;
   }
 
   return fetch(`${origin}/oauth/authorize`, {
@@ -121,16 +144,27 @@ export async function finishConnect(serverUrl: string, provider: TestOAuthClient
   }
 }
 
-/** Full happy-path connect: register, open the authorize URL, submit the password, finish the token exchange. */
-export async function connectThroughPasswordGate(
+export interface ConnectThroughApprovalOptions {
+  /** The value the outpost would set on X-authentik-jwt for an honored assertion. */
+  assertion: string;
+}
+
+/** Full happy-path connect: register, open the authorize URL with a verified assertion, approve, finish the token exchange. */
+export async function connectThroughApproval(
   serverUrl: string,
-  password: string,
-  opts: PasswordSubmitOptions = {},
+  opts: ConnectThroughApprovalOptions,
 ): Promise<TestOAuthClientProvider> {
   const provider = new TestOAuthClientProvider();
   const authorizationUrl = await startConnect(serverUrl, provider);
-  const response = await submitPassword(authorizationUrl, password, opts);
-  const code = extractCode(response);
+
+  const approvalResponse = await getAuthorize(authorizationUrl, { assertion: opts.assertion });
+  const html = await approvalResponse.text();
+  const ticket = extractTicket(html);
+
+  const origin = `${authorizationUrl.protocol}//${authorizationUrl.host}`;
+  const approveResponse = await postApproval(origin, ticket, 'approve', { assertion: opts.assertion });
+  const code = extractCode(approveResponse);
+
   await finishConnect(serverUrl, provider, code);
   return provider;
 }

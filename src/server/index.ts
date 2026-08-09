@@ -2,6 +2,7 @@ import { buildApp } from './app.js';
 import { createDb } from './db/index.js';
 import { validateEnv } from './env.js';
 import { loadLanesConfig } from './lanes-config.js';
+import { createIdentityVerifier } from './mcp/auth/identity.js';
 import { loadPersonFieldsConfig } from './person-fields-config.js';
 import { createGraphAuth } from './services/email/graph-auth.js';
 import { GraphMailProvider } from './services/email/graph-provider.js';
@@ -35,7 +36,8 @@ const app = buildApp({
   lanes,
   personFields,
   serveClient: process.env.NODE_ENV === 'production',
-  connectorPassword: process.env.CONNECTOR_PASSWORD,
+  mcpTokenSecret: process.env.MCP_TOKEN_SECRET,
+  identityVerifier: process.env.AUTHENTIK_USERINFO_URL ? createIdentityVerifier(process.env.AUTHENTIK_USERINFO_URL) : undefined,
   mailProvider,
 });
 

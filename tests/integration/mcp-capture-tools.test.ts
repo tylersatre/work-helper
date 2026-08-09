@@ -4,13 +4,16 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
-import { connectThroughPasswordGate } from './helpers/oauth-client.js';
+import { createIdentityVerifier } from '../../src/server/mcp/auth/identity.js';
+import { connectThroughApproval } from './helpers/oauth-client.js';
+import { startStubIdentityProvider, type StubIdentityProvider } from './helpers/stub-identity-provider.js';
 
 const LANES = ['To Do', 'In Progress', 'Waiting', 'Done'];
-const PASSWORD = 'correct-horse-battery';
+const MCP_TOKEN_SECRET = 'correct-horse-battery';
 
 let app: FastifyInstance;
 let client: Client;
+let stub: StubIdentityProvider;
 
 async function totalTaskCount(): Promise<number> {
   const board = await app.inject({ method: 'GET', url: '/api/board' });
@@ -18,8 +21,9 @@ async function totalTaskCount(): Promise<number> {
 }
 
 beforeEach(async () => {
+  stub = await startStubIdentityProvider();
   const { db } = createDb(':memory:');
-  app = buildApp({ db, lanes: LANES, connectorPassword: PASSWORD });
+  app = buildApp({ db, lanes: LANES, mcpTokenSecret: MCP_TOKEN_SECRET, identityVerifier: createIdentityVerifier(stub.url) });
 
   await app.listen({ port: 0, host: '127.0.0.1' });
   const address = app.server.address();
@@ -28,7 +32,7 @@ beforeEach(async () => {
   }
   const serverUrl = `http://127.0.0.1:${address.port}`;
 
-  const provider = await connectThroughPasswordGate(`${serverUrl}/mcp`, PASSWORD);
+  const provider = await connectThroughApproval(`${serverUrl}/mcp`, { assertion: stub.mint('tyler') });
   client = new Client({ name: 'test-client', version: '1.0.0' });
   const transport = new StreamableHTTPClientTransport(new URL(`${serverUrl}/mcp`), { authProvider: provider });
   await client.connect(transport);
@@ -37,6 +41,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await client.close();
   await app.close();
+  await stub.close();
 });
 
 describe('US3: capture tools', () => {

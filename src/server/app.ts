@@ -4,6 +4,7 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type * as schema from './db/schema.js';
+import type { IdentityVerifier } from './mcp/auth/identity.js';
 import { oauthRoutes } from './mcp/auth/oauth-routes.js';
 import { deriveKey } from './mcp/auth/tokens.js';
 import { mcpRoutes } from './mcp/routes.js';
@@ -19,8 +20,8 @@ declare module 'fastify' {
     db: AppDb;
     lanes: string[];
     personFields: string[];
-    connectorPassword?: string;
     mcpKey?: Buffer;
+    identityVerifier?: IdentityVerifier;
     mailProvider?: MailProvider;
   }
 }
@@ -32,7 +33,8 @@ export interface AppOptions {
   serveClient?: boolean;
   /** Directory containing the built client (with index.html). Defaults to `dist/client` under cwd. */
   clientDir?: string;
-  connectorPassword?: string;
+  mcpTokenSecret?: string;
+  identityVerifier?: IdentityVerifier;
   mailProvider?: MailProvider;
 }
 
@@ -49,8 +51,8 @@ export function buildApp(options: AppOptions): FastifyInstance {
   app.decorate('db', options.db);
   app.decorate('lanes', options.lanes);
   app.decorate('personFields', options.personFields ?? []);
-  app.decorate('connectorPassword', options.connectorPassword);
-  app.decorate('mcpKey', options.connectorPassword ? deriveKey(options.connectorPassword) : undefined);
+  app.decorate('mcpKey', options.mcpTokenSecret ? deriveKey(options.mcpTokenSecret) : undefined);
+  app.decorate('identityVerifier', options.identityVerifier);
   app.decorate('mailProvider', options.mailProvider);
 
   app.register(boardRoutes);

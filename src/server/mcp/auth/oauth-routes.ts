@@ -1,10 +1,10 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { originOf, sendUnconfigured } from '../http.js';
+import { renderApprovalPage, renderErrorPage, renderRejectionPage } from './approval-page.js';
+import { createApprovalTicketStore } from './approval-tickets.js';
 import { findClient, registerClient } from './clients.js';
 import { createAuthorizationCodeStore } from './codes.js';
-import { createLockoutTracker } from './lockout.js';
-import { renderErrorPage, renderLockedPage, renderPasswordPage } from './password-page.js';
 import { mintToken } from './tokens.js';
 
 interface AuthorizeParams {
@@ -31,17 +31,6 @@ function readAuthorizeParams(source: Record<string, unknown>): AuthorizeParams {
     codeChallengeMethod: get('code_challenge_method'),
     state: get('state'),
   };
-}
-
-function buildFlowParams(params: AuthorizeParams): Record<string, string> {
-  const flowParams: Record<string, string> = {};
-  if (params.responseType) flowParams.response_type = params.responseType;
-  if (params.clientId) flowParams.client_id = params.clientId;
-  if (params.redirectUri) flowParams.redirect_uri = params.redirectUri;
-  if (params.codeChallenge) flowParams.code_challenge = params.codeChallenge;
-  if (params.codeChallengeMethod) flowParams.code_challenge_method = params.codeChallengeMethod;
-  if (params.state) flowParams.state = params.state;
-  return flowParams;
 }
 
 function validateAuthorizeRequest(app: FastifyInstance, params: AuthorizeParams): ValidationResult {
@@ -71,9 +60,13 @@ function sendInvalidRequestRedirect(reply: FastifyReply, redirectUri: string, st
   reply.status(302).header('Location', url.toString()).send();
 }
 
+function readAssertion(headerValue: string | string[] | undefined): string | undefined {
+  return typeof headerValue === 'string' ? headerValue : undefined;
+}
+
 export async function oauthRoutes(app: FastifyInstance): Promise<void> {
   const codeStore = createAuthorizationCodeStore();
-  const lockout = createLockoutTracker();
+  const ticketStore = createApprovalTicketStore();
 
   app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_request, body, done) => {
     try {
@@ -137,73 +130,70 @@ export async function oauthRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    if (lockout.isLocked(request.ip)) {
-      reply.status(423).header('Cache-Control', 'no-store').type('text/html').send(renderLockedPage());
+    const assertion = readAssertion(request.headers['x-authentik-jwt']);
+    const identity = app.identityVerifier ? await app.identityVerifier.verify(assertion) : null;
+    if (!identity) {
+      reply.status(403).header('Cache-Control', 'no-store').type('text/html').send(renderRejectionPage());
       return;
     }
+
+    const client = findClient(app.db, validation.params.clientId);
+    const ticket = ticketStore.issueTicket({
+      clientId: validation.params.clientId,
+      redirectUri: validation.params.redirectUri,
+      codeChallenge: validation.params.codeChallenge,
+      state: validation.params.state,
+    });
 
     reply
       .status(200)
       .header('Cache-Control', 'no-store')
       .type('text/html')
-      .send(renderPasswordPage({ flowParams: buildFlowParams(validation.params) }));
+      .send(renderApprovalPage({ username: identity.username, clientName: client?.clientName ?? validation.params.clientId, ticket }));
   });
 
   app.post('/oauth/authorize', async (request, reply) => {
     if (!app.mcpKey) return sendUnconfigured(reply);
 
-    const params = readAuthorizeParams((request.body as Record<string, unknown>) ?? {});
-    const validation = validateAuthorizeRequest(app, params);
-
-    if (validation.kind === 'unknown-client') {
-      reply.status(400).type('text/html').send(renderErrorPage('Unknown client or redirect URI.'));
-      return;
-    }
-    if (validation.kind === 'invalid-params') {
-      sendInvalidRequestRedirect(reply, validation.redirectUri, validation.state);
+    const assertion = readAssertion(request.headers['x-authentik-jwt']);
+    const identity = app.identityVerifier ? await app.identityVerifier.verify(assertion) : null;
+    if (!identity) {
+      reply.status(403).header('Cache-Control', 'no-store').type('text/html').send(renderRejectionPage());
       return;
     }
 
-    if (lockout.isLocked(request.ip)) {
-      reply.status(423).header('Cache-Control', 'no-store').type('text/html').send(renderLockedPage());
+    const body = (request.body as Record<string, unknown>) ?? {};
+    const ticket = typeof body.ticket === 'string' ? body.ticket : undefined;
+    const action = typeof body.action === 'string' ? body.action : undefined;
+
+    const bound = ticket ? ticketStore.redeemTicket(ticket) : undefined;
+    if (!bound) {
+      reply.status(400).type('text/html').send(renderErrorPage('This approval link has expired or already been used.'));
       return;
     }
 
-    const flowParams = buildFlowParams(validation.params);
-    const submittedPassword = typeof (request.body as Record<string, unknown> | undefined)?.password === 'string'
-      ? ((request.body as Record<string, string>).password)
-      : '';
-
-    // Fixed-length digests let timingSafeEqual compare arbitrary-length passwords without leaking length.
-    const configuredHash = createHash('sha256').update(app.connectorPassword ?? '').digest();
-    const submittedHash = createHash('sha256').update(submittedPassword).digest();
-    const isCorrectPassword = timingSafeEqual(configuredHash, submittedHash);
-
-    if (!isCorrectPassword) {
-      lockout.recordFailure(request.ip);
-      if (lockout.isLocked(request.ip)) {
-        reply.status(423).header('Cache-Control', 'no-store').type('text/html').send(renderLockedPage());
-        return;
-      }
-      reply
-        .status(401)
-        .header('Cache-Control', 'no-store')
-        .type('text/html')
-        .send(renderPasswordPage({ flowParams, error: 'Incorrect password. Please try again.' }));
+    if (action === 'deny') {
+      const redirectUrl = new URL(bound.redirectUri);
+      redirectUrl.searchParams.set('error', 'access_denied');
+      if (bound.state) redirectUrl.searchParams.set('state', bound.state);
+      reply.status(302).header('Location', redirectUrl.toString()).send();
       return;
     }
 
-    lockout.recordSuccess(request.ip);
+    if (action !== 'approve') {
+      reply.status(400).type('text/html').send(renderErrorPage('Unrecognized action.'));
+      return;
+    }
 
     const code = codeStore.issueCode({
-      clientId: validation.params.clientId,
-      redirectUri: validation.params.redirectUri,
-      codeChallenge: validation.params.codeChallenge,
+      clientId: bound.clientId,
+      redirectUri: bound.redirectUri,
+      codeChallenge: bound.codeChallenge,
     });
 
-    const redirectUrl = new URL(validation.params.redirectUri);
+    const redirectUrl = new URL(bound.redirectUri);
     redirectUrl.searchParams.set('code', code);
-    if (validation.params.state) redirectUrl.searchParams.set('state', validation.params.state);
+    if (bound.state) redirectUrl.searchParams.set('state', bound.state);
     reply.status(302).header('Location', redirectUrl.toString()).send();
   });
 
