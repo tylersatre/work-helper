@@ -48,7 +48,7 @@ function onDrop(event: DragEvent): void {
   const taskId = Number(event.dataTransfer?.getData('text/plain'));
   const index = dropIndex.value ?? computeDropIndex(event.clientY, otherCardMidpoints());
   dropIndex.value = null;
-  if (Number.isNaN(taskId)) {
+  if (!Number.isInteger(taskId) || taskId <= 0) {
     return;
   }
   emit('drop', taskId, props.name, index);

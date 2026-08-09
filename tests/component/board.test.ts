@@ -306,6 +306,58 @@ describe('Board', () => {
     expect(cardTitles(laneByName('Done'))).toEqual(['B']);
   });
 
+  it('a failed save does not discard a later queued move — the board reconciles to true server state, not a stale mid-chain revert', async () => {
+    let served = {
+      lanes: [
+        { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 }] },
+        { name: 'In Progress', tasks: [] },
+        { name: 'Waiting', tasks: [] },
+        { name: 'Done', tasks: [] },
+      ],
+    };
+    let putCallCount = 0;
+    const fetchMock = vi.fn((url: string, options?: { method?: string }) => {
+      if (url === '/api/board' && !options) {
+        return Promise.resolve({ ok: true, json: async () => served });
+      }
+      if (options?.method === 'PUT') {
+        putCallCount++;
+        if (putCallCount === 1) {
+          // First move (to In Progress) fails server-side; server state is unchanged.
+          return Promise.resolve({ ok: false, json: async () => ({ error: { message: 'boom' } }) });
+        }
+        // Second move (to Done) succeeds server-side — the server actually moves A to Done,
+        // regardless of the first move's failure, since placement targets are absolute, not deltas.
+        served = {
+          lanes: [
+            { name: 'To Do', tasks: [] },
+            { name: 'In Progress', tasks: [] },
+            { name: 'Waiting', tasks: [] },
+            { name: 'Done', tasks: [{ id: 1, title: 'A', lane: 'Done', position: 0, createdAt: 1 }] },
+          ],
+        };
+        return Promise.resolve({ ok: true, json: async () => ({ id: 1, title: 'A', lane: 'Done', position: 0, createdAt: 1 }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(Board);
+    await screen.findByRole('heading', { level: 2, name: 'To Do' });
+
+    await fireEvent.drop(laneByName('In Progress'), { dataTransfer: makeDataTransfer(1) });
+    await fireEvent.drop(laneByName('Done'), { dataTransfer: makeDataTransfer(1) });
+    await flushPromises();
+    await flushPromises();
+    await flushPromises();
+
+    // Server truth is Done:[A] (the second, successful move). The UI must match it —
+    // never silently show a state (e.g. reverted to To Do) that diverges from what's saved.
+    expect(cardTitles(laneByName('Done'))).toEqual(['A']);
+    expect(cardTitles(laneByName('To Do'))).toEqual([]);
+    expect(cardTitles(laneByName('In Progress'))).toEqual([]);
+  });
+
   it('dragend without a drop leaves the rendered board unchanged', async () => {
     vi.stubGlobal(
       'fetch',
@@ -332,6 +384,41 @@ describe('Board', () => {
 
     expect(cardTitles(laneByName('To Do'))).toEqual(['A']);
     expect(cardTitles(laneByName('In Progress'))).toEqual([]);
+  });
+
+  it('dropping non-card content (empty dataTransfer, e.g. a file or text selection from outside the app) does not move anything or call the placement endpoint', async () => {
+    const putCalls: { url: string; body: unknown }[] = [];
+    const fetchMock = vi.fn((url: string, options?: { method?: string; body?: string }) => {
+      if (url === '/api/board' && !options) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            lanes: [
+              { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 }] },
+              { name: 'In Progress', tasks: [] },
+              { name: 'Waiting', tasks: [] },
+              { name: 'Done', tasks: [] },
+            ],
+          }),
+        });
+      }
+      if (options?.method === 'PUT') {
+        putCalls.push({ url, body: options.body ? JSON.parse(options.body) : undefined });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(Board);
+    await screen.findByRole('heading', { level: 2, name: 'To Do' });
+
+    await fireEvent.drop(laneByName('In Progress'), { dataTransfer: { getData: () => '' } });
+    await flushPromises();
+
+    expect(cardTitles(laneByName('To Do'))).toEqual(['A']);
+    expect(cardTitles(laneByName('In Progress'))).toEqual([]);
+    expect(putCalls).toEqual([]);
+    expect(screen.queryByTestId('error-banner')).toBeNull();
   });
 
   it('dropping a card between two cards of another lane renders it exactly between them and sends that exact index (US2-S1)', async () => {

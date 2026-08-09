@@ -8,6 +8,8 @@ const draggedTaskId = ref<number | null>(null);
 const errorMessage = ref<string | null>(null);
 
 let saveChain: Promise<void> = Promise.resolve();
+let pendingSaves = 0;
+let batchHadFailure = false;
 
 async function fetchBoard(): Promise<void> {
   const response = await fetch('/api/board');
@@ -48,6 +50,7 @@ function onDrop(taskId: number, laneName: string, index: number): void {
   board.value = applyMove(board.value, taskId, laneName, index);
   draggedTaskId.value = null;
 
+  pendingSaves += 1;
   saveChain = saveChain
     .then(() =>
       fetch(`/api/tasks/${taskId}/placement`, {
@@ -58,11 +61,24 @@ function onDrop(taskId: number, laneName: string, index: number): void {
     )
     .then((response) => {
       if (!response.ok) {
-        throw new Error('placement save failed');
+        batchHadFailure = true;
       }
-      errorMessage.value = null;
     })
-    .catch(async () => {
+    .catch(() => {
+      batchHadFailure = true;
+    })
+    .then(async () => {
+      pendingSaves -= 1;
+      // Only reconcile once every currently-queued save has settled — an earlier failure
+      // must not discard a later queued move's optimistic state before its own save lands.
+      if (pendingSaves > 0) {
+        return;
+      }
+      if (!batchHadFailure) {
+        errorMessage.value = null;
+        return;
+      }
+      batchHadFailure = false;
       errorMessage.value = "Couldn't save that move — the board has been restored.";
       try {
         await fetchBoard();

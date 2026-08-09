@@ -247,5 +247,10 @@ describe('US3: position field and board-mirror ordering', () => {
     for (let i = 0; i < restBoard.lanes.length; i++) {
       expect(mcpBoard.lanes[i]!.tasks.map((t) => t.title)).toEqual(restBoard.lanes[i]!.tasks.map((t) => t.title));
     }
+
+    const waiting = mcpBoard.lanes.find((lane) => lane.name === 'Waiting')!;
+    expect(waiting.tasks.map((t) => t.title)).toEqual(['Draft Q3 goals', 'Follow up with Sam']);
+    expect(mcpBoard.lanes.find((lane) => lane.name === 'To Do')!.tasks.map((t) => t.title)).toEqual(['Prep board deck']);
+    expect(mcpBoard.lanes.find((lane) => lane.name === 'In Progress')!.tasks).toEqual([]);
   });
 });
