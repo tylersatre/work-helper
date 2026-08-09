@@ -35,11 +35,21 @@ function onDragEnd(): void {
 
 <style scoped>
 .task-card {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #ccc;
+  display: block;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 4px;
   margin-bottom: 0.5rem;
+  background: #26262c;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 0.82rem;
+  line-height: 1.35;
   overflow-wrap: break-word;
   word-break: break-word;
+  cursor: pointer;
+}
+
+.task-card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
 }
 </style>

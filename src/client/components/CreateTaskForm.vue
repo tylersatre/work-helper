@@ -1,13 +1,33 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { NButton, NInput } from 'naive-ui';
+import { nextTick, ref } from 'vue';
 import type { Task } from '../../shared/types.js';
 import { titleSchema } from '../../shared/validation.js';
 
 const emit = defineEmits<{ created: [task: Task] }>();
 
+const expanded = ref(false);
 const title = ref('');
 const note = ref('');
 const validationMessage = ref('');
+const titleInputRef = ref<InstanceType<typeof NInput> | null>(null);
+
+function reset(): void {
+  title.value = '';
+  note.value = '';
+  validationMessage.value = '';
+}
+
+async function expand(): Promise<void> {
+  expanded.value = true;
+  await nextTick();
+  titleInputRef.value?.focus();
+}
+
+function collapse(): void {
+  expanded.value = false;
+  reset();
+}
 
 async function onSubmit(): Promise<void> {
   const result = titleSchema.safeParse(title.value);
@@ -35,19 +55,81 @@ async function onSubmit(): Promise<void> {
   }
 
   const task: Task = await response.json();
-  title.value = '';
-  note.value = '';
+  reset();
   emit('created', task);
 }
 </script>
 
 <template>
-  <form @submit.prevent="onSubmit">
-    <label for="task-title">Title</label>
-    <input id="task-title" v-model="title" type="text" name="title" />
-    <label for="task-create-note">Note</label>
-    <textarea id="task-create-note" v-model="note" name="note"></textarea>
-    <button type="submit">Add task</button>
-    <p v-if="validationMessage" role="alert">{{ validationMessage }}</p>
-  </form>
+  <div class="add-task">
+    <button v-if="!expanded" type="button" class="add-task-toggle" data-testid="add-task-toggle" @click="expand">
+      + Add task
+    </button>
+    <form v-else class="add-task-form" data-testid="add-task-form" @submit.prevent="onSubmit">
+      <label class="add-task-label" for="task-title">Title</label>
+      <NInput
+        ref="titleInputRef"
+        v-model:value="title"
+        size="small"
+        :input-props="{ id: 'task-title', name: 'title' }"
+      />
+      <p v-if="validationMessage" role="alert" class="add-task-error">{{ validationMessage }}</p>
+
+      <label class="add-task-label" for="task-create-note">Note</label>
+      <NInput
+        v-model:value="note"
+        type="textarea"
+        size="small"
+        :autosize="{ minRows: 2, maxRows: 4 }"
+        :input-props="{ id: 'task-create-note', name: 'note' }"
+      />
+
+      <div class="add-task-actions">
+        <NButton attr-type="submit" size="small" type="primary">Add</NButton>
+        <NButton size="small" @click="collapse">Cancel</NButton>
+      </div>
+    </form>
+  </div>
 </template>
+
+<style scoped>
+.add-task-toggle {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.add-task-toggle:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #fff;
+}
+
+.add-task-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.add-task-label {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.add-task-error {
+  margin: 0;
+  color: #fca5a5;
+  font-size: 0.75rem;
+}
+
+.add-task-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+}
+</style>
