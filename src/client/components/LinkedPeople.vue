@@ -79,6 +79,18 @@ async function unlinkPerson(personId: number): Promise<void> {
   max-width: 100%;
   box-sizing: border-box;
   margin-bottom: 0.5rem;
+  background: #1a1a1f;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.92);
+  padding: 0.35rem 0.5rem;
+  font-size: 0.85rem;
+  font-family: inherit;
+}
+
+.linked-people-search:focus {
+  outline: none;
+  border-color: #3b82f6;
 }
 
 .people-list {
@@ -100,5 +112,21 @@ async function unlinkPerson(personId: number): Promise<void> {
   font-size: 0.85rem;
   overflow-wrap: break-word;
   word-break: break-word;
+}
+
+.person-row button {
+  background: #26262c;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.78rem;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.person-row button:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: #2e2e35;
 }
 </style>

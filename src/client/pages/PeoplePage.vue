@@ -117,4 +117,19 @@ onMounted(fetchPeople);
   text-align: right;
   white-space: nowrap;
 }
+
+.people-table-actions button {
+  background: #26262c;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.75rem;
+  padding: 0.25rem 0.55rem;
+  cursor: pointer;
+}
+
+.people-table-actions button:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: #2e2e35;
+}
 </style>

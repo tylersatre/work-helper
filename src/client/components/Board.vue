@@ -186,4 +186,20 @@ onMounted(() => {
   color: #fca5a5;
   border: 1px solid rgba(239, 68, 68, 0.4);
 }
+
+.error-banner button {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid rgba(252, 165, 165, 0.4);
+  border-radius: 4px;
+  color: #fca5a5;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.55rem;
+  cursor: pointer;
+}
+
+.error-banner button:hover {
+  border-color: rgba(252, 165, 165, 0.7);
+  background: rgba(239, 68, 68, 0.1);
+}
 </style>

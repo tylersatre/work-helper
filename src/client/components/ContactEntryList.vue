@@ -188,6 +188,36 @@ async function onRemove(entryId: number): Promise<void> {
   box-sizing: border-box;
 }
 
+.contact-entry-list input[type='text'] {
+  background: #1a1a1f;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.92);
+  padding: 0.3rem 0.5rem;
+  font-size: 0.82rem;
+  font-family: inherit;
+}
+
+.contact-entry-list input[type='text']:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.contact-entry-list button {
+  background: #26262c;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.78rem;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+}
+
+.contact-entry-list button:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: #2e2e35;
+}
+
 .contact-entry-error {
   color: #fca5a5;
   font-size: 0.8rem;

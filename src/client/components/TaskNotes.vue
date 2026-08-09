@@ -90,10 +90,10 @@ function onDialogShowChange(show: boolean): void {
     </ul>
 
     <form class="note-form" @submit.prevent="onSubmit">
-      <label for="task-note-text">Note</label>
-      <textarea id="task-note-text" v-model="text" name="note"></textarea>
-      <button type="submit">Add note</button>
-      <p v-if="validationMessage" role="alert">{{ validationMessage }}</p>
+      <label class="note-form-label" for="task-note-text">Note</label>
+      <textarea id="task-note-text" v-model="text" class="note-form-textarea" name="note"></textarea>
+      <button type="submit" class="note-form-submit">Add note</button>
+      <p v-if="validationMessage" role="alert" class="note-form-error">{{ validationMessage }}</p>
     </form>
 
     <NModal
@@ -123,5 +123,49 @@ function onDialogShowChange(show: boolean): void {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
+}
+
+.note-form-label {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.note-form-textarea {
+  background: #1a1a1f;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.92);
+  padding: 0.4rem 0.5rem;
+  font-size: 0.85rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 3.5rem;
+}
+
+.note-form-textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.note-form-submit {
+  align-self: flex-start;
+  background: #3b82f6;
+  border: 1px solid #3b82f6;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 0.78rem;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+
+.note-form-submit:hover {
+  background: #60a5fa;
+  border-color: #60a5fa;
+}
+
+.note-form-error {
+  margin: 0;
+  color: #fca5a5;
+  font-size: 0.78rem;
 }
 </style>

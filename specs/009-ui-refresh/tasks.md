@@ -18,9 +18,9 @@
 
 **Purpose**: The new dependency and the two files everything else builds on
 
-- [ ] T001 Install the component library: `npm install naive-ui` (updates `package.json` + `package-lock.json`); verify `npm run build` still succeeds untouched
-- [ ] T002 [P] Add the `window.matchMedia` stub Naive UI needs under jsdom to `tests/component/setup.ts` (guarded so real browsers are unaffected); run `npm test` to confirm the existing suite is still green
-- [ ] T003 Create `src/client/theme.ts` exporting a typed `GlobalThemeOverrides` object (research.md R2): accent color, dense heights/paddings, font stack — the single tweak-point for the dark, data-forward look (depends on T001 for types)
+- [X] T001 Install the component library: `npm install naive-ui` (updates `package.json` + `package-lock.json`); verify `npm run build` still succeeds untouched
+- [X] T002 [P] Add the `window.matchMedia` stub Naive UI needs under jsdom to `tests/component/setup.ts` (guarded so real browsers are unaffected); run `npm test` to confirm the existing suite is still green
+- [X] T003 Create `src/client/theme.ts` exporting a typed `GlobalThemeOverrides` object (research.md R2): accent color, dense heights/paddings, font stack — the single tweak-point for the dark, data-forward look (depends on T001 for types)
 
 ---
 
@@ -38,12 +38,12 @@ No foundational phase for this feature: it touches only the presentation layer, 
 
 ### Tests for User Story 1 (write first, watch them fail)
 
-- [ ] T004 [US1] Write failing component test `tests/component/app-shell.test.ts`: `App.vue` (with real router) renders `[data-testid="app-nav"]` containing the app name and links "Board" and "People"; the active link carries `aria-current="page"` on `/` and on `/people`, and Board stays active on `/tasks/1` while People stays active on `/people/2`; clicking the inactive link navigates and moves the marking
+- [X] T004 [US1] Write failing component test `tests/component/app-shell.test.ts`: `App.vue` (with real router) renders `[data-testid="app-nav"]` containing the app name and links "Board" and "People"; the active link carries `aria-current="page"` on `/` and on `/people`, and Board stays active on `/tasks/1` while People stays active on `/people/2`; clicking the inactive link navigates and moves the marking
 
 ### Implementation for User Story 1
 
-- [ ] T005 [US1] Wire the theme into `src/client/App.vue`: wrap the app in `<n-config-provider :theme="darkTheme" :theme-overrides="themeOverrides">` (from `naive-ui` + `src/client/theme.ts`) with `<n-global-style />`; restructure the template into a `100dvh` flex-column shell (header + content area with `flex: 1; min-height: 0`) per research.md R2/R4
-- [ ] T006 [US1] Build the top nav bar in `src/client/App.vue`: `data-testid="app-nav"`, app name, RouterLinks with active section computed from the route (`/` and `/tasks/*` → Board; `/people` and `/people/*` → People), `aria-current="page"` on the active link, sticky positioning, compact horizontal padding at small widths (research.md R9) — T004 goes green
+- [X] T005 [US1] Wire the theme into `src/client/App.vue`: wrap the app in `<n-config-provider :theme="darkTheme" :theme-overrides="themeOverrides">` (from `naive-ui` + `src/client/theme.ts`) with `<n-global-style />`; restructure the template into a `100dvh` flex-column shell (header + content area with `flex: 1; min-height: 0`) per research.md R2/R4
+- [X] T006 [US1] Build the top nav bar in `src/client/App.vue`: `data-testid="app-nav"`, app name, RouterLinks with active section computed from the route (`/` and `/tasks/*` → Board; `/people` and `/people/*` → People), `aria-current="page"` on the active link, sticky positioning, compact horizontal padding at small widths (research.md R9) — T004 goes green
 
 **Checkpoint**: `npm test` green; dev server shows the dark shell on all four pages with zero white surfaces — US1 is demoable on its own.
 
@@ -57,17 +57,17 @@ No foundational phase for this feature: it touches only the presentation layer, 
 
 ### Tests for User Story 2 (write first, watch them fail)
 
-- [ ] T007 [P] [US2] Extend `tests/component/board.test.ts` (failing): a lane with zero tasks renders `[data-testid="lane-empty"]` and a lane with tasks doesn't; each lane renders its header plus a dedicated scrolling card-list container; existing drag/drop-indicator/error-banner assertions stay intact
-- [ ] T008 [P] [US2] Rework `tests/component/create-task-form.test.ts` (failing): renders collapsed `[data-testid="add-task-toggle"]`; expanding shows `[data-testid="add-task-form"]` with a labeled Title input and Note textarea; valid submit POSTs `/api/tasks` (title, optional note) and emits `created`; whitespace-only title renders the `role="alert"` message adjacent to the title input and does not POST; cancel collapses the form without POSTing
-- [ ] T009 [P] [US2] Write failing test `tests/component/board-page.test.ts`: `BoardPage.vue` renders no top-level create form; the first lane's footer hosts `[data-testid="add-task-toggle"]` (and only the first lane's); a `created` event triggers a board refetch
+- [X] T007 [P] [US2] Extend `tests/component/board.test.ts` (failing): a lane with zero tasks renders `[data-testid="lane-empty"]` and a lane with tasks doesn't; each lane renders its header plus a dedicated scrolling card-list container; existing drag/drop-indicator/error-banner assertions stay intact
+- [X] T008 [P] [US2] Rework `tests/component/create-task-form.test.ts` (failing): renders collapsed `[data-testid="add-task-toggle"]`; expanding shows `[data-testid="add-task-form"]` with a labeled Title input and Note textarea; valid submit POSTs `/api/tasks` (title, optional note) and emits `created`; whitespace-only title renders the `role="alert"` message adjacent to the title input and does not POST; cancel collapses the form without POSTing
+- [X] T009 [P] [US2] Write failing test `tests/component/board-page.test.ts`: `BoardPage.vue` renders no top-level create form; the first lane's footer hosts `[data-testid="add-task-toggle"]` (and only the first lane's); a `created` event triggers a board refetch
 
 ### Implementation for User Story 2
 
-- [ ] T010 [US2] Rework `src/client/components/CreateTaskForm.vue` into the inline lane-footer control (research.md R6): collapsed full-width "+ Add task" button ↔ expanded compact form (`n-input` title, textarea-mode `n-input` note, Add/Cancel buttons), testids per T008, inline validation adjacent to the title input, keep `titleSchema` + `POST /api/tasks` + `created` emit, clear fields on success, collapse on cancel — T008 goes green
-- [ ] T011 [US2] Restyle `src/client/components/Lane.vue` (research.md R4/R7): fixed-width (~280px) full-height column — visible header, internally scrolling card list (`flex: 1; overflow-y: auto`), footer slot; `n-empty` placeholder with `data-testid="lane-empty"` inside the drop zone (still a valid drop target, disappears when a card arrives); preserve all DnD handlers and the `lane`/`task-card`/`drop-indicator` testids — T007 goes green
-- [ ] T012 [US2] Restyle `src/client/components/Board.vue`: `height: 100%`, flex row, `overflow-x: auto`, dense gap/padding; render the add-task control into the first lane's footer (slot wiring, `created` → `fetchBoard`); restyle the error banner with theme tokens keeping `[data-testid="error-banner"]` and its dismiss button; DnD logic (applyMove, save chain) byte-for-byte untouched
-- [ ] T013 [US2] Update `src/client/pages/BoardPage.vue`: remove the top-level `CreateTaskForm`, make the page fill the content area's height, wire creation refresh through Board — T009 goes green
-- [ ] T014 [P] [US2] Restyle `src/client/components/TaskCard.vue`: dense dark card, `draggable` handlers and `data-testid="task-card"`/`data-task-id` preserved, long titles wrap/truncate inside the card so they never break the lane layout (spec edge case)
+- [X] T010 [US2] Rework `src/client/components/CreateTaskForm.vue` into the inline lane-footer control (research.md R6): collapsed full-width "+ Add task" button ↔ expanded compact form (`n-input` title, textarea-mode `n-input` note, Add/Cancel buttons), testids per T008, inline validation adjacent to the title input, keep `titleSchema` + `POST /api/tasks` + `created` emit, clear fields on success, collapse on cancel — T008 goes green
+- [X] T011 [US2] Restyle `src/client/components/Lane.vue` (research.md R4/R7): fixed-width (~280px) full-height column — visible header, internally scrolling card list (`flex: 1; overflow-y: auto`), footer slot; `n-empty` placeholder with `data-testid="lane-empty"` inside the drop zone (still a valid drop target, disappears when a card arrives); preserve all DnD handlers and the `lane`/`task-card`/`drop-indicator` testids — T007 goes green
+- [X] T012 [US2] Restyle `src/client/components/Board.vue`: `height: 100%`, flex row, `overflow-x: auto`, dense gap/padding; render the add-task control into the first lane's footer (slot wiring, `created` → `fetchBoard`); restyle the error banner with theme tokens keeping `[data-testid="error-banner"]` and its dismiss button; DnD logic (applyMove, save chain) byte-for-byte untouched
+- [X] T013 [US2] Update `src/client/pages/BoardPage.vue`: remove the top-level `CreateTaskForm`, make the page fill the content area's height, wire creation refresh through Board — T009 goes green
+- [X] T014 [P] [US2] Restyle `src/client/components/TaskCard.vue`: dense dark card, `draggable` handlers and `data-testid="task-card"`/`data-task-id` preserved, long titles wrap/truncate inside the card so they never break the lane layout (spec edge case)
 
 **Checkpoint**: `npm test` green; dense board demoable — 30-card lane scrolls internally, inline add works, drag persists.
 
@@ -81,13 +81,13 @@ No foundational phase for this feature: it touches only the presentation layer, 
 
 ### Tests for User Story 3 (write first, watch them fail)
 
-- [ ] T015 [US3] Extend `tests/component/task-notes.test.ts` (failing): clicking a note's delete opens `[data-testid="confirm-dialog"]` (query `document.body` — the modal teleports); cancel closes it with the note intact and no DELETE request; confirm issues the DELETE and removes only that note; a `vi.spyOn(window, 'confirm')` is never called
+- [X] T015 [US3] Extend `tests/component/task-notes.test.ts` (failing): clicking a note's delete opens `[data-testid="confirm-dialog"]` (query `document.body` — the modal teleports); cancel closes it with the note intact and no DELETE request; confirm issues the DELETE and removes only that note; a `vi.spyOn(window, 'confirm')` is never called
 
 ### Implementation for User Story 3
 
-- [ ] T016 [US3] Update `src/client/components/NoteItem.vue`: remove `window.confirm`; the delete button emits a `delete-request` with the note id; restyle the note (source label, relative timestamp with hover-absolute, markdown body) dense and dark
-- [ ] T017 [US3] Update `src/client/components/TaskNotes.vue` (research.md R5): own `noteIdPendingDeletion` state and an `n-modal` preset-dialog with `data-testid="confirm-dialog"` and confirm/cancel actions (Escape and mask-click behave as cancel); confirm calls the existing delete path; restyle the notes list and add-note input — T015 goes green
-- [ ] T018 [P] [US3] Restyle `src/client/pages/TaskDetailPage.vue` and `src/client/components/LinkedPeople.vue` with the shared components (dense sections: title, read-only lane, linked-people search and list); behavior unchanged — adapt `tests/component/task-detail.test.ts` only where the new markup requires it
+- [X] T016 [US3] Update `src/client/components/NoteItem.vue`: remove `window.confirm`; the delete button emits a `delete-request` with the note id; restyle the note (source label, relative timestamp with hover-absolute, markdown body) dense and dark
+- [X] T017 [US3] Update `src/client/components/TaskNotes.vue` (research.md R5): own `noteIdPendingDeletion` state and an `n-modal` preset-dialog with `data-testid="confirm-dialog"` and confirm/cancel actions (Escape and mask-click behave as cancel); confirm calls the existing delete path; restyle the notes list and add-note input — T015 goes green
+- [X] T018 [P] [US3] Restyle `src/client/pages/TaskDetailPage.vue` and `src/client/components/LinkedPeople.vue` with the shared components (dense sections: title, read-only lane, linked-people search and list); behavior unchanged — adapt `tests/component/task-detail.test.ts` only where the new markup requires it
 
 **Checkpoint**: `npm test` green; the app's last browser-native popup is gone.
 
@@ -101,13 +101,13 @@ No foundational phase for this feature: it touches only the presentation layer, 
 
 ### Tests for User Story 4 (write first, watch them fail)
 
-- [ ] T019 [US4] Extend `tests/component/people-page.test.ts` (failing): with no people, `[data-testid="people-empty"]` renders in place of the list; after creating a person the empty state is gone and the list row shows name/email/phone; existing row and validation assertions stay intact
+- [X] T019 [US4] Extend `tests/component/people-page.test.ts` (failing): with no people, `[data-testid="people-empty"]` renders in place of the list; after creating a person the empty state is gone and the list row shows name/email/phone; existing row and validation assertions stay intact
 
 ### Implementation for User Story 4
 
-- [ ] T020 [US4] Restyle `src/client/pages/PeoplePage.vue` (research.md R7/R8): `n-empty` state with `data-testid="people-empty"`, dense compact table styling on the existing list markup (no `n-data-table`), restyled create-person area — T019 goes green
-- [ ] T021 [P] [US4] Restyle `src/client/components/PersonForm.vue`: library inputs keeping label associations, `role="alert"` validation messages rendered adjacent to their field; validation logic unchanged — adapt `tests/component/person-form.test.ts` only where the new markup requires it
-- [ ] T022 [P] [US4] Restyle `src/client/pages/PersonDetailPage.vue` and `src/client/components/ContactEntryList.vue`: dense record layout, email/phone entry lists with primary markers and add/edit/remove controls restyled; behavior unchanged — adapt `tests/component/person-detail-page.test.ts` and `tests/component/contact-entry-list.test.ts` only where the new markup requires it
+- [X] T020 [US4] Restyle `src/client/pages/PeoplePage.vue` (research.md R7/R8): `n-empty` state with `data-testid="people-empty"`, dense compact table styling on the existing list markup (no `n-data-table`), restyled create-person area — T019 goes green
+- [X] T021 [P] [US4] Restyle `src/client/components/PersonForm.vue`: library inputs keeping label associations, `role="alert"` validation messages rendered adjacent to their field; validation logic unchanged — adapt `tests/component/person-form.test.ts` only where the new markup requires it
+- [X] T022 [P] [US4] Restyle `src/client/pages/PersonDetailPage.vue` and `src/client/components/ContactEntryList.vue`: dense record layout, email/phone entry lists with primary markers and add/edit/remove controls restyled; behavior unchanged — adapt `tests/component/person-detail-page.test.ts` and `tests/component/contact-entry-list.test.ts` only where the new markup requires it
 
 **Checkpoint**: `npm test` green; whole app is cohesive page to page.
 
@@ -121,8 +121,8 @@ No foundational phase for this feature: it touches only the presentation layer, 
 
 ### Implementation for User Story 5
 
-- [ ] T023 [US5] Responsive pass across `src/client/App.vue` and page/component styles: compact nav padding at small widths, fluid max-widths on forms and pages, only the board container scrolls horizontally — body never does
-- [ ] T024 [US5] Verify at 375px against the dev server (resize + walk board scroll, nav taps, person creation) and fix any overflow or unreachable control found; leave the codebase ready for the Phase 8 evidence run
+- [X] T023 [US5] Responsive pass across `src/client/App.vue` and page/component styles: compact nav padding at small widths, fluid max-widths on forms and pages, only the board container scrolls horizontally — body never does
+- [X] T024 [US5] Verify at 375px against the dev server (resize + walk board scroll, nav taps, person creation) and fix any overflow or unreachable control found; leave the codebase ready for the Phase 8 evidence run
 
 **Checkpoint**: All five stories functional.
 
@@ -132,10 +132,10 @@ No foundational phase for this feature: it touches only the presentation layer, 
 
 **Purpose**: Cross-cutting sweeps, the constitution's evidence gate, and acceptance readiness
 
-- [ ] T025 [P] Sweep `src/client/` for leftovers: no `window.confirm`/`window.alert` anywhere (SC-004), remaining scoped styles (drop indicator, error banner, links) use theme-consistent colors, no hardcoded light-theme values
-- [ ] T026 Run the full gate and record output: `npm run lint && npm run typecheck && npm test && npm run build` — everything green (FR-011, SC-002); fix anything that isn't
-- [ ] T027 Dispatch the `browser-tester` agent against the dev server (UI http://localhost:5109, API 3009): execute every acceptance scenario from spec.md US1–US5 plus edge cases (30-card lane at desktop, dialog cancel/confirm, empty states, 375px walk, drag persistence, long-title card) and save screenshots + results to `docs/evidence/009-ui-refresh/`
-- [ ] T028 Dispatch the `verifier` agent: independently confirm every acceptance criterion has a passing automated check and matching evidence in `docs/evidence/009-ui-refresh/`; address any finding and re-run until clean — then the feature is ready for the PR and Tyler's manual pass (SC-007)
+- [X] T025 [P] Sweep `src/client/` for leftovers: no `window.confirm`/`window.alert` anywhere (SC-004), remaining scoped styles (drop indicator, error banner, links) use theme-consistent colors, no hardcoded light-theme values
+- [X] T026 Run the full gate and record output: `npm run lint && npm run typecheck && npm test && npm run build` — everything green (FR-011, SC-002); fix anything that isn't
+- [X] T027 Dispatch the `browser-tester` agent against the dev server (UI http://localhost:5109, API 3009): execute every acceptance scenario from spec.md US1–US5 plus edge cases (30-card lane at desktop, dialog cancel/confirm, empty states, 375px walk, drag persistence, long-title card) and save screenshots + results to `docs/evidence/009-ui-refresh/`
+- [X] T028 Dispatch the `verifier` agent: independently confirm every acceptance criterion has a passing automated check and matching evidence in `docs/evidence/009-ui-refresh/`; address any finding and re-run until clean — then the feature is ready for the PR and Tyler's manual pass (SC-007)
 
 ---
 
