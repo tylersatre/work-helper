@@ -2,7 +2,12 @@ name: Claude Code Review
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number to review
+        required: true
 
 jobs:
   review:
@@ -12,8 +17,18 @@ jobs:
       pull-requests: write
       id-token: write
     steps:
+      - name: Resolve PR number
+        id: pr
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "number=${{ github.event.inputs.pr_number }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v6
         with:
+          ref: refs/pull/${{ steps.pr.outputs.number }}/head
           fetch-depth: 1
 
       - uses: actions/setup-node@v4
@@ -26,7 +41,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
+            PR NUMBER: ${{ steps.pr.outputs.number }}
 
             You are reviewing a PR in a spec-driven TDD project where all engineering is done by Claude Code agents; Tyler (the product owner) writes specs and acceptance criteria, never code. Your review is consumed by the agent that will push fixes — every finding must be actionable: what is wrong, where (file:line), why it matters, and what a fix looks like. The PR branch is checked out in the working directory.
 
@@ -46,7 +61,7 @@ jobs:
             - Request data-preserving migrations, backfills, backups, or data-loss warnings. Dev-phase policy (CLAUDE.md, constitution): no real data exists; schema changes may be freely lossy and the dev DB is reset at will. Flagging effort spent on data preservation as unnecessary IS in scope.
             - Narrate everything that was fine. One line per area ("checked X — no issues") is the maximum; spend the words on findings.
             - Restate the spec, the workflow, or the diff back at the reader.
-            - Duplicate feedback: first read existing claude[bot] comments (`gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments`). On a re-run after new commits, review what changed, mark previously-raised findings that are now fixed as resolved, and don't re-post ones that still stand.
+            - Duplicate feedback: first read existing claude[bot] comments (`gh api repos/${{ github.repository }}/issues/${{ steps.pr.outputs.number }}/comments`). On a re-run after new commits, review what changed, mark previously-raised findings that are now fixed as resolved, and don't re-post ones that still stand.
 
             Output:
             - One inline comment per concrete finding via `mcp__github_inline_comment__create_inline_comment` (with `confirmed: true`), each tagged with a severity — `blocking` (bug, failing gate, spec violation, false evidence claim), `should-fix` (real issue, mergeable without), or `nit` — and a concrete suggested fix.
