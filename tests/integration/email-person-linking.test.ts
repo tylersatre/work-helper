@@ -397,3 +397,62 @@ describe('US3: connect synced email to people', () => {
     expect(oldRow[0]?.personId).toBeNull();
   });
 });
+
+describe('US2: emails-for-person exposes the full FR-009/FR-010 field set', () => {
+  it('surfaces per-message metadata, attachments, and address displayName for a fully-populated message', async () => {
+    const quoteAttached: SeedMessage = {
+      id: 'msg-quote-fp-1',
+      conversationId: 'conv-quote-fp',
+      subject: 'Quote attached',
+      body: { content: 'See the attached quote.', contentType: 'text' },
+      receivedDateTime: '2026-08-06T09:01:00Z',
+      sentDateTime: '2026-08-06T09:00:00Z',
+      from: { address: 'sam.rivera@example.com', name: 'Sam Rivera' },
+      toRecipients: [{ address: 'tyler@example.com', name: 'Tyler Satre' }],
+      ccRecipients: [],
+      bccRecipients: [],
+      folder: 'inbox',
+      isRead: false,
+      importance: 'high',
+      flagStatus: 'flagged',
+      categories: ['Orange category'],
+      webLink: 'https://outlook.office.com/mail/msg-quote-fp-1',
+      internetMessageId: '<msg-quote-fp-1@example.com>',
+      attachments: [{ name: 'quote.pdf', contentType: 'application/pdf', sizeBytes: 53248 }],
+    };
+    buildTestApp(new FakeMailProvider([quoteAttached]));
+    const sam = await createPerson({ firstName: 'Sam', lastName: 'Rivera', email: 'sam.rivera@example.com' });
+    await startAndConnect();
+    await syncEmails('2026-08-01', '2026-08-08');
+
+    const result = await emailsForPerson({ personId: sam });
+    expect(result.isError).toBeFalsy();
+    const { emails } = result.structuredContent as {
+      emails: {
+        subject: string;
+        receivedAt: number;
+        sourceFolder: string;
+        isRead: boolean;
+        importance: string;
+        flagStatus: string;
+        categories: string[];
+        webLink: string;
+        internetMessageId: string;
+        attachments: { name: string; contentType: string | null; sizeBytes: number }[];
+        addresses: { address: string; role: string; displayName: string }[];
+      }[];
+    };
+
+    expect(emails).toHaveLength(1);
+    const email = emails[0]!;
+    expect(email.sourceFolder).toBe('Inbox');
+    expect(email.isRead).toBe(false);
+    expect(email.importance).toBe('high');
+    expect(email.flagStatus).toBe('flagged');
+    expect(email.categories).toEqual(['Orange category']);
+    expect(email.webLink).toBe('https://outlook.office.com/mail/msg-quote-fp-1');
+    expect(email.internetMessageId).toBe('<msg-quote-fp-1@example.com>');
+    expect(email.attachments).toEqual([{ name: 'quote.pdf', contentType: 'application/pdf', sizeBytes: 53248 }]);
+    expect(email.addresses).toContainEqual({ address: 'sam.rivera@example.com', role: 'from', displayName: 'Sam Rivera' });
+  });
+});

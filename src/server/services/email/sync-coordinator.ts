@@ -26,7 +26,8 @@ export interface TriggerParams {
   endDate: string;
   window: SyncWindow;
   source: SyncSource;
-  provider: MailProvider;
+  /** Undefined means no mailbox has ever been connected — recorded as a failed run, like any other unreachable mailbox (R4). */
+  provider: MailProvider | undefined;
 }
 
 export type TriggerOutcome = { kind: 'already-running' } | { kind: 'ran'; run: SyncRunRecord };
@@ -50,6 +51,9 @@ export class SyncCoordinator {
     this.running = true;
     const ranAt = Date.now();
     try {
+      if (!params.provider) {
+        throw new Error('Mailbox is not connected — run npm run mail:signin');
+      }
       const result = await runSync(this.db, params.provider, params.window);
       const run = this.record(params, ranAt, {
         status: result.status === 'complete' ? 'success' : 'failure',

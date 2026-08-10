@@ -349,4 +349,39 @@ describe('US2: get-conversation and list-conversations expose the full FR-009/FR
     expect(conversation.participants).toContainEqual({ address: 'sam.rivera@example.com', displayName: 'Sam Rivera', person: { id: sam, name: 'Sam Rivera' } });
     expect(conversation.participants).toContainEqual({ address: 'tyler@example.com', displayName: 'Tyler Satre', person: null });
   });
+
+  it('list-conversations participants stay distinct by address even when the same address carried different display names across messages (FR-010)', async () => {
+    const first: SeedMessage = {
+      id: 'msg-name-drift-1',
+      conversationId: 'conv-name-drift',
+      subject: 'Name drift',
+      body: { content: 'first', contentType: 'text' },
+      receivedDateTime: '2026-08-06T09:00:00Z',
+      sentDateTime: '2026-08-06T09:00:00Z',
+      from: { address: 'sam.rivera@example.com', name: 'Sam' },
+      toRecipients: [{ address: 'tyler@example.com' }],
+      ccRecipients: [],
+      bccRecipients: [],
+      folder: 'inbox',
+    };
+    const second: SeedMessage = {
+      ...first,
+      id: 'msg-name-drift-2',
+      receivedDateTime: '2026-08-07T09:00:00Z',
+      sentDateTime: '2026-08-07T09:00:00Z',
+      from: { address: 'sam.rivera@example.com', name: 'Samuel Rivera' },
+    };
+    buildTestApp(new FakeMailProvider([first, second]));
+    await startAndConnect();
+    await syncEmails('2026-08-01', '2026-08-08');
+
+    const result = await listConversations();
+    const { conversations } = result.structuredContent as {
+      conversations: { subject: string; participants: { address: string }[] }[];
+    };
+    const conversation = conversations.find((c) => c.subject === 'Name drift')!;
+
+    const samEntries = conversation.participants.filter((p) => p.address === 'sam.rivera@example.com');
+    expect(samEntries).toHaveLength(1);
+  });
 });

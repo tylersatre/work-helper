@@ -103,7 +103,7 @@ function invoiceAttached(): SeedMessage {
   };
 }
 
-function buildTestApp(mailProvider: MailProvider) {
+function buildTestApp(mailProvider?: MailProvider) {
   const created = createDb(':memory:');
   db = created.db;
   app = buildApp({ db, lanes: LANES, mcpTokenSecret: MCP_TOKEN_SECRET, identityVerifier: createIdentityVerifier(stub.url), mailProvider });
@@ -419,6 +419,20 @@ describe('US1: sync-emails records run history through the shared coordinator', 
     expect(runs[0]).toMatchObject({ source: 'mcp', status: 'failure' });
     expect(typeof runs[0]!.error).toBe('string');
   });
+
+  it('records a failure run when the mailbox is not connected at all, alongside the existing tool-error response (contracts/mcp-tools.md, FR-008)', async () => {
+    buildTestApp(undefined);
+    await startAndConnect();
+
+    const result = await syncEmails('2026-07-01', '2026-07-31');
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toMatch(/not connected/i);
+
+    const runs = await getRuns();
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ source: 'mcp', status: 'failure' });
+    expect(runs[0]!.error).toMatch(/not connected/i);
+  });
 });
 
 describe('US2: full metadata capture', () => {
@@ -634,5 +648,21 @@ describe('US4: keep stored metadata fresh on re-sync', () => {
 
     expect(first.structuredContent).toMatchObject({ status: 'complete', syncedCount: 0, updatedCount: 1 });
     expect(allMessages()).toHaveLength(1);
+  });
+
+  it('keeps a stored message with its last-known metadata when it is moved into an excluded folder (edge case)', async () => {
+    buildTestApp(new FakeMailProvider([quoteAttachedUnreadInbox()]));
+    await startAndConnect();
+
+    await syncEmails('2026-08-01', '2026-08-08');
+    const [before] = allMessages();
+
+    app.mailProvider = new FakeMailProvider([{ ...quoteAttachedUnreadInbox(), folder: 'junk', isRead: true }]);
+    const result = await syncEmails('2026-08-01', '2026-08-08');
+
+    expect(result.structuredContent).toMatchObject({ status: 'complete', syncedCount: 0, updatedCount: 0 });
+
+    const [after] = allMessages();
+    expect(after).toEqual(before);
   });
 });

@@ -186,7 +186,8 @@ export function createMcpServer(context: McpToolsContext): McpServer {
   server.registerTool(
     'sync-emails',
     {
-      description: 'Pulls Inbox + Sent messages for a date range (inclusive, server-local timezone) from the connected mailbox into the store.',
+      description:
+        'Pulls messages for a date range (inclusive, server-local timezone) from every mailbox folder except Junk, Deleted Items, and Drafts into the store, refreshing already-stored messages it re-encounters.',
       inputSchema: { startDate: z.string().optional(), endDate: z.string().optional() },
       outputSchema: {
         status: z.enum(['complete', 'interrupted']),
@@ -205,10 +206,6 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         window = computeSyncWindow(startDate, endDate);
       } catch {
         return toolError('startDate and endDate must be valid YYYY-MM-DD dates, with endDate not before startDate');
-      }
-
-      if (!context.mailProvider) {
-        return toolError('Mailbox is not connected — run npm run mail:signin');
       }
 
       const outcome = await context.syncCoordinator.trigger({ startDate, endDate, window, source: 'mcp', provider: context.mailProvider });

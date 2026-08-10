@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
+import { emailMessages } from '../../src/server/db/schema.js';
 import type { MailMessage, MailProvider } from '../../src/server/services/email/provider.js';
 import { FakeMailProvider, type SeedMessage } from './helpers/fake-mail-provider.js';
 
@@ -74,7 +75,7 @@ class GatedMailProvider implements MailProvider {
 
 let app: FastifyInstance;
 
-function buildTestApp(mailProvider: MailProvider, dbPath = ':memory:') {
+function buildTestApp(mailProvider?: MailProvider, dbPath = ':memory:') {
   const { db } = createDb(dbPath);
   app = buildApp({ db, lanes: LANES, mailProvider });
 }
@@ -190,6 +191,21 @@ describe('POST /api/email-sync/runs', () => {
     expect(runs[0]!.status).toBe('failure');
   });
 
+  it('records a failed run with 201 when the mailbox is not connected at all (contracts/http-api.md, FR-008)', async () => {
+    buildTestApp(undefined);
+
+    const response = await postRun({ startDate: '2026-08-01', endDate: '2026-08-08' });
+
+    expect(response.statusCode).toBe(201);
+    const run = response.json() as SyncRunView;
+    expect(run.status).toBe('failure');
+    expect(run.error).toMatch(/not connected/i);
+
+    const { runs } = await getRuns();
+    expect(runs).toHaveLength(1);
+    expect(runs[0]!.status).toBe('failure');
+  });
+
   it('records a partial-failure run when the connection drops mid-run, then a later overlapping run stores the remainder without duplicates', async () => {
     const allSeeded = [pricingQuestion(), pricingReply()];
     buildTestApp(new FakeMailProvider(allSeeded, { pageSize: 1, throwAfterMessageCount: 1 }));
@@ -210,6 +226,10 @@ describe('POST /api/email-sync/runs', () => {
 
     const { runs } = await getRuns();
     expect(runs).toHaveLength(2);
+
+    const stored = app.db.select().from(emailMessages).all();
+    expect(stored).toHaveLength(2);
+    expect(new Set(stored.map((m) => m.graphMessageId)).size).toBe(2);
   });
 
   it('records a 0 new / 0 updated success run for a range with no matching messages', async () => {

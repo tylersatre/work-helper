@@ -25,11 +25,6 @@ export async function emailSyncRoutes(app: FastifyInstance): Promise<void> {
       return { error: { message: 'Start date must not be after end date' } };
     }
 
-    if (!app.mailProvider) {
-      reply.status(400);
-      return { error: { message: 'Mailbox is not connected — run npm run mail:signin' } };
-    }
-
     const outcome = await app.syncCoordinator.trigger({ startDate, endDate, window, source: 'web', provider: app.mailProvider });
     if (outcome.kind === 'already-running') {
       reply.status(409);

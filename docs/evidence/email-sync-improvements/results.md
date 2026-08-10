@@ -1,6 +1,19 @@
 # Email Sync Improvements — Automated-Check Evidence (MCP-only criteria)
 
-Feature: 012-email-sync-improvements. This file covers the acceptance criteria reachable only through the MCP tools or the HTTP API — no browser involved. UI-facing US1 criteria (scenarios 1–5) have separate browser evidence in this same directory. Raw `vitest run --reporter=verbose` output for every test referenced below is saved alongside this file as `automated-check-output.txt` (94/94 tests passed, captured 2026-08-10).
+Feature: 012-email-sync-improvements. This file covers the acceptance criteria reachable only through the MCP tools or the HTTP API — no browser involved. UI-facing US1 criteria (scenarios 1–5) have separate browser evidence in this same directory. Raw `vitest run --reporter=verbose` output for every test referenced below is saved alongside this file as `automated-check-output.txt` (114/114 tests passed, captured 2026-08-10, after the verifier follow-up below).
+
+## Verifier follow-up (2026-08-10)
+
+An independent `verifier` agent pass found 7 issues after the first version of this evidence was written. Six were fixed, each with a new test written first (confirmed red, then made to pass):
+
+1. **Mailbox-never-connected trigger recorded no run** — contradicted contracts/http-api.md and contracts/mcp-tools.md, which both say a not-connected mailbox is recorded as a `failure` run like any other unreachable-mailbox case. Fixed in `SyncCoordinator.trigger` (now records a failure run for an undefined provider); new tests: `email-sync-runs.test.ts > records a failed run with 201 when the mailbox is not connected at all` and `email-sync.test.ts > records a failure run when the mailbox is not connected at all` (MCP path).
+2. **`sync-emails` tool description was stale** — still said "Pulls Inbox + Sent messages", which stopped being true once US3 landed all-folder coverage. Fixed the description string in `src/server/mcp/tools.ts`.
+3. **FR-010's `emails-for-person` additive fields were unproven** — the only prior assertion was the `displayName: ''` default. New test `email-person-linking.test.ts > US2: emails-for-person exposes the full FR-009/FR-010 field set` now asserts every additive field (receivedAt, sourceFolder, isRead, importance, flagStatus, categories, webLink, internetMessageId, attachments[]) with non-default values.
+4. **Spec edge case "moved into an excluded folder stays stored with last-known metadata" was untested** — new test `email-sync.test.ts > keeps a stored message with its last-known metadata when it is moved into an excluded folder`. Passed immediately (behavior was already correct by construction — excluded folders are pruned before any fetch), so this closes a coverage gap rather than a behavior bug.
+5. **A "without duplicates" test didn't check for duplicates** — `email-sync-runs.test.ts`'s partial-failure-then-resume test asserted `newCount`/run count but never distinct `graphMessageId`s. Added that assertion.
+6. **`list-conversations` participant distinctness was unproven** for the case of one address carrying two different display names across messages — the implementation already dedupes correctly (a JS-level Map keyed by address, applied after the SQL `SELECT DISTINCT`), but nothing exercised it. Added `email-read-tools.test.ts > list-conversations participants stay distinct by address even when the same address carried different display names across messages`.
+
+The seventh finding — participant `displayName` does not refresh on re-sync, only the first-sync value is kept — is a deliberate design decision recorded in `data-model.md`'s immutability rule and R7's rationale (participants are part of the immutable snapshot). The verifier flagged it because US4's narrative and a literal reading of FR-013 could be read either way; `data-model.md` resolves it toward immutability, matching how a comparable ambiguity (R10) was resolved earlier in this feature. Flagged here for Tyler in case a different resolution is wanted — no code change made.
 
 ## US1 scenario 6 — MCP-triggered sync appears in run history with source "mcp"
 
@@ -89,4 +102,4 @@ Tests:
 | Edge: empty range | email-sync-runs.test.ts | PASS |
 | Edge: mid-run partial failure | email-sync-runs.test.ts, email-sync.test.ts | PASS |
 
-94/94 tests passed across all ten test files exercised for this evidence pass (`automated-check-output.txt`). The full project gate (`npm run lint && npm run typecheck && npm test && npm run build`) also passes — 586/586 tests total.
+114/114 tests passed across all eleven test files exercised for this evidence pass (`automated-check-output.txt`). The full project gate (`npm run lint && npm run typecheck && npm test && npm run build`) also passes — 591/591 tests total.

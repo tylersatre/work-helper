@@ -140,7 +140,7 @@
 - [X] T039 Run the full verification gate `npm run lint && npm run typecheck && npm test && npm run build` and confirm all four pass (the Stop-hook gate enforces the same)
 - [X] T040 Dispatch the `browser-tester` agent against http://localhost:5112 to execute US1 acceptance scenarios 1–5 (nav + empty state, seeded run + history reload, prefill on return, validation rejections, failure display) and save screenshots + results to docs/evidence/email-sync-improvements/
 - [X] T041 Record automated-check output (vitest run logs for the mapped scenarios in quickstart.md's table) covering the MCP-only criteria — US1 scenario 6, US2-1/US2-2, US3-1, US4-1, and the already-running / empty-range / mid-run-partial-failure edge cases — into docs/evidence/email-sync-improvements/
-- [ ] T042 Dispatch the `verifier` agent to independently re-run the gate and cross-check the evidence in docs/evidence/email-sync-improvements/ against every acceptance criterion and FR in spec.md before reporting the feature done
+- [X] T042 Dispatch the `verifier` agent to independently re-run the gate and cross-check the evidence in docs/evidence/email-sync-improvements/ against every acceptance criterion and FR in spec.md before reporting the feature done
 
 ---
 
