@@ -1,7 +1,8 @@
-import { asc, eq, sql } from 'drizzle-orm';
+import { asc, desc, eq, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
-import { emailAddresses, emailConversations, emailMessages, emailParticipants, people } from '../../db/schema.js';
+import { emailAddresses, emailConversations, emailMessages, emailParticipants, people, syncRuns } from '../../db/schema.js';
 import type * as schema from '../../db/schema.js';
+import type { SyncRunRecord } from './sync-coordinator.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
 
@@ -171,6 +172,10 @@ function participantsForMessage(db: AppDb, messageId: number): ConversationParti
     role: row.role,
     person: row.personId != null ? { id: row.personId, name: `${row.firstName} ${row.lastName}` } : null,
   }));
+}
+
+export function listSyncRuns(db: AppDb): SyncRunRecord[] {
+  return db.select().from(syncRuns).orderBy(desc(syncRuns.ranAt), desc(syncRuns.id)).all();
 }
 
 export function getConversation(db: AppDb, conversationId: number): ConversationDetail | undefined {

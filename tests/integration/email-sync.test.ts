@@ -9,6 +9,7 @@ import { createDb } from '../../src/server/db/index.js';
 import { emailAddresses, emailConversations, emailMessages, emailParticipants } from '../../src/server/db/schema.js';
 import type * as schema from '../../src/server/db/schema.js';
 import { createIdentityVerifier } from '../../src/server/mcp/auth/identity.js';
+import type { MailProvider } from '../../src/server/services/email/provider.js';
 import { connectThroughApproval } from './helpers/oauth-client.js';
 import { FakeMailProvider, type SeedMessage } from './helpers/fake-mail-provider.js';
 import { startStubIdentityProvider, type StubIdentityProvider } from './helpers/stub-identity-provider.js';
@@ -102,7 +103,7 @@ function invoiceAttached(): SeedMessage {
   };
 }
 
-function buildTestApp(mailProvider: FakeMailProvider) {
+function buildTestApp(mailProvider: MailProvider) {
   const created = createDb(':memory:');
   db = created.db;
   app = buildApp({ db, lanes: LANES, mcpTokenSecret: MCP_TOKEN_SECRET, identityVerifier: createIdentityVerifier(stub.url), mailProvider });
@@ -332,5 +333,78 @@ describe('US1: sync-emails', () => {
     expect(allMessages()).toHaveLength(3);
     const graphIds = allMessages().map((m) => m.graphMessageId);
     expect(new Set(graphIds).size).toBe(3);
+  });
+});
+
+describe('US1: sync-emails records run history through the shared coordinator', () => {
+  interface RunSummary {
+    id: number;
+    source: string;
+    status: string;
+    newCount: number;
+    updatedCount: number;
+    error: string | null;
+  }
+
+  async function getRuns(): Promise<RunSummary[]> {
+    const response = await app.inject({ method: 'GET', url: '/api/email-sync/runs' });
+    return (response.json() as { runs: RunSummary[] }).runs;
+  }
+
+  it('records an executed run with source "mcp" and its counts (US1 scenario 6, FR-007)', async () => {
+    buildTestApp(new FakeMailProvider([pricingQuestion(), lunchThursday()]));
+    await startAndConnect();
+
+    await syncEmails('2026-07-01', '2026-07-31');
+
+    const runs = await getRuns();
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ source: 'mcp', status: 'success', newCount: 2, updatedCount: 0, error: null });
+  });
+
+  it('rejects a tool call arriving while a sync is active with "A sync is already running" and records nothing for it', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    class GatedProvider implements MailProvider {
+      async *fetchMessages(): AsyncIterable<never[]> {
+        markStarted();
+        await gate;
+        yield [];
+      }
+    }
+    buildTestApp(new GatedProvider());
+    await startAndConnect();
+
+    const firstPromise = syncEmails('2026-07-01', '2026-07-31');
+    await started;
+
+    const second = await syncEmails('2026-07-01', '2026-07-31');
+    expect(second.isError).toBe(true);
+    expect(JSON.stringify(second.content)).toMatch(/already running/i);
+
+    release();
+    await firstPromise;
+
+    const runs = await getRuns();
+    expect(runs).toHaveLength(1);
+  });
+
+  it('records a failure run when the mailbox is unreachable, alongside the existing tool-error response', async () => {
+    buildTestApp(new FakeMailProvider([], { failImmediately: true }));
+    await startAndConnect();
+
+    const result = await syncEmails('2026-07-01', '2026-07-31');
+    expect(result.isError).toBe(true);
+
+    const runs = await getRuns();
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ source: 'mcp', status: 'failure' });
+    expect(typeof runs[0]!.error).toBe('string');
   });
 });

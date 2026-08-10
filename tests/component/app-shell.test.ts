@@ -14,6 +14,7 @@ async function renderAt(path: string) {
       { path: '/people/:id', component: { template: '<div>person</div>' } },
       { path: '/tasks/:id', component: { template: '<div>task</div>' } },
       { path: '/tags', component: { template: '<div>tags</div>' } },
+      { path: '/sync', component: { template: '<div>sync</div>' } },
     ],
   });
   await router.push(path);
@@ -24,7 +25,7 @@ async function renderAt(path: string) {
 }
 
 describe('App shell', () => {
-  it('renders app-nav with the app name and Board/People/Tags links', async () => {
+  it('renders app-nav with the app name and Board/People/Tags/Email Sync links', async () => {
     await renderAt('/');
 
     const nav = screen.getByTestId('app-nav');
@@ -32,6 +33,7 @@ describe('App shell', () => {
     expect(within(nav).getByRole('link', { name: 'Board' })).toBeTruthy();
     expect(within(nav).getByRole('link', { name: 'People' })).toBeTruthy();
     expect(within(nav).getByRole('link', { name: 'Tags' })).toBeTruthy();
+    expect(within(nav).getByRole('link', { name: 'Email Sync' })).toBeTruthy();
   });
 
   it('marks Board active on /', async () => {
@@ -73,6 +75,14 @@ describe('App shell', () => {
     expect(within(nav).getByRole('link', { name: 'Tags' }).getAttribute('aria-current')).toBe('page');
     expect(within(nav).getByRole('link', { name: 'Board' }).getAttribute('aria-current')).toBeNull();
     expect(within(nav).getByRole('link', { name: 'People' }).getAttribute('aria-current')).toBeNull();
+  });
+
+  it('marks Email Sync active on /sync', async () => {
+    await renderAt('/sync');
+
+    const nav = screen.getByTestId('app-nav');
+    expect(within(nav).getByRole('link', { name: 'Email Sync' }).getAttribute('aria-current')).toBe('page');
+    expect(within(nav).getByRole('link', { name: 'Board' }).getAttribute('aria-current')).toBeNull();
   });
 
   it('clicking the inactive link navigates and moves the active marking', async () => {
