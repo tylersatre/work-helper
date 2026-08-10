@@ -143,23 +143,51 @@ export function flattenSyncableFolders(tree: MailFolderNode[]): MailFolderNode[]
   return result;
 }
 
-/** Ingests one message in a single transaction; returns whether it was newly stored (false when already present). */
-async function ingestMessage(db: AppDb, provider: MailProvider, message: MailMessage, folderName: string): Promise<boolean> {
+type IngestOutcome = 'new' | 'updated';
+
+/** Ingests one message in a single transaction: inserts it if new, or refreshes its metadata (per R7) if already stored. */
+async function ingestMessage(db: AppDb, provider: MailProvider, message: MailMessage, folderName: string): Promise<IngestOutcome> {
   const [existing] = db
     .select({ id: emailMessages.id })
     .from(emailMessages)
     .where(eq(emailMessages.graphMessageId, message.id))
     .limit(1)
     .all();
-  if (existing) {
-    return false;
-  }
 
   const sentAt = Date.parse(message.sentDateTime);
   const receivedAt = Date.parse(message.receivedDateTime);
+  const attachments = message.hasAttachments ? await provider.fetchAttachmentMetadata(message.id) : [];
+
+  if (existing) {
+    db.transaction((tx) => {
+      tx.update(emailMessages)
+        .set({
+          sourceFolder: folderName,
+          sentAt,
+          receivedAt,
+          isRead: message.isRead,
+          importance: message.importance,
+          flagStatus: message.flagStatus,
+          categories: message.categories,
+          webLink: message.webLink,
+          internetMessageId: message.internetMessageId,
+        })
+        .where(eq(emailMessages.id, existing.id))
+        .run();
+
+      tx.delete(emailAttachments).where(eq(emailAttachments.messageId, existing.id)).run();
+      for (const attachment of attachments) {
+        tx.insert(emailAttachments)
+          .values({ messageId: existing.id, name: attachment.name, contentType: attachment.contentType, sizeBytes: attachment.sizeBytes })
+          .run();
+      }
+    });
+
+    return 'updated';
+  }
+
   const bodyText = deriveBodyText(message.body.content, message.body.contentType);
   const roles = participantsOf(message);
-  const attachments = message.hasAttachments ? await provider.fetchAttachmentMetadata(message.id) : [];
 
   db.transaction((tx) => {
     const conversationId = findOrCreateConversationId(tx, message.conversationId);
@@ -199,13 +227,13 @@ async function ingestMessage(db: AppDb, provider: MailProvider, message: MailMes
     }
   });
 
-  return true;
+  return 'new';
 }
 
-/** Pulls every syncable folder (all but Junk/Deleted Items/Drafts) in the given window and stores each message once. Partial progress survives a mid-run failure. */
+/** Pulls every syncable folder (all but Junk/Deleted Items/Drafts) in the given window, storing new messages and refreshing already-stored ones. Partial progress survives a mid-run failure. */
 export async function runSync(db: AppDb, provider: MailProvider, window: SyncWindow): Promise<SyncResult> {
   let newCount = 0;
-  const updatedCount = 0;
+  let updatedCount = 0;
 
   try {
     const tree = await provider.listFolders();
@@ -213,8 +241,11 @@ export async function runSync(db: AppDb, provider: MailProvider, window: SyncWin
     for (const folder of folders) {
       for await (const page of provider.fetchMessages({ id: folder.id, wellKnown: folder.wellKnown }, window)) {
         for (const message of page) {
-          if (await ingestMessage(db, provider, message, folder.name)) {
+          const outcome = await ingestMessage(db, provider, message, folder.name);
+          if (outcome === 'new') {
             newCount += 1;
+          } else {
+            updatedCount += 1;
           }
         }
       }
@@ -222,7 +253,7 @@ export async function runSync(db: AppDb, provider: MailProvider, window: SyncWin
     return { status: 'complete', newCount, updatedCount };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (newCount === 0) {
+    if (newCount === 0 && updatedCount === 0) {
       throw error instanceof Error ? error : new Error(message);
     }
     return { status: 'interrupted', newCount, updatedCount, error: message };

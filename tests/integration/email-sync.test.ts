@@ -190,7 +190,7 @@ describe('US1: sync-emails', () => {
     const second = await syncEmails('2026-07-15', '2026-08-05');
 
     expect(second.isError).toBeFalsy();
-    expect(second.structuredContent).toEqual({ status: 'complete', syncedCount: 1, updatedCount: 0 });
+    expect(second.structuredContent).toEqual({ status: 'complete', syncedCount: 1, updatedCount: 1 });
 
     const messages = allMessages();
     expect(messages).toHaveLength(4);
@@ -236,7 +236,7 @@ describe('US1: sync-emails', () => {
     app.mailProvider = new FakeMailProvider([pricingQuestion(), pricingReply(), oldThread()]);
     const rerun = await syncEmails('2026-07-01', '2026-07-31');
 
-    expect(rerun.structuredContent).toEqual({ status: 'complete', syncedCount: 0, updatedCount: 0 });
+    expect(rerun.structuredContent).toEqual({ status: 'complete', syncedCount: 0, updatedCount: 2 });
     const lunchMessage = allMessages().find((m) => m.graphMessageId === 'msg-lunch-1');
     expect(lunchMessage).toBeDefined();
     expect(lunchMessage?.subject).toBe('Lunch Thursday');
@@ -333,7 +333,7 @@ describe('US1: sync-emails', () => {
     app.mailProvider = new FakeMailProvider(allSeeded);
     const completed = await syncEmails('2026-07-01', '2026-07-31');
 
-    expect(completed.structuredContent).toEqual({ status: 'complete', syncedCount: 1, updatedCount: 0 });
+    expect(completed.structuredContent).toEqual({ status: 'complete', syncedCount: 1, updatedCount: 2 });
     expect(allMessages()).toHaveLength(3);
     const graphIds = allMessages().map((m) => m.graphMessageId);
     expect(new Set(graphIds).size).toBe(3);
@@ -568,5 +568,71 @@ describe('US3: sync all meaningful folders', () => {
     expect(subjects).not.toContain('You won a prize');
     expect(subjects).not.toContain('Half-written');
     expect(subjects).not.toContain('Old news');
+  });
+});
+
+describe('US4: keep stored metadata fresh on re-sync', () => {
+  function quoteAttachedUnreadInbox(): SeedMessage {
+    return {
+      id: 'msg-quote-1',
+      conversationId: 'conv-quote',
+      subject: 'Quote attached',
+      body: { content: 'See the attached quote.', contentType: 'text' },
+      receivedDateTime: '2026-08-06T09:01:00Z',
+      sentDateTime: '2026-08-06T09:00:00Z',
+      from: { address: 'sam.rivera@example.com', name: 'Sam Rivera' },
+      toRecipients: [{ address: 'tyler@example.com', name: 'Tyler Satre' }],
+      ccRecipients: [],
+      bccRecipients: [],
+      folder: 'inbox',
+      isRead: false,
+      attachments: [{ name: 'quote.pdf', contentType: 'application/pdf', sizeBytes: 53248 }],
+    };
+  }
+
+  it('refreshes read state and folder while leaving subject/body/participants/timestamps unchanged, with no duplicate (US4 scenario 1, FR-013)', async () => {
+    buildTestApp(new FakeMailProvider([quoteAttachedUnreadInbox()]));
+    await startAndConnect();
+
+    await syncEmails('2026-08-01', '2026-08-08');
+    const [before] = allMessages();
+    const conversationsBefore = allConversations();
+
+    app.mailProvider = new FakeMailProvider([{ ...quoteAttachedUnreadInbox(), folder: 'archive', isRead: true }]);
+    const result = await syncEmails('2026-08-01', '2026-08-08');
+
+    expect(result.structuredContent).toMatchObject({ status: 'complete', syncedCount: 0, updatedCount: 1 });
+
+    const messages = allMessages();
+    expect(messages).toHaveLength(1);
+    const [after] = messages;
+    expect(after!.id).toBe(before!.id);
+    expect(after!.subject).toBe(before!.subject);
+    expect(after!.bodyOriginal).toBe(before!.bodyOriginal);
+    expect(after!.bodyText).toBe(before!.bodyText);
+    expect(after!.sentAt).toBe(before!.sentAt);
+    expect(after!.receivedAt).toBe(before!.receivedAt);
+    expect(after!.sourceFolder).toBe('Archive');
+    expect(after!.isRead).toBe(true);
+
+    expect(allConversations()).toHaveLength(conversationsBefore.length);
+
+    const participants = participantsFor(after!.id);
+    expect(participants).toContainEqual({ role: 'from', address: 'sam.rivera@example.com' });
+
+    const attachments = db.select().from(emailAttachments).where(eq(emailAttachments.messageId, after!.id)).all();
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0]).toMatchObject({ name: 'quote.pdf' });
+  });
+
+  it('stores each message exactly once across two runs with overlapping ranges (SC-004)', async () => {
+    buildTestApp(new FakeMailProvider([quoteAttachedUnreadInbox()]));
+    await startAndConnect();
+
+    await syncEmails('2026-08-01', '2026-08-06');
+    const first = await syncEmails('2026-08-05', '2026-08-08');
+
+    expect(first.structuredContent).toMatchObject({ status: 'complete', syncedCount: 0, updatedCount: 1 });
+    expect(allMessages()).toHaveLength(1);
   });
 });

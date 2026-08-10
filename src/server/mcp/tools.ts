@@ -217,7 +217,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
       }
 
       const { run } = outcome;
-      if (run.status === 'failure' && run.newCount === 0) {
+      if (run.status === 'failure' && run.newCount === 0 && run.updatedCount === 0) {
         return toolError(`Could not reach the mailbox (${run.error}) — run npm run mail:signin to reconnect.`);
       }
 
