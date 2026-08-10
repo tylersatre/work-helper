@@ -303,8 +303,6 @@ describe('US3 (011-tags): tags on get-person and get-task', () => {
     const result = await client.callTool({ name: 'get-person', arguments: { personId: sam } });
 
     const tags = (result.structuredContent as { tags: unknown[] }).tags;
-    for (const tag of tags) {
-      expect(typeof tag).toBe('string');
-    }
+    expect(tags).toEqual(['VIP']);
   });
 });

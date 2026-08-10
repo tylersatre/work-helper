@@ -51,7 +51,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
   server.registerTool(
     'get-task',
     {
-      description: 'Fetches a task by id, including its notes (newest first) and linked people.',
+      description: 'Fetches a task by id, including its notes (newest first), linked people, and tag names.',
       inputSchema: { taskId: z.number().int().positive() },
       outputSchema: {
         ...taskSummarySchema,
@@ -106,7 +106,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
   server.registerTool(
     'get-person',
     {
-      description: 'Fetches a person by id, including their configured extra fields.',
+      description: 'Fetches a person by id, including their configured extra fields and tag names.',
       inputSchema: { personId: z.number().int().positive() },
       outputSchema: {
         id: z.number(),

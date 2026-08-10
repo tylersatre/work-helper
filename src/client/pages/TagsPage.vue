@@ -11,6 +11,7 @@ const createError = ref('');
 const editingId = ref<number | null>(null);
 const editName = ref('');
 const editError = ref('');
+const recolorError = ref<{ tagId: number; message: string } | null>(null);
 const deleteTarget = ref<TagWithCounts | null>(null);
 const colorOnOpen = new Map<number, string>();
 
@@ -71,11 +72,16 @@ function onColorPreview(tag: TagWithCounts, color: string): void {
 }
 
 async function onRecolor(tag: TagWithCounts, color: string): Promise<void> {
-  await fetch(`/api/tags/${tag.id}`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ color }),
-  });
+  try {
+    const response = await fetch(`/api/tags/${tag.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ color }),
+    });
+    recolorError.value = response.ok ? null : { tagId: tag.id, message: (await response.json()).error.message };
+  } catch {
+    recolorError.value = { tagId: tag.id, message: 'Could not save the color change' };
+  }
   await fetchTags();
 }
 
@@ -90,7 +96,7 @@ function onColorPickerShowChange(tag: TagWithCounts, show: boolean): void {
   const openedWith = colorOnOpen.get(tag.id);
   colorOnOpen.delete(tag.id);
   if (openedWith !== undefined && openedWith !== tag.color) {
-    onRecolor(tag, tag.color);
+    void onRecolor(tag, tag.color);
   }
 }
 
@@ -168,6 +174,7 @@ function deleteMessage(tag: TagWithCounts | null): string {
           />
           <NButton size="small" @click="startRename(tag)">Rename</NButton>
           <NButton size="small" @click="requestDelete(tag)">Delete</NButton>
+          <p v-if="recolorError?.tagId === tag.id" role="alert" class="tags-page-error">{{ recolorError.message }}</p>
         </template>
       </li>
     </ul>

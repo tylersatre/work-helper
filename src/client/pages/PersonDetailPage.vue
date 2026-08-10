@@ -10,6 +10,7 @@ import TagInput from '../components/TagInput.vue';
 const route = useRoute();
 const person = ref<Person | null>(null);
 const errorMessage = ref('');
+const tagError = ref('');
 
 async function fetchPerson(): Promise<void> {
   const response = await fetch(`/api/people/${route.params.id}`);
@@ -24,6 +25,11 @@ async function attachTag(tagId: number): Promise<void> {
     body: JSON.stringify({ tagId }),
   });
   const body = await response.json();
+  if (!response.ok) {
+    tagError.value = body.error.message;
+    return;
+  }
+  tagError.value = '';
   person.value.tags = body.tags;
 }
 
@@ -35,6 +41,11 @@ async function createAndAttachTag(name: string): Promise<void> {
     body: JSON.stringify({ name }),
   });
   const body = await response.json();
+  if (!response.ok) {
+    tagError.value = body.error.message;
+    return;
+  }
+  tagError.value = '';
   person.value.tags = body.tags;
 }
 
@@ -42,6 +53,11 @@ async function detachTag(tag: Tag): Promise<void> {
   if (!person.value) return;
   const response = await fetch(`/api/people/${person.value.id}/tags/${tag.id}`, { method: 'DELETE' });
   const body = await response.json();
+  if (!response.ok) {
+    tagError.value = body.error.message;
+    return;
+  }
+  tagError.value = '';
   person.value.tags = body.tags;
 }
 
@@ -106,6 +122,7 @@ onMounted(fetchPerson);
       <div class="person-detail-tags">
         <TagChip v-for="tag in person.tags" :key="tag.id" :tag="tag" removable @remove="detachTag(tag)" />
       </div>
+      <p v-if="tagError" role="alert" class="person-detail-tag-error">{{ tagError }}</p>
       <TagInput :attached-tags="person.tags" @attach="attachTag" @create="createAndAttachTag" />
     </div>
 
@@ -151,5 +168,11 @@ onMounted(fetchPerson);
   flex-wrap: wrap;
   gap: 0.4rem;
   margin-bottom: 0.6rem;
+}
+
+.person-detail-tag-error {
+  margin: 0 0 0.6rem;
+  color: #fca5a5;
+  font-size: 0.8rem;
 }
 </style>

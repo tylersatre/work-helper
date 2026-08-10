@@ -8,7 +8,7 @@ export async function tagRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/api/tags', async (request, reply) => {
-    const { name } = request.body as { name?: unknown };
+    const { name } = (request.body ?? {}) as { name?: unknown };
     try {
       const result = createTag(app.db, name);
       if (!result.ok) {
