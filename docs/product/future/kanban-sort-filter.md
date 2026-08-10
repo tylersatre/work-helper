@@ -12,10 +12,10 @@ Sorting and filtering controls on the kanban board — view the board narrowed o
 
 ## Depends on
 
-`move-task-between-lanes` shipped (manual card order exists as the board's persistent base order). Filtering by tag additionally depends on a future tags feature (see the `tags` stub); filtering by linked person only needs `track-people`, which has shipped.
+`move-task-between-lanes` shipped (manual card order exists as the board's persistent base order). Filtering by tag additionally depends on the `tags` feature (specced 2026-08-10); filtering by linked person only needs `track-people`, which has shipped.
 
 ## Notes
 
-- No interview has touched this — it exists as a backlog marker only.
+- No interview has specced this — it exists as a backlog marker only, though the tags interview (2026-08-10) explicitly deferred every filter-by-tag control here: both a board filter and a possible tag filter on the People list.
 - Key open question when picked up: manual order (from move-task-between-lanes) is persistent board state — is sorting a transient view on top of it, or does it rewrite the manual order? The MCP board-listing tool reflects the manual order, so a transient view would also need to decide what agents see.
 - The people list also deliberately has no search/sort/filter controls (per track-people) — a broader filtering effort might span both surfaces, or this stub may stay board-only.

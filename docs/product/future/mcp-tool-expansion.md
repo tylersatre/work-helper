@@ -12,7 +12,7 @@ Grow the work-helper MCP beyond the first read + capture slice: linking people, 
 
 ## Depends on
 
-`mcp-server` shipped (auth plus the first tool set). Lane-targeting/move tools additionally depend on the `move-task-between-lanes` feature (specced 2026-08-08); tag tools on a future tags feature (see the `tags` stub); further email tools on `email-sync`.
+`mcp-server` shipped (auth plus the first tool set). Lane-targeting/move tools additionally depend on the `move-task-between-lanes` feature (specced 2026-08-08); tag tools on the `tags` feature (specced 2026-08-10); further email tools on `email-sync`.
 
 ## Notes
 
@@ -21,4 +21,5 @@ Grow the work-helper MCP beyond the first read + capture slice: linking people, 
 - Decided in the mcp-server interview: MCP mirrors the UI and gets no powers the UI lacks — so lane moves via MCP wait for the move feature to ship in the UI first. The `move-task-between-lanes` feature doc (2026-08-08) makes the existing board-listing tool reflect each task's lane and the manual within-lane card order; move/reorder write tools stay here and are unblocked once that feature ships.
 - Carried over from the deleted mcp-server stub, still unconfirmed by Tyler: MCP-added notes are deletable like any other note. Also binding from task-notes: notes are delete-only — no edit-note tool, ever.
 - After `multiple-emails-and-phones`, a person holds multiple email addresses and phone numbers with one primary of each — the mcp-server people tools deliberately keep returning only the primary email and phone; exposing the full lists (and managing them) is expansion work for this stub.
+- The `tags` feature (2026-08-10) ships tag read exposure itself: get-person and get-task responses include the entity's tags. Remaining tag work here: write tools (attach/detach a tag, create/rename/recolor/delete tags), tag search or filter exposure, and tags in the search-people and list-board responses — all deliberately unchanged in the tags slice. Per the MCP-mirrors-the-UI decision, tag write tools are unblocked once the tags UI ships.
 - Auth was decided in the mcp-server interview and revised by `mcp-authentik-auth` (2026-08-09): the interactive connect step requires signing in through Authentik and explicit approval, tokens are keyed to an operator-set `MCP_TOKEN_SECRET` (rotate to revoke every client), and the earlier shared-password/per-IP-lockout design is retired — new tools inherit the current Authentik-backed flow; nothing new to decide there.
