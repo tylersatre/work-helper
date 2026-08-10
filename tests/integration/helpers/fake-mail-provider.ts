@@ -1,12 +1,14 @@
 import type {
   MailAttachmentMeta,
   MailFlagStatus,
-  MailFolder,
+  MailFolderNode,
+  MailFolderRef,
   MailImportance,
   MailMessage,
   MailProvider,
   MailRecipient,
   MailWindow,
+  WellKnownFolder,
 } from '../../../src/server/services/email/provider.js';
 
 export interface SeedRecipient {
@@ -31,7 +33,8 @@ export interface SeedMessage {
   toRecipients: SeedRecipient[];
   ccRecipients: SeedRecipient[];
   bccRecipients: SeedRecipient[];
-  folder: MailFolder;
+  /** A well-known key ('inbox', 'sent', 'archive', 'junk', 'drafts', 'deleted items') or an arbitrary custom folder name (e.g. 'Projects'). */
+  folder: string;
   isRead?: boolean;
   importance?: MailImportance;
   flagStatus?: MailFlagStatus;
@@ -48,6 +51,33 @@ export interface FakeMailProviderOptions {
   failImmediately?: boolean;
   /** Throws once this many messages (across all folders/pages, cumulative for this provider instance) have already been yielded — simulates a connection drop mid-run. */
   throwAfterMessageCount?: number;
+}
+
+interface ResolvedFolder {
+  id: string;
+  name: string;
+  wellKnown: WellKnownFolder | null;
+}
+
+const WELL_KNOWN_BY_KEY: Record<string, { wellKnown: WellKnownFolder; name: string }> = {
+  inbox: { wellKnown: 'inbox', name: 'Inbox' },
+  sent: { wellKnown: 'sentitems', name: 'Sent Items' },
+  sentitems: { wellKnown: 'sentitems', name: 'Sent Items' },
+  'sent items': { wellKnown: 'sentitems', name: 'Sent Items' },
+  archive: { wellKnown: 'archive', name: 'Archive' },
+  junk: { wellKnown: 'junkemail', name: 'Junk Email' },
+  junkemail: { wellKnown: 'junkemail', name: 'Junk Email' },
+  drafts: { wellKnown: 'drafts', name: 'Drafts' },
+  deleteditems: { wellKnown: 'deleteditems', name: 'Deleted Items' },
+  'deleted items': { wellKnown: 'deleteditems', name: 'Deleted Items' },
+};
+
+const WELL_KNOWN_ORDER: WellKnownFolder[] = ['inbox', 'sentitems', 'archive', 'drafts', 'junkemail', 'deleteditems'];
+
+function resolveFolder(key: string): ResolvedFolder {
+  const known = WELL_KNOWN_BY_KEY[key.toLowerCase()];
+  if (known) return { id: known.wellKnown, name: known.name, wellKnown: known.wellKnown };
+  return { id: key, name: key, wellKnown: null };
 }
 
 function toRecipient(recipient: SeedRecipient): MailRecipient {
@@ -79,13 +109,34 @@ function toMailMessage(seed: SeedMessage): MailMessage {
 
 export class FakeMailProvider implements MailProvider {
   private yieldedCount = 0;
+  private readonly folders: Map<string, ResolvedFolder>;
 
   constructor(
     private readonly seeded: SeedMessage[],
     private readonly options: FakeMailProviderOptions = {},
-  ) {}
+  ) {
+    this.folders = new Map();
+    for (const seed of seeded) {
+      const resolved = resolveFolder(seed.folder);
+      this.folders.set(resolved.id, resolved);
+    }
+  }
 
-  async *fetchMessages(folder: MailFolder, window: MailWindow): AsyncIterable<MailMessage[]> {
+  async listFolders(): Promise<MailFolderNode[]> {
+    if (this.options.failImmediately) {
+      throw new Error('mailbox unreachable');
+    }
+    const nodes = [...this.folders.values()].map((f): MailFolderNode => ({ id: f.id, name: f.name, wellKnown: f.wellKnown, children: [] }));
+    nodes.sort((a, b) => {
+      const ai = a.wellKnown ? WELL_KNOWN_ORDER.indexOf(a.wellKnown) : WELL_KNOWN_ORDER.length;
+      const bi = b.wellKnown ? WELL_KNOWN_ORDER.indexOf(b.wellKnown) : WELL_KNOWN_ORDER.length;
+      if (ai !== bi) return ai - bi;
+      return a.name.localeCompare(b.name);
+    });
+    return nodes;
+  }
+
+  async *fetchMessages(folder: MailFolderRef, window: MailWindow): AsyncIterable<MailMessage[]> {
     if (this.options.failImmediately) {
       throw new Error('mailbox unreachable');
     }
@@ -93,10 +144,12 @@ export class FakeMailProvider implements MailProvider {
     const pageSize = this.options.pageSize ?? 25;
     const startMs = Date.parse(window.startUtc);
     const endMs = Date.parse(window.endUtc);
+    const timestampField = folder.wellKnown === 'sentitems' ? 'sentDateTime' : 'receivedDateTime';
 
     const matching = this.seeded.filter((seed) => {
-      if (seed.folder !== folder) return false;
-      const timestamp = Date.parse(folder === 'inbox' ? seed.receivedDateTime : seed.sentDateTime);
+      const resolved = resolveFolder(seed.folder);
+      if (resolved.id !== folder.id) return false;
+      const timestamp = Date.parse(seed[timestampField]);
       return timestamp >= startMs && timestamp < endMs;
     });
 

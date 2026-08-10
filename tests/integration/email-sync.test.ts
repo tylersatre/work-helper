@@ -130,6 +130,10 @@ async function syncEmails(startDate: string | undefined, endDate: string | undef
   return client.callTool({ name: 'sync-emails', arguments: args });
 }
 
+async function listConversations(args: Record<string, unknown> = {}) {
+  return client.callTool({ name: 'list-conversations', arguments: args });
+}
+
 function allMessages() {
   return db.select().from(emailMessages).all();
 }
@@ -372,6 +376,10 @@ describe('US1: sync-emails records run history through the shared coordinator', 
       markStarted = resolve;
     });
     class GatedProvider implements MailProvider {
+      async listFolders() {
+        return [{ id: 'inbox', name: 'Inbox', wellKnown: 'inbox' as const, children: [] }];
+      }
+
       async *fetchMessages(): AsyncIterable<never[]> {
         markStarted();
         await gate;
@@ -446,7 +454,7 @@ describe('US2: full metadata capture', () => {
     const [stored] = allMessages();
     expect(stored).toMatchObject({
       subject: 'Quote attached',
-      sourceFolder: 'inbox',
+      sourceFolder: 'Inbox',
       isRead: false,
       importance: 'high',
       flagStatus: 'flagged',
@@ -508,5 +516,57 @@ describe('US2: full metadata capture', () => {
       .where(eq(emailParticipants.messageId, stored!.id))
       .all();
     expect(participants.every((p) => p.displayName === '')).toBe(true);
+  });
+});
+
+describe('US3: sync all meaningful folders', () => {
+  function folderMessage(id: string, subject: string, folder: string): SeedMessage {
+    return {
+      id,
+      conversationId: `conv-${id}`,
+      subject,
+      body: { content: subject, contentType: 'text' },
+      receivedDateTime: '2026-08-06T12:00:00Z',
+      sentDateTime: '2026-08-06T12:00:00Z',
+      from: { address: 'someone@example.com' },
+      toRecipients: [{ address: 'tyler@example.com' }],
+      ccRecipients: [],
+      bccRecipients: [],
+      folder,
+    };
+  }
+
+  it('covers Inbox, Archive, and custom folders while excluding Junk/Drafts/Deleted Items (US3 scenario 1)', async () => {
+    const seeds = [
+      folderMessage('msg-hello', 'Hello', 'inbox'),
+      folderMessage('msg-board', 'Board minutes', 'archive'),
+      folderMessage('msg-survey', 'Site survey', 'Projects'),
+      folderMessage('msg-prize', 'You won a prize', 'junk'),
+      folderMessage('msg-draft', 'Half-written', 'drafts'),
+      folderMessage('msg-old', 'Old news', 'deleted items'),
+    ];
+    buildTestApp(new FakeMailProvider(seeds));
+    await startAndConnect();
+
+    const result = await syncEmails('2026-08-01', '2026-08-08');
+    expect(result.structuredContent).toMatchObject({ status: 'complete', syncedCount: 3 });
+
+    const stored = allMessages();
+    expect(stored).toHaveLength(3);
+    const bySubject = new Map(stored.map((m) => [m.subject, m.sourceFolder]));
+    expect(bySubject.get('Hello')).toBe('Inbox');
+    expect(bySubject.get('Board minutes')).toBe('Archive');
+    expect(bySubject.get('Site survey')).toBe('Projects');
+    expect(bySubject.has('You won a prize')).toBe(false);
+    expect(bySubject.has('Half-written')).toBe(false);
+    expect(bySubject.has('Old news')).toBe(false);
+
+    const listed = await listConversations();
+    const { conversations } = listed.structuredContent as { conversations: { subject: string }[] };
+    const subjects = conversations.map((c) => c.subject);
+    expect(subjects).toEqual(expect.arrayContaining(['Hello', 'Board minutes', 'Site survey']));
+    expect(subjects).not.toContain('You won a prize');
+    expect(subjects).not.toContain('Half-written');
+    expect(subjects).not.toContain('Old news');
   });
 });

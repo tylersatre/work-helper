@@ -3,7 +3,7 @@ import { eq, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { emailAddresses, emailAttachments, emailConversations, emailMessages, emailParticipants } from '../../db/schema.js';
 import type * as schema from '../../db/schema.js';
-import type { MailFolder, MailMessage, MailProvider } from './provider.js';
+import type { MailFolderNode, MailMessage, MailProvider, WellKnownFolder } from './provider.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
 
@@ -125,8 +125,26 @@ function findOrCreateConversationId(tx: AppDb, graphConversationId: string): num
   return created!.id;
 }
 
+const EXCLUDED_WELL_KNOWN_FOLDERS = new Set<WellKnownFolder>(['junkemail', 'deleteditems', 'drafts']);
+
+/** Flattens a folder tree, pruning Junk/Deleted Items/Drafts subtrees entirely (R2) — every other folder, at any depth, syncs. */
+export function flattenSyncableFolders(tree: MailFolderNode[]): MailFolderNode[] {
+  const result: MailFolderNode[] = [];
+  function walk(nodes: MailFolderNode[]): void {
+    for (const node of nodes) {
+      if (node.wellKnown && EXCLUDED_WELL_KNOWN_FOLDERS.has(node.wellKnown)) {
+        continue;
+      }
+      result.push(node);
+      walk(node.children);
+    }
+  }
+  walk(tree);
+  return result;
+}
+
 /** Ingests one message in a single transaction; returns whether it was newly stored (false when already present). */
-async function ingestMessage(db: AppDb, provider: MailProvider, message: MailMessage, folder: MailFolder): Promise<boolean> {
+async function ingestMessage(db: AppDb, provider: MailProvider, message: MailMessage, folderName: string): Promise<boolean> {
   const [existing] = db
     .select({ id: emailMessages.id })
     .from(emailMessages)
@@ -151,7 +169,7 @@ async function ingestMessage(db: AppDb, provider: MailProvider, message: MailMes
       .values({
         conversationId,
         graphMessageId: message.id,
-        sourceFolder: folder,
+        sourceFolder: folderName,
         subject: message.subject,
         bodyOriginal: message.body.content,
         bodyContentType: message.body.contentType,
@@ -184,16 +202,18 @@ async function ingestMessage(db: AppDb, provider: MailProvider, message: MailMes
   return true;
 }
 
-/** Pulls Inbox + Sent messages in the given window and stores each once. Partial progress survives a mid-run failure. */
+/** Pulls every syncable folder (all but Junk/Deleted Items/Drafts) in the given window and stores each message once. Partial progress survives a mid-run failure. */
 export async function runSync(db: AppDb, provider: MailProvider, window: SyncWindow): Promise<SyncResult> {
   let newCount = 0;
   const updatedCount = 0;
 
   try {
-    for (const folder of ['inbox', 'sent'] as const) {
-      for await (const page of provider.fetchMessages(folder, window)) {
+    const tree = await provider.listFolders();
+    const folders = flattenSyncableFolders(tree);
+    for (const folder of folders) {
+      for await (const page of provider.fetchMessages({ id: folder.id, wellKnown: folder.wellKnown }, window)) {
         for (const message of page) {
-          if (await ingestMessage(db, provider, message, folder)) {
+          if (await ingestMessage(db, provider, message, folder.name)) {
             newCount += 1;
           }
         }

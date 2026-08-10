@@ -172,13 +172,13 @@ describe('US2: read tools', () => {
 
     const first = conversation.messages[0]!;
     expect(first.bodyText).toBe('Can you send the updated pricing sheet?');
-    expect(first.sourceFolder).toBe('inbox');
+    expect(first.sourceFolder).toBe('Inbox');
     expect(first.participants).toContainEqual({ address: 'sam.rivera@example.com', role: 'from', displayName: '', person: { id: sam, name: 'Sam Rivera' } });
     expect(first.participants).toContainEqual({ address: 'tyler@example.com', role: 'to', displayName: '', person: null });
     expect(first.participants).toContainEqual({ address: 'ana.alvarez@example.com', role: 'cc', displayName: '', person: null });
 
     const second = conversation.messages[1]!;
-    expect(second.sourceFolder).toBe('sent');
+    expect(second.sourceFolder).toBe('Sent Items');
     expect(second.participants).toContainEqual({ address: 'ana.alvarez@example.com', role: 'bcc', displayName: '', person: null });
     expect(second.participants).toContainEqual({ address: 'sam.rivera@example.com', role: 'to', displayName: '', person: { id: sam, name: 'Sam Rivera' } });
   });
@@ -310,7 +310,7 @@ describe('US2: get-conversation and list-conversations expose the full FR-009/FR
     const message = conversation.messages[0]!;
     expect(message.sentAt).toBe(Date.parse('2026-08-06T09:00:00Z'));
     expect(message.receivedAt).toBe(Date.parse('2026-08-06T09:01:00Z'));
-    expect(message.sourceFolder).toBe('inbox');
+    expect(message.sourceFolder).toBe('Inbox');
     expect(message.isRead).toBe(false);
     expect(message.importance).toBe('high');
     expect(message.flagStatus).toBe('flagged');

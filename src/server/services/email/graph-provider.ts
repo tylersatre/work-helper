@@ -1,12 +1,14 @@
 import type {
   MailAttachmentMeta,
   MailFlagStatus,
-  MailFolder,
+  MailFolderNode,
+  MailFolderRef,
   MailImportance,
   MailMessage,
   MailProvider,
   MailRecipient,
   MailWindow,
+  WellKnownFolder,
 } from './provider.js';
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
@@ -14,10 +16,13 @@ const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 const SELECT_FIELDS =
   'id,conversationId,subject,body,sentDateTime,receivedDateTime,from,toRecipients,ccRecipients,bccRecipients,isRead,importance,flag,categories,hasAttachments,webLink,internetMessageId';
 
-const FOLDER_PATH: Record<MailFolder, string> = { inbox: 'inbox', sent: 'sentitems' };
-const FOLDER_TIMESTAMP_FIELD: Record<MailFolder, 'receivedDateTime' | 'sentDateTime'> = {
-  inbox: 'receivedDateTime',
-  sent: 'sentDateTime',
+const WELL_KNOWN_NAMES: Record<WellKnownFolder, string> = {
+  inbox: 'inbox',
+  sentitems: 'sentitems',
+  archive: 'archive',
+  junkemail: 'junkemail',
+  deleteditems: 'deleteditems',
+  drafts: 'drafts',
 };
 
 export interface GraphMailProviderOptions {
@@ -63,6 +68,16 @@ interface GraphAttachmentsResponse {
   value: GraphAttachment[];
 }
 
+interface GraphFolder {
+  id: string;
+  displayName: string;
+}
+
+interface GraphFoldersResponse {
+  value: GraphFolder[];
+  '@odata.nextLink'?: string;
+}
+
 function toRecipient(recipient: GraphRecipient): MailRecipient {
   return { address: recipient.emailAddress?.address ?? '', name: recipient.emailAddress?.name ?? '' };
 }
@@ -89,9 +104,9 @@ function toMailMessage(message: GraphMessage): MailMessage {
   };
 }
 
-function firstPageUrl(folder: MailFolder, window: MailWindow): string {
-  const field = FOLDER_TIMESTAMP_FIELD[folder];
-  const url = new URL(`${GRAPH_BASE}/me/mailFolders/${FOLDER_PATH[folder]}/messages`);
+function firstPageUrl(folder: MailFolderRef, window: MailWindow): string {
+  const field = folder.wellKnown === 'sentitems' ? 'sentDateTime' : 'receivedDateTime';
+  const url = new URL(`${GRAPH_BASE}/me/mailFolders/${folder.id}/messages`);
   url.searchParams.set('$select', SELECT_FIELDS);
   url.searchParams.set('$filter', `${field} ge ${window.startUtc} and ${field} lt ${window.endUtc}`);
   url.searchParams.set('$orderby', field);
@@ -126,7 +141,7 @@ export class GraphMailProvider implements MailProvider {
     return response;
   }
 
-  async *fetchMessages(folder: MailFolder, window: MailWindow): AsyncIterable<MailMessage[]> {
+  async *fetchMessages(folder: MailFolderRef, window: MailWindow): AsyncIterable<MailMessage[]> {
     let nextUrl: string | undefined = firstPageUrl(folder, window);
 
     while (nextUrl) {
@@ -144,5 +159,41 @@ export class GraphMailProvider implements MailProvider {
     const response = await this.authorizedFetch(url.toString());
     const body = (await response.json()) as GraphAttachmentsResponse;
     return body.value.map((a) => ({ name: a.name, contentType: a.contentType ?? null, sizeBytes: a.size }));
+  }
+
+  async listFolders(): Promise<MailFolderNode[]> {
+    const wellKnownIds = new Map<string, WellKnownFolder>();
+    for (const [wellKnown, name] of Object.entries(WELL_KNOWN_NAMES) as [WellKnownFolder, string][]) {
+      const url = new URL(`${GRAPH_BASE}/me/mailFolders/${name}`);
+      url.searchParams.set('$select', 'id');
+      const response = await this.authorizedFetch(url.toString());
+      const body = (await response.json()) as { id: string };
+      wellKnownIds.set(body.id, wellKnown);
+    }
+
+    const rootUrl = new URL(`${GRAPH_BASE}/me/mailFolders`);
+    rootUrl.searchParams.set('$top', '100');
+    return this.fetchFolderLevel(rootUrl.toString(), wellKnownIds);
+  }
+
+  private async fetchFolderLevel(url: string, wellKnownIds: Map<string, WellKnownFolder>): Promise<MailFolderNode[]> {
+    const nodes: MailFolderNode[] = [];
+    let nextUrl: string | undefined = url;
+
+    while (nextUrl) {
+      const response = await this.authorizedFetch(nextUrl);
+      const body = (await response.json()) as GraphFoldersResponse;
+
+      for (const folder of body.value) {
+        const childUrl = new URL(`${GRAPH_BASE}/me/mailFolders/${folder.id}/childFolders`);
+        childUrl.searchParams.set('$top', '100');
+        const children = await this.fetchFolderLevel(childUrl.toString(), wellKnownIds);
+        nodes.push({ id: folder.id, name: folder.displayName, wellKnown: wellKnownIds.get(folder.id) ?? null, children });
+      }
+
+      nextUrl = body['@odata.nextLink'];
+    }
+
+    return nodes;
   }
 }

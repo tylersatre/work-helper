@@ -58,6 +58,10 @@ function pricingReply(): SeedMessage {
 class GatedMailProvider implements MailProvider {
   constructor(private readonly gate: Promise<void>) {}
 
+  async listFolders() {
+    return [{ id: 'inbox', name: 'Inbox', wellKnown: 'inbox' as const, children: [] }];
+  }
+
   async *fetchMessages(): AsyncIterable<MailMessage[]> {
     await this.gate;
     yield [];
