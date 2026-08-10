@@ -4,8 +4,11 @@ import { validateEnv } from './env.js';
 import { loadLanesConfig } from './lanes-config.js';
 import { createIdentityVerifier } from './mcp/auth/identity.js';
 import { loadPersonFieldsConfig } from './person-fields-config.js';
+import { DEV_SEED_MESSAGES } from './services/email/dev-seed.js';
+import { FakeMailProvider } from './services/email/fake-provider.js';
 import { createGraphAuth } from './services/email/graph-auth.js';
 import { GraphMailProvider } from './services/email/graph-provider.js';
+import type { MailProvider } from './services/email/provider.js';
 
 try {
   validateEnv(process.env);
@@ -18,18 +21,30 @@ const lanes = loadLanesConfig();
 const personFields = loadPersonFieldsConfig();
 const { db } = createDb(process.env.DATABASE_PATH ?? './data/work-helper.db');
 
+// Dev-only, never in production: MAIL_PROVIDER=fake serves a seeded FakeMailProvider (browser
+// evidence, no real mailbox needed); MAIL_PROVIDER=fake-unreachable simulates a broken mail
+// connection (US1 scenario 5). Any other value (or unset) falls through to the real Graph provider.
+function resolveDevMailProvider(): MailProvider | undefined {
+  if (process.env.NODE_ENV === 'production') return undefined;
+  if (process.env.MAIL_PROVIDER === 'fake') return new FakeMailProvider(DEV_SEED_MESSAGES);
+  if (process.env.MAIL_PROVIDER === 'fake-unreachable') return new FakeMailProvider([], { failImmediately: true });
+  return undefined;
+}
+
+const devMailProvider = resolveDevMailProvider();
+
 const msClientId = process.env.MS_CLIENT_ID;
 // Hoisted so the MSAL client and its in-memory token cache are shared across calls —
 // GraphMailProvider.fetchMessages calls getAccessToken() once per Graph page, and
 // re-creating the client each time would re-read/re-deserialize the cache file and
 // lose the in-memory token cache on every page (relevant to SC-006's sync-time budget).
-const graphAuth = msClientId
+const graphAuth = !devMailProvider && msClientId
   ? createGraphAuth({
       clientId: msClientId,
       tokenCachePath: process.env.MAIL_TOKEN_CACHE_PATH ?? './data/mail-token-cache.json',
     })
   : undefined;
-const mailProvider = graphAuth ? new GraphMailProvider({ getAccessToken: () => graphAuth.getAccessToken() }) : undefined;
+const mailProvider = devMailProvider ?? (graphAuth ? new GraphMailProvider({ getAccessToken: () => graphAuth.getAccessToken() }) : undefined);
 
 const app = buildApp({
   db,
