@@ -27,6 +27,7 @@ describe('PeoplePage', () => {
             phones: [entry(2, '555-0100')],
             extraFields: {},
             createdAt: 1,
+            tags: [],
           },
           {
             id: 2,
@@ -36,6 +37,7 @@ describe('PeoplePage', () => {
             phones: [entry(4, '555-0200')],
             extraFields: {},
             createdAt: 2,
+            tags: [],
           },
         ],
       }),
@@ -67,6 +69,7 @@ describe('PeoplePage', () => {
             phones: [],
             extraFields: {},
             createdAt: 1,
+            tags: [],
           },
         ],
       }),
@@ -95,6 +98,7 @@ describe('PeoplePage', () => {
             phones: [],
             extraFields: {},
             createdAt: 1,
+            tags: [],
           },
         ],
       }),
@@ -208,6 +212,7 @@ describe('PeoplePage', () => {
           phones: [entry(2, '555-0300')],
           extraFields: {},
           createdAt: 3,
+          tags: [],
         };
         peopleList = [created];
         return Promise.resolve({ ok: true, status: 201, json: async () => created });
@@ -253,6 +258,7 @@ describe('PeoplePage', () => {
             phones: [entry(2, '555-0100')],
             extraFields: {},
             createdAt: 1,
+            tags: [],
           },
         ],
       });
@@ -268,5 +274,37 @@ describe('PeoplePage', () => {
 
     expect(screen.queryAllByTestId('person-row')).toHaveLength(0);
     expect(fetchMock).toHaveBeenCalledWith('/api/people/1', expect.objectContaining({ method: 'DELETE' }));
+  });
+
+  it("renders tag chips on each person's row from their tags, with no tag input or remove affordance", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [
+          {
+            id: 1,
+            firstName: 'Sam',
+            lastName: 'Rivera',
+            emails: [entry(1, 'sam.rivera@example.com')],
+            phones: [],
+            extraFields: {},
+            createdAt: 1,
+            tags: [
+              { id: 1, name: 'Q3', color: '#22C55E' },
+              { id: 2, name: 'VIP', color: '#3B82F6' },
+            ],
+          },
+        ],
+      }),
+    );
+
+    render(PeoplePage);
+
+    const row = await screen.findByTestId('person-row');
+    const chips = within(row).getAllByTestId('tag-chip');
+    expect(chips.map((chip) => chip.textContent?.trim())).toEqual(['Q3', 'VIP']);
+    expect(within(row).queryByRole('textbox')).toBeNull();
+    expect(within(row).queryByRole('button', { name: /remove/i })).toBeNull();
   });
 });
