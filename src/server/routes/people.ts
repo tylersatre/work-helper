@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { ZodError } from 'zod';
 import { addEntry, editEntry, type EntryTable, markPrimary, removeEntry } from '../services/contact-entries.js';
 import { createPerson, deletePerson, getPerson, listPeople, updatePerson } from '../services/people.js';
+import { attachTagToPerson, detachTagFromPerson, type AttachInput } from '../services/tags.js';
 import { emailAddresses, personPhones } from '../db/schema.js';
 
 function conflictMessage(type: 'emails' | 'phones'): string {
@@ -150,5 +151,42 @@ export async function peopleRoutes(app: FastifyInstance): Promise<void> {
     }
     reply.status(204);
     return null;
+  });
+
+  app.post('/api/people/:id/tags', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as { tagId?: unknown; name?: unknown } | undefined;
+    const hasTagId = body?.tagId !== undefined;
+    const hasName = body?.name !== undefined;
+    if (hasTagId === hasName) {
+      reply.status(400);
+      return { error: { message: 'Provide a tagId or a name' } };
+    }
+
+    const input: AttachInput = hasTagId ? { tagId: Number(body!.tagId) } : { name: body!.name };
+    const result = attachTagToPerson(app.db, Number(id), input);
+    if (!result.ok) {
+      if (result.error === 'record-not-found') {
+        reply.status(404);
+        return { error: { message: 'Person not found' } };
+      }
+      if (result.error === 'tag-not-found') {
+        reply.status(404);
+        return { error: { message: 'Tag not found' } };
+      }
+      reply.status(400);
+      return { error: { message: 'A name is required' } };
+    }
+    return { tags: result.tags };
+  });
+
+  app.delete('/api/people/:id/tags/:tagId', async (request, reply) => {
+    const { id, tagId } = request.params as { id: string; tagId: string };
+    const result = detachTagFromPerson(app.db, Number(id), Number(tagId));
+    if (!result.ok) {
+      reply.status(404);
+      return { error: { message: 'Person not found' } };
+    }
+    return { tags: result.tags };
   });
 }

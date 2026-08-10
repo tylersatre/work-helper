@@ -57,6 +57,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         ...taskSummarySchema,
         notes: z.array(z.object(noteSchema)),
         people: z.array(z.object(taskPersonSchema)),
+        tags: z.array(z.string()),
       },
     },
     async ({ taskId }) => {
@@ -77,6 +78,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
           lastName: person.lastName,
           email: person.email,
         })),
+        tags: task.tags.map((tag) => tag.name),
       };
       return { content: [{ type: 'text', text: `Task "${task.title}" in lane "${task.lane}".` }], structuredContent };
     },
@@ -113,6 +115,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         email: z.string().nullable(),
         phone: z.string().nullable(),
         extraFields: z.record(z.string(), z.string()),
+        tags: z.array(z.string()),
       },
     },
     async ({ personId }) => {
@@ -127,6 +130,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         email: primaryValue(person.emails),
         phone: primaryValue(person.phones),
         extraFields: person.extraFields,
+        tags: person.tags.map((tag) => tag.name),
       };
       return { content: [{ type: 'text', text: `${personName(person)}` }], structuredContent };
     },

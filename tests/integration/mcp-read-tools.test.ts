@@ -162,6 +162,7 @@ describe('US2: read tools', () => {
       email: 'sam.rivera@example.com',
       phone: '555-0100',
       extraFields: { Nickname: 'Sammy' },
+      tags: [],
     });
   });
 
@@ -263,5 +264,47 @@ describe('US3: position field and board-mirror ordering', () => {
     expect(waiting.tasks.map((t) => t.title)).toEqual(['Draft Q3 goals', 'Follow up with Sam']);
     expect(mcpBoard.lanes.find((lane) => lane.name === 'To Do')!.tasks.map((t) => t.title)).toEqual(['Prep board deck']);
     expect(mcpBoard.lanes.find((lane) => lane.name === 'In Progress')!.tasks).toEqual([]);
+  });
+});
+
+describe('US3 (011-tags): tags on get-person and get-task', () => {
+  it('get-person structuredContent includes tags as an array of tag names ordered case-insensitively', async () => {
+    await app.inject({ method: 'POST', url: `/api/people/${sam}/tags`, payload: { name: 'VIP' } });
+
+    const result = await client.callTool({ name: 'get-person', arguments: { personId: sam } });
+
+    expect((result.structuredContent as { tags: string[] }).tags).toEqual(['VIP']);
+  });
+
+  it('get-task structuredContent includes tags as an array of tag names ordered case-insensitively', async () => {
+    await app.inject({ method: 'POST', url: `/api/tasks/${prepDeckTaskId}/tags`, payload: { name: 'VIP' } });
+    await app.inject({ method: 'POST', url: `/api/tasks/${prepDeckTaskId}/tags`, payload: { name: 'Q3' } });
+
+    const result = await client.callTool({ name: 'get-task', arguments: { taskId: prepDeckTaskId } });
+
+    expect((result.structuredContent as { tags: string[] }).tags).toEqual(['Q3', 'VIP']);
+  });
+
+  it('an untagged person returns tags: []', async () => {
+    const result = await client.callTool({ name: 'get-person', arguments: { personId: sam } });
+
+    expect((result.structuredContent as { tags: string[] }).tags).toEqual([]);
+  });
+
+  it('an untagged task returns tags: []', async () => {
+    const result = await client.callTool({ name: 'get-task', arguments: { taskId: followUpTaskId } });
+
+    expect((result.structuredContent as { tags: string[] }).tags).toEqual([]);
+  });
+
+  it('tag entries are plain strings carrying no color or id data', async () => {
+    await app.inject({ method: 'POST', url: `/api/people/${sam}/tags`, payload: { name: 'VIP' } });
+
+    const result = await client.callTool({ name: 'get-person', arguments: { personId: sam } });
+
+    const tags = (result.structuredContent as { tags: unknown[] }).tags;
+    for (const tag of tags) {
+      expect(typeof tag).toBe('string');
+    }
   });
 });

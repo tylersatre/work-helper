@@ -3,6 +3,7 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { createPersonInputSchema, updatePersonInputSchema } from '../../shared/validation.js';
 import { emailAddresses, people, personPhones } from '../db/schema.js';
 import { findEmailAddressByValue, isEmailAddressReferenced } from './contact-entries.js';
+import { getTagsForPerson, type TagRecord } from './tags.js';
 import type * as schema from '../db/schema.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
@@ -24,6 +25,7 @@ export interface PersonRecord {
   phones: ContactEntry[];
   extraFields: Record<string, string>;
   createdAt: number;
+  tags: TagRecord[];
 }
 
 export type CreatePersonResult =
@@ -81,6 +83,7 @@ function toPersonRecord(db: AppDb, row: PersonRow, personFields: string[]): Pers
     phones: loadEntries(db, personPhones, row.id),
     extraFields,
     createdAt: row.createdAt,
+    tags: getTagsForPerson(db, row.id),
   };
 }
 
