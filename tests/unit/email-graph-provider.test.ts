@@ -13,6 +13,13 @@ function fixtureMessage(overrides: Record<string, unknown> = {}) {
     toRecipients: [{ emailAddress: { address: 'tyler@example.com', name: 'Tyler' } }],
     ccRecipients: [],
     bccRecipients: [],
+    isRead: true,
+    importance: 'normal',
+    flag: { flagStatus: 'notFlagged' },
+    categories: [],
+    hasAttachments: false,
+    webLink: 'https://outlook.office.com/mail/AAMk-immutable-1',
+    internetMessageId: '<AAMk-immutable-1@example.com>',
     ...overrides,
   };
 }
@@ -53,7 +60,7 @@ describe('GraphMailProvider', () => {
     const parsed = new URL(url as string);
     expect(parsed.origin + parsed.pathname).toBe('https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages');
     expect(parsed.searchParams.get('$select')).toBe(
-      'id,conversationId,subject,body,sentDateTime,receivedDateTime,from,toRecipients,ccRecipients,bccRecipients',
+      'id,conversationId,subject,body,sentDateTime,receivedDateTime,from,toRecipients,ccRecipients,bccRecipients,isRead,importance,flag,categories,hasAttachments,webLink,internetMessageId',
     );
     expect(parsed.searchParams.get('$filter')).toBe(
       `receivedDateTime ge ${WINDOW.startUtc} and receivedDateTime lt ${WINDOW.endUtc}`,
@@ -121,19 +128,70 @@ describe('GraphMailProvider', () => {
       toRecipients: [],
       ccRecipients: [],
       bccRecipients: [],
+      isRead: true,
+      importance: 'normal',
+      flagStatus: 'notFlagged',
+      categories: [],
+      hasAttachments: false,
+      webLink: 'https://outlook.office.com/mail/AAMk-immutable-1',
+      internetMessageId: '<AAMk-immutable-1@example.com>',
     });
   });
 
-  it('maps populated recipients to {address} entries', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ value: [fixtureMessage()] }));
+  it('maps populated recipients to {address, name} entries, defaulting a missing name to \'\'', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        value: [fixtureMessage({ toRecipients: [{ emailAddress: { address: 'tyler@example.com' } }] })],
+      }),
+    );
     const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
 
     const [page] = await drain(provider, 'inbox', WINDOW);
 
     expect(page![0]).toMatchObject({
-      from: { address: 'sam@example.com' },
-      toRecipients: [{ address: 'tyler@example.com' }],
+      from: { address: 'sam@example.com', name: 'Sam' },
+      toRecipients: [{ address: 'tyler@example.com', name: '' }],
     });
+  });
+
+  it('maps isRead, importance, flag.flagStatus, categories, hasAttachments, webLink, and internetMessageId as-is', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        value: [
+          fixtureMessage({
+            isRead: false,
+            importance: 'high',
+            flag: { flagStatus: 'flagged' },
+            categories: ['Orange category'],
+            hasAttachments: true,
+            webLink: 'https://outlook.office.com/mail/msg-1',
+            internetMessageId: '<msg-1@example.com>',
+          }),
+        ],
+      }),
+    );
+    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+
+    const [page] = await drain(provider, 'inbox', WINDOW);
+
+    expect(page![0]).toMatchObject({
+      isRead: false,
+      importance: 'high',
+      flagStatus: 'flagged',
+      categories: ['Orange category'],
+      hasAttachments: true,
+      webLink: 'https://outlook.office.com/mail/msg-1',
+      internetMessageId: '<msg-1@example.com>',
+    });
+  });
+
+  it('defaults a missing flag object to notFlagged', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ value: [fixtureMessage({ flag: undefined })] }));
+    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+
+    const [page] = await drain(provider, 'inbox', WINDOW);
+
+    expect(page![0]).toMatchObject({ flagStatus: 'notFlagged' });
   });
 
   it('never sends a non-GET request', async () => {
@@ -159,5 +217,32 @@ describe('GraphMailProvider', () => {
     const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
 
     await expect(drain(provider, 'inbox', WINDOW)).rejects.toThrow(/connection|unreachable/i);
+  });
+
+  describe('fetchAttachmentMetadata', () => {
+    it('requests name, contentType, size only — never contentBytes — and maps the response', async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({
+          value: [
+            { name: 'quote.pdf', contentType: 'application/pdf', size: 53248 },
+            { name: 'image.dat', contentType: null, size: 10 },
+          ],
+        }),
+      );
+      const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+
+      const attachments = await provider.fetchAttachmentMetadata('AAMk-immutable-1');
+
+      const [url, init] = fetchMock.mock.calls[0]!;
+      const parsed = new URL(url as string);
+      expect(parsed.origin + parsed.pathname).toBe('https://graph.microsoft.com/v1.0/me/messages/AAMk-immutable-1/attachments');
+      expect(parsed.searchParams.get('$select')).toBe('name,contentType,size');
+      expect((init as RequestInit).method ?? 'GET').toBe('GET');
+
+      expect(attachments).toEqual([
+        { name: 'quote.pdf', contentType: 'application/pdf', sizeBytes: 53248 },
+        { name: 'image.dat', contentType: null, sizeBytes: 10 },
+      ]);
+    });
   });
 });

@@ -161,7 +161,7 @@ describe('US2: read tools', () => {
         sentAt: number;
         bodyText: string;
         sourceFolder: string;
-        participants: { address: string; role: string; person: { id: number; name: string } | null }[];
+        participants: { address: string; role: string; displayName: string; person: { id: number; name: string } | null }[];
       }[];
     };
 
@@ -173,14 +173,14 @@ describe('US2: read tools', () => {
     const first = conversation.messages[0]!;
     expect(first.bodyText).toBe('Can you send the updated pricing sheet?');
     expect(first.sourceFolder).toBe('inbox');
-    expect(first.participants).toContainEqual({ address: 'sam.rivera@example.com', role: 'from', person: { id: sam, name: 'Sam Rivera' } });
-    expect(first.participants).toContainEqual({ address: 'tyler@example.com', role: 'to', person: null });
-    expect(first.participants).toContainEqual({ address: 'ana.alvarez@example.com', role: 'cc', person: null });
+    expect(first.participants).toContainEqual({ address: 'sam.rivera@example.com', role: 'from', displayName: '', person: { id: sam, name: 'Sam Rivera' } });
+    expect(first.participants).toContainEqual({ address: 'tyler@example.com', role: 'to', displayName: '', person: null });
+    expect(first.participants).toContainEqual({ address: 'ana.alvarez@example.com', role: 'cc', displayName: '', person: null });
 
     const second = conversation.messages[1]!;
     expect(second.sourceFolder).toBe('sent');
-    expect(second.participants).toContainEqual({ address: 'ana.alvarez@example.com', role: 'bcc', person: null });
-    expect(second.participants).toContainEqual({ address: 'sam.rivera@example.com', role: 'to', person: { id: sam, name: 'Sam Rivera' } });
+    expect(second.participants).toContainEqual({ address: 'ana.alvarez@example.com', role: 'bcc', displayName: '', person: null });
+    expect(second.participants).toContainEqual({ address: 'sam.rivera@example.com', role: 'to', displayName: '', person: { id: sam, name: 'Sam Rivera' } });
   });
 
   it('errors with "Conversation N not found" for an unknown id', async () => {
@@ -252,5 +252,101 @@ describe('US2: read tools', () => {
     const fresh = await listConversations({ limit: 10 });
     const freshContent = fresh.structuredContent as { conversations: { subject: string }[] };
     expect(freshContent.conversations.map((c) => c.subject)).toEqual(['Alpha', 'Charlie', 'Bravo']);
+  });
+});
+
+describe('US2: get-conversation and list-conversations expose the full FR-009/FR-010 field set', () => {
+  function quoteAttached(): SeedMessage {
+    return {
+      id: 'msg-quote-1',
+      conversationId: 'conv-quote',
+      subject: 'Quote attached',
+      body: { content: 'See the attached quote.', contentType: 'text' },
+      receivedDateTime: '2026-08-06T09:01:00Z',
+      sentDateTime: '2026-08-06T09:00:00Z',
+      from: { address: 'sam.rivera@example.com', name: 'Sam Rivera' },
+      toRecipients: [{ address: 'tyler@example.com', name: 'Tyler Satre' }],
+      ccRecipients: [],
+      bccRecipients: [],
+      folder: 'inbox',
+      isRead: false,
+      importance: 'high',
+      flagStatus: 'flagged',
+      categories: ['Orange category'],
+      webLink: 'https://outlook.office.com/mail/msg-quote-1',
+      internetMessageId: '<msg-quote-1@example.com>',
+      attachments: [{ name: 'quote.pdf', contentType: 'application/pdf', sizeBytes: 53248 }],
+    };
+  }
+
+  it('get-conversation surfaces every FR-009 field for a fully-populated message (US2 scenario 1)', async () => {
+    buildTestApp(new FakeMailProvider([quoteAttached()]));
+    await startAndConnect();
+    await syncEmails('2026-08-01', '2026-08-08');
+
+    const listed = await listConversations();
+    const { conversations } = listed.structuredContent as { conversations: { id: number; subject: string }[] };
+    const conversationId = conversations.find((c) => c.subject === 'Quote attached')!.id;
+
+    const result = await getConversation(conversationId);
+    expect(result.isError).toBeFalsy();
+
+    const conversation = result.structuredContent as {
+      messages: {
+        sentAt: number;
+        receivedAt: number;
+        sourceFolder: string;
+        isRead: boolean;
+        importance: string;
+        flagStatus: string;
+        categories: string[];
+        webLink: string;
+        internetMessageId: string;
+        attachments: { name: string; contentType: string | null; sizeBytes: number }[];
+        participants: { address: string; displayName: string; role: string }[];
+      }[];
+    };
+
+    const message = conversation.messages[0]!;
+    expect(message.sentAt).toBe(Date.parse('2026-08-06T09:00:00Z'));
+    expect(message.receivedAt).toBe(Date.parse('2026-08-06T09:01:00Z'));
+    expect(message.sourceFolder).toBe('inbox');
+    expect(message.isRead).toBe(false);
+    expect(message.importance).toBe('high');
+    expect(message.flagStatus).toBe('flagged');
+    expect(message.categories).toEqual(['Orange category']);
+    expect(message.webLink).toBe('https://outlook.office.com/mail/msg-quote-1');
+    expect(message.internetMessageId).toBe('<msg-quote-1@example.com>');
+    expect(message.attachments).toEqual([{ name: 'quote.pdf', contentType: 'application/pdf', sizeBytes: 53248 }]);
+    expect(message.participants).toContainEqual({ address: 'sam.rivera@example.com', displayName: 'Sam Rivera', role: 'from', person: null });
+    expect(message.participants).toContainEqual({ address: 'tyler@example.com', displayName: 'Tyler Satre', role: 'to', person: null });
+  });
+
+  it('list-conversations shows unread + attachment indicators and participants alongside subject/count/date (US2 scenario 2)', async () => {
+    buildTestApp(new FakeMailProvider([quoteAttached()]));
+    const sam = await createPerson({ firstName: 'Sam', lastName: 'Rivera', email: 'sam.rivera@example.com' });
+    await startAndConnect();
+    await syncEmails('2026-08-01', '2026-08-08');
+
+    const result = await listConversations();
+    expect(result.isError).toBeFalsy();
+
+    const { conversations } = result.structuredContent as {
+      conversations: {
+        subject: string;
+        messageCount: number;
+        latestMessageAt: number;
+        hasUnread: boolean;
+        hasAttachments: boolean;
+        participants: { address: string; displayName: string; person: { id: number; name: string } | null }[];
+      }[];
+    };
+
+    const conversation = conversations.find((c) => c.subject === 'Quote attached')!;
+    expect(conversation.messageCount).toBe(1);
+    expect(conversation.hasUnread).toBe(true);
+    expect(conversation.hasAttachments).toBe(true);
+    expect(conversation.participants).toContainEqual({ address: 'sam.rivera@example.com', displayName: 'Sam Rivera', person: { id: sam, name: 'Sam Rivera' } });
+    expect(conversation.participants).toContainEqual({ address: 'tyler@example.com', displayName: 'Tyler Satre', person: null });
   });
 });

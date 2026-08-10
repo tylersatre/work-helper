@@ -1,7 +1,44 @@
-import type { MailFolder, MailMessage, MailProvider, MailWindow } from '../../../src/server/services/email/provider.js';
+import type {
+  MailAttachmentMeta,
+  MailFlagStatus,
+  MailFolder,
+  MailImportance,
+  MailMessage,
+  MailProvider,
+  MailRecipient,
+  MailWindow,
+} from '../../../src/server/services/email/provider.js';
 
-export interface SeedMessage extends MailMessage {
+export interface SeedRecipient {
+  address: string;
+  name?: string;
+}
+
+export interface SeedAttachment {
+  name: string;
+  contentType: string | null;
+  sizeBytes: number;
+}
+
+export interface SeedMessage {
+  id: string;
+  conversationId: string;
+  subject: string;
+  body: { content: string; contentType: 'html' | 'text' };
+  receivedDateTime: string;
+  sentDateTime: string;
+  from: SeedRecipient | null;
+  toRecipients: SeedRecipient[];
+  ccRecipients: SeedRecipient[];
+  bccRecipients: SeedRecipient[];
   folder: MailFolder;
+  isRead?: boolean;
+  importance?: MailImportance;
+  flagStatus?: MailFlagStatus;
+  categories?: string[];
+  webLink?: string;
+  internetMessageId?: string;
+  attachments?: SeedAttachment[];
 }
 
 export interface FakeMailProviderOptions {
@@ -13,7 +50,12 @@ export interface FakeMailProviderOptions {
   throwAfterMessageCount?: number;
 }
 
+function toRecipient(recipient: SeedRecipient): MailRecipient {
+  return { address: recipient.address, name: recipient.name ?? '' };
+}
+
 function toMailMessage(seed: SeedMessage): MailMessage {
+  const attachments = seed.attachments ?? [];
   return {
     id: seed.id,
     conversationId: seed.conversationId,
@@ -21,10 +63,17 @@ function toMailMessage(seed: SeedMessage): MailMessage {
     body: seed.body,
     receivedDateTime: seed.receivedDateTime,
     sentDateTime: seed.sentDateTime,
-    from: seed.from,
-    toRecipients: seed.toRecipients,
-    ccRecipients: seed.ccRecipients,
-    bccRecipients: seed.bccRecipients,
+    from: seed.from ? toRecipient(seed.from) : null,
+    toRecipients: seed.toRecipients.map(toRecipient),
+    ccRecipients: seed.ccRecipients.map(toRecipient),
+    bccRecipients: seed.bccRecipients.map(toRecipient),
+    isRead: seed.isRead ?? false,
+    importance: seed.importance ?? 'normal',
+    flagStatus: seed.flagStatus ?? 'notFlagged',
+    categories: seed.categories ?? [],
+    hasAttachments: attachments.length > 0,
+    webLink: seed.webLink ?? '',
+    internetMessageId: seed.internetMessageId ?? '',
   };
 }
 
@@ -60,5 +109,10 @@ export class FakeMailProvider implements MailProvider {
         throw new Error('mailbox connection lost mid-sync');
       }
     }
+  }
+
+  async fetchAttachmentMetadata(messageId: string): Promise<MailAttachmentMeta[]> {
+    const seed = this.seeded.find((s) => s.id === messageId);
+    return (seed?.attachments ?? []).map((a) => ({ name: a.name, contentType: a.contentType, sizeBytes: a.sizeBytes }));
   }
 }

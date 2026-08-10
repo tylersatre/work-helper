@@ -126,11 +126,11 @@ describe('US3: connect synced email to people', () => {
     const result = await emailsForPerson({ personId: ana });
     expect(result.isError).toBeFalsy();
     const { emails } = result.structuredContent as {
-      emails: { subject: string; addresses: { address: string; role: string }[] }[];
+      emails: { subject: string; addresses: { address: string; role: string; displayName: string }[] }[];
     };
     expect(emails).toHaveLength(1);
     expect(emails[0]!.subject).toBe('Pricing question');
-    expect(emails[0]!.addresses).toEqual([{ address: 'ana.alvarez@example.com', role: 'cc' }]);
+    expect(emails[0]!.addresses).toEqual([{ address: 'ana.alvarez@example.com', role: 'cc', displayName: '' }]);
   });
 
   it('rejects adding an email already owned by another person, leaving the record unchanged (AS3)', async () => {
@@ -172,13 +172,13 @@ describe('US3: connect synced email to people', () => {
     const result = await emailsForPerson({ personId: sam });
     expect(result.isError).toBeFalsy();
     const { emails } = result.structuredContent as {
-      emails: { subject: string; addresses: { address: string; role: string }[] }[];
+      emails: { subject: string; addresses: { address: string; role: string; displayName: string }[] }[];
     };
     expect(emails).toHaveLength(2);
     const pricing = emails.find((e) => e.subject === 'Pricing question')!;
-    expect(pricing.addresses).toEqual([{ address: 'sam.rivera@example.com', role: 'from' }]);
+    expect(pricing.addresses).toEqual([{ address: 'sam.rivera@example.com', role: 'from', displayName: '' }]);
     const personal = emails.find((e) => e.subject === 'Weekend plans')!;
-    expect(personal.addresses).toEqual([{ address: 'sam.personal@example.com', role: 'to' }]);
+    expect(personal.addresses).toEqual([{ address: 'sam.personal@example.com', role: 'to', displayName: '' }]);
   });
 
   it('rejects editing an entry to a value that already exists as an unlinked synced record', async () => {

@@ -1,7 +1,7 @@
 import { convert } from 'html-to-text';
 import { eq, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
-import { emailAddresses, emailConversations, emailMessages, emailParticipants } from '../../db/schema.js';
+import { emailAddresses, emailAttachments, emailConversations, emailMessages, emailParticipants } from '../../db/schema.js';
 import type * as schema from '../../db/schema.js';
 import type { MailFolder, MailMessage, MailProvider } from './provider.js';
 
@@ -62,21 +62,22 @@ export interface SyncResult {
 interface AddressRole {
   address: string;
   role: 'from' | 'to' | 'cc' | 'bcc';
+  name: string;
 }
 
 function participantsOf(message: MailMessage): AddressRole[] {
   const roles: AddressRole[] = [];
   if (message.from?.address) {
-    roles.push({ address: message.from.address, role: 'from' });
+    roles.push({ address: message.from.address, role: 'from', name: message.from.name });
   }
   for (const recipient of message.toRecipients ?? []) {
-    if (recipient.address) roles.push({ address: recipient.address, role: 'to' });
+    if (recipient.address) roles.push({ address: recipient.address, role: 'to', name: recipient.name });
   }
   for (const recipient of message.ccRecipients ?? []) {
-    if (recipient.address) roles.push({ address: recipient.address, role: 'cc' });
+    if (recipient.address) roles.push({ address: recipient.address, role: 'cc', name: recipient.name });
   }
   for (const recipient of message.bccRecipients ?? []) {
-    if (recipient.address) roles.push({ address: recipient.address, role: 'bcc' });
+    if (recipient.address) roles.push({ address: recipient.address, role: 'bcc', name: recipient.name });
   }
 
   const seen = new Set<string>();
@@ -125,7 +126,7 @@ function findOrCreateConversationId(tx: AppDb, graphConversationId: string): num
 }
 
 /** Ingests one message in a single transaction; returns whether it was newly stored (false when already present). */
-function ingestMessage(db: AppDb, message: MailMessage, folder: MailFolder): boolean {
+async function ingestMessage(db: AppDb, provider: MailProvider, message: MailMessage, folder: MailFolder): Promise<boolean> {
   const [existing] = db
     .select({ id: emailMessages.id })
     .from(emailMessages)
@@ -136,10 +137,11 @@ function ingestMessage(db: AppDb, message: MailMessage, folder: MailFolder): boo
     return false;
   }
 
-  const sentAt = Date.parse(folder === 'inbox' ? message.receivedDateTime : message.sentDateTime);
+  const sentAt = Date.parse(message.sentDateTime);
   const receivedAt = Date.parse(message.receivedDateTime);
   const bodyText = deriveBodyText(message.body.content, message.body.contentType);
   const roles = participantsOf(message);
+  const attachments = message.hasAttachments ? await provider.fetchAttachmentMetadata(message.id) : [];
 
   db.transaction((tx) => {
     const conversationId = findOrCreateConversationId(tx, message.conversationId);
@@ -156,15 +158,26 @@ function ingestMessage(db: AppDb, message: MailMessage, folder: MailFolder): boo
         bodyText,
         sentAt,
         receivedAt,
-        isRead: false,
+        isRead: message.isRead,
+        importance: message.importance,
+        flagStatus: message.flagStatus,
+        categories: message.categories,
+        webLink: message.webLink,
+        internetMessageId: message.internetMessageId,
         createdAt: Date.now(),
       })
       .returning()
       .all();
 
-    for (const { address, role } of roles) {
+    for (const { address, role, name } of roles) {
       const addressId = findOrCreateAddressId(tx, address);
-      tx.insert(emailParticipants).values({ messageId: inserted!.id, addressId, role }).run();
+      tx.insert(emailParticipants).values({ messageId: inserted!.id, addressId, role, displayName: name }).run();
+    }
+
+    for (const attachment of attachments) {
+      tx.insert(emailAttachments)
+        .values({ messageId: inserted!.id, name: attachment.name, contentType: attachment.contentType, sizeBytes: attachment.sizeBytes })
+        .run();
     }
   });
 
@@ -180,7 +193,7 @@ export async function runSync(db: AppDb, provider: MailProvider, window: SyncWin
     for (const folder of ['inbox', 'sent'] as const) {
       for await (const page of provider.fetchMessages(folder, window)) {
         for (const message of page) {
-          if (ingestMessage(db, message, folder)) {
+          if (await ingestMessage(db, provider, message, folder)) {
             newCount += 1;
           }
         }

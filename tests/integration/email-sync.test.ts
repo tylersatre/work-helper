@@ -6,7 +6,7 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
-import { emailAddresses, emailConversations, emailMessages, emailParticipants } from '../../src/server/db/schema.js';
+import { emailAddresses, emailAttachments, emailConversations, emailMessages, emailParticipants } from '../../src/server/db/schema.js';
 import type * as schema from '../../src/server/db/schema.js';
 import { createIdentityVerifier } from '../../src/server/mcp/auth/identity.js';
 import type { MailProvider } from '../../src/server/services/email/provider.js';
@@ -377,6 +377,10 @@ describe('US1: sync-emails records run history through the shared coordinator', 
         await gate;
         yield [];
       }
+
+      async fetchAttachmentMetadata() {
+        return [];
+      }
     }
     buildTestApp(new GatedProvider());
     await startAndConnect();
@@ -406,5 +410,103 @@ describe('US1: sync-emails records run history through the shared coordinator', 
     expect(runs).toHaveLength(1);
     expect(runs[0]).toMatchObject({ source: 'mcp', status: 'failure' });
     expect(typeof runs[0]!.error).toBe('string');
+  });
+});
+
+describe('US2: full metadata capture', () => {
+  function quoteAttached(): SeedMessage {
+    return {
+      id: 'msg-quote-1',
+      conversationId: 'conv-quote',
+      subject: 'Quote attached',
+      body: { content: 'See the attached quote.', contentType: 'text' },
+      receivedDateTime: '2026-08-06T09:01:00Z',
+      sentDateTime: '2026-08-06T09:00:00Z',
+      from: { address: 'sam.rivera@example.com', name: 'Sam Rivera' },
+      toRecipients: [{ address: 'tyler@example.com', name: 'Tyler Satre' }],
+      ccRecipients: [],
+      bccRecipients: [],
+      folder: 'inbox',
+      isRead: false,
+      importance: 'high',
+      flagStatus: 'flagged',
+      categories: ['Orange category'],
+      webLink: 'https://outlook.office.com/mail/msg-quote-1',
+      internetMessageId: '<msg-quote-1@example.com>',
+      attachments: [{ name: 'quote.pdf', contentType: 'application/pdf', sizeBytes: 53248 }],
+    };
+  }
+
+  it('stores every FR-009 field for a fully-populated message (US2 scenario 1)', async () => {
+    buildTestApp(new FakeMailProvider([quoteAttached()]));
+    await startAndConnect();
+
+    await syncEmails('2026-08-01', '2026-08-08');
+
+    const [stored] = allMessages();
+    expect(stored).toMatchObject({
+      subject: 'Quote attached',
+      sourceFolder: 'inbox',
+      isRead: false,
+      importance: 'high',
+      flagStatus: 'flagged',
+      categories: ['Orange category'],
+      webLink: 'https://outlook.office.com/mail/msg-quote-1',
+      internetMessageId: '<msg-quote-1@example.com>',
+    });
+    expect(stored!.sentAt).toBe(Date.parse('2026-08-06T09:00:00Z'));
+    expect(stored!.receivedAt).toBe(Date.parse('2026-08-06T09:01:00Z'));
+
+    const participants = db
+      .select({ role: emailParticipants.role, address: emailAddresses.value, displayName: emailParticipants.displayName })
+      .from(emailParticipants)
+      .innerJoin(emailAddresses, eq(emailParticipants.addressId, emailAddresses.id))
+      .where(eq(emailParticipants.messageId, stored!.id))
+      .all();
+    expect(participants).toContainEqual({ role: 'from', address: 'sam.rivera@example.com', displayName: 'Sam Rivera' });
+    expect(participants).toContainEqual({ role: 'to', address: 'tyler@example.com', displayName: 'Tyler Satre' });
+
+    const attachments = db.select().from(emailAttachments).where(eq(emailAttachments.messageId, stored!.id)).all();
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0]).toMatchObject({ name: 'quote.pdf', contentType: 'application/pdf', sizeBytes: 53248 });
+  });
+
+  it('syncs a message with no attachments, normal importance, no flag, no categories, and an address-only sender cleanly (FR-011)', async () => {
+    const plain: SeedMessage = {
+      id: 'msg-plain-1',
+      conversationId: 'conv-plain',
+      subject: 'Just checking in',
+      body: { content: 'Hi', contentType: 'text' },
+      receivedDateTime: '2026-08-06T09:01:00Z',
+      sentDateTime: '2026-08-06T09:00:00Z',
+      from: { address: 'someone@example.com' },
+      toRecipients: [{ address: 'tyler@example.com' }],
+      ccRecipients: [],
+      bccRecipients: [],
+      folder: 'inbox',
+    };
+    buildTestApp(new FakeMailProvider([plain]));
+    await startAndConnect();
+
+    await syncEmails('2026-08-01', '2026-08-08');
+
+    const [stored] = allMessages();
+    expect(stored).toMatchObject({
+      importance: 'normal',
+      flagStatus: 'notFlagged',
+      categories: [],
+      webLink: '',
+      internetMessageId: '',
+    });
+
+    const attachments = db.select().from(emailAttachments).where(eq(emailAttachments.messageId, stored!.id)).all();
+    expect(attachments).toHaveLength(0);
+
+    const participants = db
+      .select({ displayName: emailParticipants.displayName })
+      .from(emailParticipants)
+      .where(eq(emailParticipants.messageId, stored!.id))
+      .all();
+    expect(participants.every((p) => p.displayName === '')).toBe(true);
   });
 });

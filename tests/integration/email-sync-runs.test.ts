@@ -62,6 +62,10 @@ class GatedMailProvider implements MailProvider {
     await this.gate;
     yield [];
   }
+
+  async fetchAttachmentMetadata() {
+    return [];
+  }
 }
 
 let app: FastifyInstance;

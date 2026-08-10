@@ -231,25 +231,51 @@ export function createMcpServer(context: McpToolsContext): McpServer {
     },
   );
 
+  const personRefSchema = z.object({ id: z.number(), name: z.string() }).nullable();
+
+  const conversationParticipantSummarySchema = z.object({
+    address: z.string(),
+    displayName: z.string(),
+    person: personRefSchema,
+  });
+
   const conversationSummarySchema = {
     id: z.number(),
     subject: z.string(),
     messageCount: z.number(),
     latestMessageAt: z.number(),
+    hasUnread: z.boolean(),
+    hasAttachments: z.boolean(),
+    participants: z.array(conversationParticipantSummarySchema),
   };
 
   const participantSchema = z.object({
     address: z.string(),
+    displayName: z.string(),
     role: z.enum(['from', 'to', 'cc', 'bcc']),
-    person: z.object({ id: z.number(), name: z.string() }).nullable(),
+    person: personRefSchema,
+  });
+
+  const attachmentSchema = z.object({
+    name: z.string(),
+    contentType: z.string().nullable(),
+    sizeBytes: z.number(),
   });
 
   const conversationMessageSchema = z.object({
     id: z.number(),
     subject: z.string(),
     sentAt: z.number(),
+    receivedAt: z.number(),
     bodyText: z.string(),
-    sourceFolder: z.enum(['inbox', 'sent']),
+    sourceFolder: z.string(),
+    isRead: z.boolean(),
+    importance: z.enum(['low', 'normal', 'high']),
+    flagStatus: z.enum(['notFlagged', 'complete', 'flagged']),
+    categories: z.array(z.string()),
+    webLink: z.string(),
+    internetMessageId: z.string(),
+    attachments: z.array(attachmentSchema),
     participants: z.array(participantSchema),
   });
 
@@ -324,7 +350,16 @@ export function createMcpServer(context: McpToolsContext): McpServer {
             conversationId: z.number(),
             subject: z.string(),
             sentAt: z.number(),
-            addresses: z.array(z.object({ address: z.string(), role: z.enum(['from', 'to', 'cc', 'bcc']) })),
+            receivedAt: z.number(),
+            sourceFolder: z.string(),
+            isRead: z.boolean(),
+            importance: z.enum(['low', 'normal', 'high']),
+            flagStatus: z.enum(['notFlagged', 'complete', 'flagged']),
+            categories: z.array(z.string()),
+            webLink: z.string(),
+            internetMessageId: z.string(),
+            attachments: z.array(attachmentSchema),
+            addresses: z.array(z.object({ address: z.string(), role: z.enum(['from', 'to', 'cc', 'bcc']), displayName: z.string() })),
           }),
         ),
         nextCursor: z.string().nullable(),
