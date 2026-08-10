@@ -164,7 +164,7 @@ describe('US1: sync-emails', () => {
     const result = await syncEmails('2026-07-01', '2026-07-31');
 
     expect(result.isError).toBeFalsy();
-    expect(result.structuredContent).toEqual({ status: 'complete', syncedCount: 3 });
+    expect(result.structuredContent).toEqual({ status: 'complete', syncedCount: 3, updatedCount: 0 });
 
     const messages = allMessages();
     expect(messages).toHaveLength(3);
@@ -185,7 +185,7 @@ describe('US1: sync-emails', () => {
     const second = await syncEmails('2026-07-15', '2026-08-05');
 
     expect(second.isError).toBeFalsy();
-    expect(second.structuredContent).toEqual({ status: 'complete', syncedCount: 1 });
+    expect(second.structuredContent).toEqual({ status: 'complete', syncedCount: 1, updatedCount: 0 });
 
     const messages = allMessages();
     expect(messages).toHaveLength(4);
@@ -231,7 +231,7 @@ describe('US1: sync-emails', () => {
     app.mailProvider = new FakeMailProvider([pricingQuestion(), pricingReply(), oldThread()]);
     const rerun = await syncEmails('2026-07-01', '2026-07-31');
 
-    expect(rerun.structuredContent).toEqual({ status: 'complete', syncedCount: 0 });
+    expect(rerun.structuredContent).toEqual({ status: 'complete', syncedCount: 0, updatedCount: 0 });
     const lunchMessage = allMessages().find((m) => m.graphMessageId === 'msg-lunch-1');
     expect(lunchMessage).toBeDefined();
     expect(lunchMessage?.subject).toBe('Lunch Thursday');
@@ -318,16 +318,17 @@ describe('US1: sync-emails', () => {
     const interrupted = await syncEmails('2026-07-01', '2026-07-31');
 
     expect(interrupted.isError).toBeFalsy();
-    const interruptedContent = interrupted.structuredContent as { status: string; syncedCount: number; error?: string };
+    const interruptedContent = interrupted.structuredContent as { status: string; syncedCount: number; updatedCount: number; error?: string };
     expect(interruptedContent.status).toBe('interrupted');
     expect(interruptedContent.syncedCount).toBe(2);
+    expect(interruptedContent.updatedCount).toBe(0);
     expect(typeof interruptedContent.error).toBe('string');
     expect(allMessages()).toHaveLength(2);
 
     app.mailProvider = new FakeMailProvider(allSeeded);
     const completed = await syncEmails('2026-07-01', '2026-07-31');
 
-    expect(completed.structuredContent).toEqual({ status: 'complete', syncedCount: 1 });
+    expect(completed.structuredContent).toEqual({ status: 'complete', syncedCount: 1, updatedCount: 0 });
     expect(allMessages()).toHaveLength(3);
     const graphIds = allMessages().map((m) => m.graphMessageId);
     expect(new Set(graphIds).size).toBe(3);

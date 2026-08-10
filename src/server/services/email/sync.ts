@@ -54,7 +54,8 @@ export function deriveBodyText(content: string, contentType: 'html' | 'text'): s
 
 export interface SyncResult {
   status: 'complete' | 'interrupted';
-  syncedCount: number;
+  newCount: number;
+  updatedCount: number;
   error?: string;
 }
 
@@ -136,6 +137,7 @@ function ingestMessage(db: AppDb, message: MailMessage, folder: MailFolder): boo
   }
 
   const sentAt = Date.parse(folder === 'inbox' ? message.receivedDateTime : message.sentDateTime);
+  const receivedAt = Date.parse(message.receivedDateTime);
   const bodyText = deriveBodyText(message.body.content, message.body.contentType);
   const roles = participantsOf(message);
 
@@ -153,6 +155,8 @@ function ingestMessage(db: AppDb, message: MailMessage, folder: MailFolder): boo
         bodyContentType: message.body.contentType,
         bodyText,
         sentAt,
+        receivedAt,
+        isRead: false,
         createdAt: Date.now(),
       })
       .returning()
@@ -169,24 +173,25 @@ function ingestMessage(db: AppDb, message: MailMessage, folder: MailFolder): boo
 
 /** Pulls Inbox + Sent messages in the given window and stores each once. Partial progress survives a mid-run failure. */
 export async function runSync(db: AppDb, provider: MailProvider, window: SyncWindow): Promise<SyncResult> {
-  let syncedCount = 0;
+  let newCount = 0;
+  const updatedCount = 0;
 
   try {
     for (const folder of ['inbox', 'sent'] as const) {
       for await (const page of provider.fetchMessages(folder, window)) {
         for (const message of page) {
           if (ingestMessage(db, message, folder)) {
-            syncedCount += 1;
+            newCount += 1;
           }
         }
       }
     }
-    return { status: 'complete', syncedCount };
+    return { status: 'complete', newCount, updatedCount };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (syncedCount === 0) {
+    if (newCount === 0) {
       throw error instanceof Error ? error : new Error(message);
     }
-    return { status: 'interrupted', syncedCount, error: message };
+    return { status: 'interrupted', newCount, updatedCount, error: message };
   }
 }

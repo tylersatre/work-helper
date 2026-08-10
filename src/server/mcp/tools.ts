@@ -189,6 +189,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
       outputSchema: {
         status: z.enum(['complete', 'interrupted']),
         syncedCount: z.number(),
+        updatedCount: z.number(),
         error: z.string().optional(),
       },
     },
@@ -212,9 +213,14 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         const result = await runSync(context.db, context.mailProvider, window);
         const text =
           result.status === 'complete'
-            ? `Synced ${result.syncedCount} email(s).`
-            : `Sync interrupted after storing ${result.syncedCount} email(s): ${result.error}`;
-        const structuredContent = { status: result.status, syncedCount: result.syncedCount, error: result.error };
+            ? `Synced ${result.newCount} email(s).`
+            : `Sync interrupted after storing ${result.newCount} email(s): ${result.error}`;
+        const structuredContent = {
+          status: result.status,
+          syncedCount: result.newCount,
+          updatedCount: result.updatedCount,
+          error: result.error,
+        };
         return { content: [{ type: 'text', text }], structuredContent };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

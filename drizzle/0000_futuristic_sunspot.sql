@@ -9,6 +9,16 @@ CREATE TABLE `email_addresses` (
 --> statement-breakpoint
 CREATE UNIQUE INDEX `email_addresses_value_unique` ON `email_addresses` (lower("value"));--> statement-breakpoint
 CREATE UNIQUE INDEX `email_addresses_one_primary` ON `email_addresses` (`person_id`) WHERE "email_addresses"."is_primary" = 1;--> statement-breakpoint
+CREATE TABLE `email_attachments` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`message_id` integer NOT NULL,
+	`name` text NOT NULL,
+	`content_type` text,
+	`size_bytes` integer NOT NULL,
+	FOREIGN KEY (`message_id`) REFERENCES `email_messages`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE INDEX `email_attachments_message_id` ON `email_attachments` (`message_id`);--> statement-breakpoint
 CREATE TABLE `email_conversations` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`graph_conversation_id` text NOT NULL,
@@ -26,6 +36,13 @@ CREATE TABLE `email_messages` (
 	`body_content_type` text NOT NULL,
 	`body_text` text NOT NULL,
 	`sent_at` integer NOT NULL,
+	`received_at` integer NOT NULL,
+	`is_read` integer NOT NULL,
+	`importance` text DEFAULT 'normal' NOT NULL,
+	`flag_status` text DEFAULT 'notFlagged' NOT NULL,
+	`categories` text DEFAULT '[]' NOT NULL,
+	`web_link` text DEFAULT '' NOT NULL,
+	`internet_message_id` text DEFAULT '' NOT NULL,
 	`created_at` integer NOT NULL,
 	FOREIGN KEY (`conversation_id`) REFERENCES `email_conversations`(`id`) ON UPDATE no action ON DELETE no action
 );
@@ -38,6 +55,7 @@ CREATE TABLE `email_participants` (
 	`message_id` integer NOT NULL,
 	`address_id` integer NOT NULL,
 	`role` text NOT NULL,
+	`display_name` text DEFAULT '' NOT NULL,
 	FOREIGN KEY (`message_id`) REFERENCES `email_messages`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`address_id`) REFERENCES `email_addresses`(`id`) ON UPDATE no action ON DELETE no action
 );
@@ -78,6 +96,19 @@ CREATE TABLE `person_tags` (
 	FOREIGN KEY (`tag_id`) REFERENCES `tags`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE TABLE `sync_runs` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`ran_at` integer NOT NULL,
+	`start_date` text NOT NULL,
+	`end_date` text NOT NULL,
+	`source` text NOT NULL,
+	`status` text NOT NULL,
+	`new_count` integer NOT NULL,
+	`updated_count` integer NOT NULL,
+	`error` text
+);
+--> statement-breakpoint
+CREATE INDEX `sync_runs_ran_at` ON `sync_runs` (`ran_at`);--> statement-breakpoint
 CREATE TABLE `tags` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`name` text NOT NULL,

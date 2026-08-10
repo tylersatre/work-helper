@@ -89,7 +89,7 @@ export interface ConversationMessage {
   subject: string;
   sentAt: number;
   bodyText: string;
-  sourceFolder: 'inbox' | 'sent';
+  sourceFolder: string;
   participants: ConversationParticipant[];
 }
 

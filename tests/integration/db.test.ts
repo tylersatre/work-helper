@@ -4,7 +4,17 @@ import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createDb } from '../../src/server/db/index.js';
-import { people, emailAddresses, taskPeople, tasks } from '../../src/server/db/schema.js';
+import {
+  people,
+  emailAddresses,
+  emailAttachments,
+  emailConversations,
+  emailMessages,
+  emailParticipants,
+  syncRuns,
+  taskPeople,
+  tasks,
+} from '../../src/server/db/schema.js';
 
 describe('createDb', () => {
   it('creates a tasks table supporting insert + select round-trip on :memory:', () => {
@@ -136,6 +146,179 @@ describe('createDb', () => {
 
       const remaining = sqlite.prepare('SELECT * FROM task_notes').all();
       expect(remaining).toHaveLength(0);
+    });
+  });
+
+  describe('email sync improvements schema', () => {
+    it('inserts and reads back a sync_runs row with every data-model.md column', () => {
+      const { db } = createDb(':memory:');
+
+      const [inserted] = db
+        .insert(syncRuns)
+        .values({
+          ranAt: 1000,
+          startDate: '2026-07-01',
+          endDate: '2026-07-31',
+          source: 'web',
+          status: 'success',
+          newCount: 3,
+          updatedCount: 1,
+          error: null,
+        })
+        .returning()
+        .all();
+
+      expect(inserted).toMatchObject({
+        ranAt: 1000,
+        startDate: '2026-07-01',
+        endDate: '2026-07-31',
+        source: 'web',
+        status: 'success',
+        newCount: 3,
+        updatedCount: 1,
+        error: null,
+      });
+
+      const rows = db.select().from(syncRuns).all();
+      expect(rows).toHaveLength(1);
+    });
+
+    it('inserts and reads back an email_attachments row referencing its message', () => {
+      const { db } = createDb(':memory:');
+      const [conversation] = db.insert(emailConversations).values({ graphConversationId: 'conv-1', createdAt: 1 }).returning().all();
+      const [message] = db
+        .insert(emailMessages)
+        .values({
+          conversationId: conversation!.id,
+          graphMessageId: 'msg-1',
+          sourceFolder: 'Inbox',
+          subject: 'Quote attached',
+          bodyOriginal: 'See attached',
+          bodyContentType: 'text',
+          bodyText: 'See attached',
+          sentAt: 1000,
+          receivedAt: 1001,
+          isRead: false,
+          createdAt: 1,
+        })
+        .returning()
+        .all();
+
+      const [attachment] = db
+        .insert(emailAttachments)
+        .values({ messageId: message!.id, name: 'quote.pdf', contentType: 'application/pdf', sizeBytes: 53248 })
+        .returning()
+        .all();
+
+      expect(attachment).toMatchObject({ messageId: message!.id, name: 'quote.pdf', contentType: 'application/pdf', sizeBytes: 53248 });
+
+      const [nullType] = db
+        .insert(emailAttachments)
+        .values({ messageId: message!.id, name: 'image.dat', contentType: null, sizeBytes: 10 })
+        .returning()
+        .all();
+      expect(nullType?.contentType).toBeNull();
+    });
+
+    it('inserts an email_messages row carrying the new metadata columns', () => {
+      const { db } = createDb(':memory:');
+      const [conversation] = db.insert(emailConversations).values({ graphConversationId: 'conv-2', createdAt: 1 }).returning().all();
+
+      const [message] = db
+        .insert(emailMessages)
+        .values({
+          conversationId: conversation!.id,
+          graphMessageId: 'msg-2',
+          sourceFolder: 'Projects',
+          subject: 'Site survey',
+          bodyOriginal: 'body',
+          bodyContentType: 'text',
+          bodyText: 'body',
+          sentAt: 2000,
+          receivedAt: 2001,
+          isRead: true,
+          importance: 'high',
+          flagStatus: 'flagged',
+          categories: ['Orange category'],
+          webLink: 'https://outlook.office.com/mail/msg-2',
+          internetMessageId: '<msg-2@example.com>',
+          createdAt: 1,
+        })
+        .returning()
+        .all();
+
+      expect(message).toMatchObject({
+        sourceFolder: 'Projects',
+        receivedAt: 2001,
+        isRead: true,
+        importance: 'high',
+        flagStatus: 'flagged',
+        categories: ['Orange category'],
+        webLink: 'https://outlook.office.com/mail/msg-2',
+        internetMessageId: '<msg-2@example.com>',
+      });
+    });
+
+    it('defaults new email_messages metadata columns when not provided', () => {
+      const { db } = createDb(':memory:');
+      const [conversation] = db.insert(emailConversations).values({ graphConversationId: 'conv-3', createdAt: 1 }).returning().all();
+
+      const [message] = db
+        .insert(emailMessages)
+        .values({
+          conversationId: conversation!.id,
+          graphMessageId: 'msg-3',
+          sourceFolder: 'Inbox',
+          subject: 'No attachments',
+          bodyOriginal: 'body',
+          bodyContentType: 'text',
+          bodyText: 'body',
+          sentAt: 3000,
+          receivedAt: 3001,
+          isRead: false,
+          createdAt: 1,
+        })
+        .returning()
+        .all();
+
+      expect(message).toMatchObject({
+        importance: 'normal',
+        flagStatus: 'notFlagged',
+        categories: [],
+        webLink: '',
+        internetMessageId: '',
+      });
+    });
+
+    it('inserts an email_participants row carrying a displayName', () => {
+      const { db } = createDb(':memory:');
+      const [address] = db.insert(emailAddresses).values({ personId: null, value: 'sam@example.com', isPrimary: false, createdAt: 1 }).returning().all();
+      const [conversation] = db.insert(emailConversations).values({ graphConversationId: 'conv-4', createdAt: 1 }).returning().all();
+      const [message] = db
+        .insert(emailMessages)
+        .values({
+          conversationId: conversation!.id,
+          graphMessageId: 'msg-4',
+          sourceFolder: 'Inbox',
+          subject: 'Hi',
+          bodyOriginal: 'body',
+          bodyContentType: 'text',
+          bodyText: 'body',
+          sentAt: 4000,
+          receivedAt: 4001,
+          isRead: false,
+          createdAt: 1,
+        })
+        .returning()
+        .all();
+
+      const [participant] = db
+        .insert(emailParticipants)
+        .values({ messageId: message!.id, addressId: address!.id, role: 'from', displayName: 'Sam Rivera' })
+        .returning()
+        .all();
+
+      expect(participant?.displayName).toBe('Sam Rivera');
     });
   });
 });
