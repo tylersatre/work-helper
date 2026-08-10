@@ -18,4 +18,5 @@ Track what happens to synced email after ingestion — deletions, moves, read/un
 
 - Tyler's phrasing suggests tracking changes over time, not just mirroring current state — whether a deletion in Outlook deletes here or is recorded as an event ("deleted from mailbox on <date>") is the key interview question. The snapshot criterion in email-sync (deleted mail stays intact in work-helper) hints the archive character should survive.
 - Candidate changes to track: deletion, folder moves, read/unread, flag/categorize. Which matter to Tyler is undecided.
+- Partially eaten by `email-sync-improvements` (specced 2026-08-10): every sync now refreshes an already-stored message's metadata — read state, flags, categories, importance, folder, attachment metadata — to the mailbox's current state, while body/subject/participants stay snapshotted. What remains for this feature: deletions, message edits, recording changes as history/events rather than overwriting current state, and freshness without a manual sync (pairs with `email-sync-automation`).
 - Graph delta queries are the likely mechanism (plan-time detail).
