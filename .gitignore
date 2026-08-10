@@ -26,10 +26,16 @@ data/
 
 # Evidence produced by the verifier / browser-tester agents — screenshots are
 # local-only; the written *results.md summaries are committed with the PR.
+# Story-scoped evidence (docs/evidence/<feature>/<story>/results.md) nests one
+# level deeper than single-file features, so the same allow/ignore pair repeats
+# for that extra level.
 docs/evidence/*
 !docs/evidence/*/
 docs/evidence/*/*
 !docs/evidence/*/*results.md
+!docs/evidence/*/*/
+docs/evidence/*/*/*
+!docs/evidence/*/*/*results.md
 
 # Playwright
 test-results/
