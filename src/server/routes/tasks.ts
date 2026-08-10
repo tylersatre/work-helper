@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { ZodError, z } from 'zod';
 import { addNote, createTask, deleteNote, getTaskDetail, linkPerson, moveTask, unlinkPerson } from '../services/tasks.js';
+import { attachTagToTask, detachTagFromTask, type AttachInput } from '../services/tags.js';
 
 const placementIndexSchema = z.number().int().nonnegative();
 
@@ -111,5 +112,42 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       return { error: { message: 'Task not found' } };
     }
     return result.task;
+  });
+
+  app.post('/api/tasks/:id/tags', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as { tagId?: unknown; name?: unknown } | undefined;
+    const hasTagId = body?.tagId !== undefined;
+    const hasName = body?.name !== undefined;
+    if (hasTagId === hasName) {
+      reply.status(400);
+      return { error: { message: 'Provide a tagId or a name' } };
+    }
+
+    const input: AttachInput = hasTagId ? { tagId: Number(body!.tagId) } : { name: body!.name };
+    const result = attachTagToTask(app.db, Number(id), input);
+    if (!result.ok) {
+      if (result.error === 'record-not-found') {
+        reply.status(404);
+        return { error: { message: 'Task not found' } };
+      }
+      if (result.error === 'tag-not-found') {
+        reply.status(404);
+        return { error: { message: 'Tag not found' } };
+      }
+      reply.status(400);
+      return { error: { message: 'A name is required' } };
+    }
+    return { tags: result.tags };
+  });
+
+  app.delete('/api/tasks/:id/tags/:tagId', async (request, reply) => {
+    const { id, tagId } = request.params as { id: string; tagId: string };
+    const result = detachTagFromTask(app.db, Number(id), Number(tagId));
+    if (!result.ok) {
+      reply.status(404);
+      return { error: { message: 'Task not found' } };
+    }
+    return { tags: result.tags };
   });
 }

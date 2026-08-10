@@ -51,12 +51,13 @@ export function createMcpServer(context: McpToolsContext): McpServer {
   server.registerTool(
     'get-task',
     {
-      description: 'Fetches a task by id, including its notes (newest first) and linked people.',
+      description: 'Fetches a task by id, including its notes (newest first), linked people, and tag names.',
       inputSchema: { taskId: z.number().int().positive() },
       outputSchema: {
         ...taskSummarySchema,
         notes: z.array(z.object(noteSchema)),
         people: z.array(z.object(taskPersonSchema)),
+        tags: z.array(z.string()),
       },
     },
     async ({ taskId }) => {
@@ -77,6 +78,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
           lastName: person.lastName,
           email: person.email,
         })),
+        tags: task.tags.map((tag) => tag.name),
       };
       return { content: [{ type: 'text', text: `Task "${task.title}" in lane "${task.lane}".` }], structuredContent };
     },
@@ -104,7 +106,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
   server.registerTool(
     'get-person',
     {
-      description: 'Fetches a person by id, including their configured extra fields.',
+      description: 'Fetches a person by id, including their configured extra fields and tag names.',
       inputSchema: { personId: z.number().int().positive() },
       outputSchema: {
         id: z.number(),
@@ -113,6 +115,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         email: z.string().nullable(),
         phone: z.string().nullable(),
         extraFields: z.record(z.string(), z.string()),
+        tags: z.array(z.string()),
       },
     },
     async ({ personId }) => {
@@ -127,6 +130,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         email: primaryValue(person.emails),
         phone: primaryValue(person.phones),
         extraFields: person.extraFields,
+        tags: person.tags.map((tag) => tag.name),
       };
       return { content: [{ type: 'text', text: `${personName(person)}` }], structuredContent };
     },

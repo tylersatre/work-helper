@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import BoardPage from './pages/BoardPage.vue';
 import PeoplePage from './pages/PeoplePage.vue';
 import PersonDetailPage from './pages/PersonDetailPage.vue';
+import TagsPage from './pages/TagsPage.vue';
 import TaskDetailPage from './pages/TaskDetailPage.vue';
 
 export const router = createRouter({
@@ -11,5 +12,6 @@ export const router = createRouter({
     { path: '/people', component: PeoplePage },
     { path: '/people/:id', component: PersonDetailPage },
     { path: '/tasks/:id', component: TaskDetailPage },
+    { path: '/tags', component: TagsPage },
   ],
 });

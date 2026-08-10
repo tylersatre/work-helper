@@ -6,9 +6,11 @@ import { themeOverrides } from './theme.js';
 
 const route = useRoute();
 
-const activeSection = computed<'board' | 'people'>(() =>
-  route.path === '/people' || route.path.startsWith('/people/') ? 'people' : 'board',
-);
+const activeSection = computed<'board' | 'people' | 'tags'>(() => {
+  if (route.path === '/people' || route.path.startsWith('/people/')) return 'people';
+  if (route.path === '/tags') return 'tags';
+  return 'board';
+});
 </script>
 
 <template>
@@ -23,6 +25,9 @@ const activeSection = computed<'board' | 'people'>(() =>
           </RouterLink>
           <RouterLink v-slot="{ href, navigate }" to="/people" custom>
             <a :href="href" :aria-current="activeSection === 'people' ? 'page' : undefined" @click="navigate">People</a>
+          </RouterLink>
+          <RouterLink v-slot="{ href, navigate }" to="/tags" custom>
+            <a :href="href" :aria-current="activeSection === 'tags' ? 'page' : undefined" @click="navigate">Tags</a>
           </RouterLink>
         </nav>
       </header>

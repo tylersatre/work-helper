@@ -4,6 +4,7 @@ import { onMounted, ref } from 'vue';
 import { primaryValue } from '../../shared/contacts.js';
 import type { Person } from '../../shared/types.js';
 import PersonForm from '../components/PersonForm.vue';
+import TagChip from '../components/TagChip.vue';
 
 const people = ref<Person[]>([]);
 const errorMessage = ref('');
@@ -53,6 +54,7 @@ onMounted(fetchPeople);
             <th>Name</th>
             <th>Email</th>
             <th>Phone</th>
+            <th>Tags</th>
             <th class="people-table-actions"></th>
           </tr>
         </thead>
@@ -61,6 +63,9 @@ onMounted(fetchPeople);
             <td><RouterLink :to="`/people/${person.id}`">{{ person.firstName }} {{ person.lastName }}</RouterLink></td>
             <td>{{ primaryValue(person.emails) }}</td>
             <td>{{ primaryValue(person.phones) }}</td>
+            <td class="people-table-tags">
+              <TagChip v-for="tag in person.tags" :key="tag.id" :tag="tag" />
+            </td>
             <td class="people-table-actions">
               <NButton size="small" @click="onDelete(person.id)">Delete</NButton>
             </td>
@@ -111,6 +116,12 @@ onMounted(fetchPeople);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   overflow-wrap: break-word;
   word-break: break-word;
+}
+
+.people-table-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
 }
 
 .people-table-actions {

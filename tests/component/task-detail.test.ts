@@ -29,7 +29,7 @@ describe('TaskDetailPage', () => {
       'fetch',
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [] }),
+        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [] }),
       }),
     );
 
@@ -50,7 +50,7 @@ describe('TaskDetailPage', () => {
       'fetch',
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'Waiting', position: 0, createdAt: 1, people: [], notes: [] }),
+        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'Waiting', position: 0, createdAt: 1, people: [], notes: [], tags: [] }),
       }),
     );
 
@@ -71,7 +71,7 @@ describe('TaskDetailPage', () => {
       if (url === '/api/tasks/1' && !options) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [] }),
+          json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [] }),
         });
       }
       if (typeof url === 'string' && url.startsWith('/api/people?q=')) {
@@ -102,6 +102,7 @@ describe('TaskDetailPage', () => {
               { id: 1, firstName: 'Sam', lastName: 'Rivera', email: 'sam.rivera@example.com', phone: null, extraFields: {}, createdAt: 1 },
             ],
             notes: [],
+            tags: [],
           }),
         });
       }
@@ -143,13 +144,14 @@ describe('TaskDetailPage', () => {
               { id: 1, firstName: 'Sam', lastName: 'Rivera', email: 'sam.rivera@example.com', phone: null, extraFields: {}, createdAt: 1 },
             ],
             notes: [],
+            tags: [],
           }),
         });
       }
       if (options?.method === 'DELETE') {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [] }),
+          json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [] }),
         });
       }
       return Promise.resolve({ ok: true, json: async () => [] });
@@ -180,6 +182,7 @@ describe('TaskDetailPage', () => {
           createdAt: 1,
           people: [],
           notes: [{ id: 1, taskId: 1, text: 'Waiting on budget numbers', source: 'ui', createdAt: Date.now() }],
+          tags: [],
         }),
       }),
     );
@@ -197,7 +200,7 @@ describe('TaskDetailPage', () => {
       'fetch',
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [] }),
+        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [] }),
       }),
     );
 
@@ -208,5 +211,104 @@ describe('TaskDetailPage', () => {
 
     expect(screen.queryAllByTestId('note')).toHaveLength(0);
     expect(screen.getByRole('textbox', { name: /note/i })).toBeTruthy();
+  });
+
+  it("renders chips for the task's tags", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          id: 1,
+          title: 'Follow up with Sam',
+          lane: 'To Do',
+          createdAt: 1,
+          people: [],
+          notes: [],
+          tags: [
+            { id: 1, name: 'Q3', color: '#22C55E' },
+            { id: 2, name: 'VIP', color: '#3B82F6' },
+          ],
+        }),
+      }),
+    );
+
+    const router = makeRouter('/tasks/1');
+    await router.isReady();
+    render(TaskDetailPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    const chips = await screen.findAllByTestId('tag-chip');
+    expect(chips.map((chip) => chip.textContent?.trim().replace(/\s*×$/, ''))).toEqual(['Q3', 'VIP']);
+  });
+
+  it('removing a chip calls DELETE /api/tasks/:id/tags/:tagId and updates the list', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+      if (url === '/api/tasks/1' && !options) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            id: 1,
+            title: 'Follow up with Sam',
+            lane: 'To Do',
+            createdAt: 1,
+            people: [],
+            notes: [],
+            tags: [{ id: 1, name: 'VIP', color: '#3B82F6' }],
+          }),
+        });
+      }
+      if (url === '/api/tasks/1/tags/1' && options?.method === 'DELETE') {
+        return Promise.resolve({ ok: true, json: async () => ({ tags: [] }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => [] });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const router = makeRouter('/tasks/1');
+    await router.isReady();
+    render(TaskDetailPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    await fireEvent.click(await screen.findByRole('button', { name: /remove vip/i }));
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/tasks/1/tags/1', expect.objectContaining({ method: 'DELETE' }));
+    expect(screen.queryAllByTestId('tag-chip')).toHaveLength(0);
+  });
+
+  it('the TagInput attaches via POST /api/tasks/:id/tags', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+      if (url === '/api/tasks/1' && !options) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [] }),
+        });
+      }
+      if (url === '/api/tags' && !options) {
+        return Promise.resolve({ ok: true, json: async () => [] });
+      }
+      if (url === '/api/tasks/1/tags' && options?.method === 'POST') {
+        return Promise.resolve({ ok: true, json: async () => ({ tags: [{ id: 5, name: 'Roadmap', color: '#EAB308' }] }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => [] });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const router = makeRouter('/tasks/1');
+    await router.isReady();
+    render(TaskDetailPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    await fireEvent.update(screen.getByRole('textbox', { name: /add tag/i }), 'Roadmap');
+    await flushPromises();
+    await fireEvent.click(screen.getByTestId('tag-create-option'));
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/tasks/1/tags',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ name: 'Roadmap' }) }),
+    );
+    expect(await screen.findByText('Roadmap')).toBeTruthy();
   });
 });

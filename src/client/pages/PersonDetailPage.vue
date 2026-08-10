@@ -1,17 +1,64 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import type { ContactEntry, Person } from '../../shared/types.js';
+import type { ContactEntry, Person, Tag } from '../../shared/types.js';
 import ContactEntryList from '../components/ContactEntryList.vue';
 import PersonForm from '../components/PersonForm.vue';
+import TagChip from '../components/TagChip.vue';
+import TagInput from '../components/TagInput.vue';
 
 const route = useRoute();
 const person = ref<Person | null>(null);
 const errorMessage = ref('');
+const tagError = ref('');
 
 async function fetchPerson(): Promise<void> {
   const response = await fetch(`/api/people/${route.params.id}`);
   person.value = await response.json();
+}
+
+async function attachTag(tagId: number): Promise<void> {
+  if (!person.value) return;
+  const response = await fetch(`/api/people/${person.value.id}/tags`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ tagId }),
+  });
+  const body = await response.json();
+  if (!response.ok) {
+    tagError.value = body.error.message;
+    return;
+  }
+  tagError.value = '';
+  person.value.tags = body.tags;
+}
+
+async function createAndAttachTag(name: string): Promise<void> {
+  if (!person.value) return;
+  const response = await fetch(`/api/people/${person.value.id}/tags`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  const body = await response.json();
+  if (!response.ok) {
+    tagError.value = body.error.message;
+    return;
+  }
+  tagError.value = '';
+  person.value.tags = body.tags;
+}
+
+async function detachTag(tag: Tag): Promise<void> {
+  if (!person.value) return;
+  const response = await fetch(`/api/people/${person.value.id}/tags/${tag.id}`, { method: 'DELETE' });
+  const body = await response.json();
+  if (!response.ok) {
+    tagError.value = body.error.message;
+    return;
+  }
+  tagError.value = '';
+  person.value.tags = body.tags;
 }
 
 async function onSubmit(values: { firstName: string; lastName: string; extraFields?: Record<string, string> }): Promise<void> {
@@ -71,6 +118,15 @@ onMounted(fetchPerson);
     </div>
 
     <div class="person-detail-section">
+      <h3>Tags</h3>
+      <div class="person-detail-tags">
+        <TagChip v-for="tag in person.tags" :key="tag.id" :tag="tag" removable @remove="detachTag(tag)" />
+      </div>
+      <p v-if="tagError" role="alert" class="person-detail-tag-error">{{ tagError }}</p>
+      <TagInput :attached-tags="person.tags" @attach="attachTag" @create="createAndAttachTag" />
+    </div>
+
+    <div class="person-detail-section">
       <h3>Edit</h3>
       <PersonForm
         mode="edit"
@@ -105,5 +161,18 @@ onMounted(fetchPerson);
   letter-spacing: 0.04em;
   color: rgba(255, 255, 255, 0.5);
   margin-bottom: 0.5rem;
+}
+
+.person-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+}
+
+.person-detail-tag-error {
+  margin: 0 0 0.6rem;
+  color: #fca5a5;
+  font-size: 0.8rem;
 }
 </style>

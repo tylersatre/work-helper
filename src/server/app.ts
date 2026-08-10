@@ -10,6 +10,7 @@ import { deriveKey } from './mcp/auth/tokens.js';
 import { mcpRoutes } from './mcp/routes.js';
 import { boardRoutes } from './routes/board.js';
 import { peopleRoutes } from './routes/people.js';
+import { tagRoutes } from './routes/tags.js';
 import { taskRoutes } from './routes/tasks.js';
 import type { MailProvider } from './services/email/provider.js';
 
@@ -58,6 +59,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
   app.register(boardRoutes);
   app.register(taskRoutes);
   app.register(peopleRoutes);
+  app.register(tagRoutes);
   app.register(oauthRoutes);
   app.register(mcpRoutes);
 
