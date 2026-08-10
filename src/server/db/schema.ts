@@ -126,6 +126,43 @@ export const taskNotes = sqliteTable('task_notes', {
   createdAt: integer('created_at').notNull(),
 });
 
+export const tags = sqliteTable(
+  'tags',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    name: text('name').notNull(),
+    color: text('color').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [uniqueIndex('tags_name_unique').on(sql`lower(${t.name})`)],
+);
+
+export const personTags = sqliteTable(
+  'person_tags',
+  {
+    personId: integer('person_id')
+      .notNull()
+      .references(() => people.id, { onDelete: 'cascade' }),
+    tagId: integer('tag_id')
+      .notNull()
+      .references(() => tags.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.personId, t.tagId] })],
+);
+
+export const taskTags = sqliteTable(
+  'task_tags',
+  {
+    taskId: integer('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    tagId: integer('tag_id')
+      .notNull()
+      .references(() => tags.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.taskId, t.tagId] })],
+);
+
 export const oauthClients = sqliteTable('oauth_clients', {
   clientId: text('client_id').primaryKey(),
   clientName: text('client_name'),

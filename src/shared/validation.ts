@@ -36,3 +36,12 @@ export const updatePersonInputSchema = z.object({
   lastName: z.string().trim().min(1, 'First and last name are required'),
   extraFields: z.record(z.string(), z.string()).optional(),
 });
+
+export const tagNameSchema = z
+  .string()
+  .trim()
+  .min(1, 'A name is required');
+
+export const tagColorSchema = z
+  .string()
+  .regex(/^#[0-9a-fA-F]{6}$/, 'A valid color is required');

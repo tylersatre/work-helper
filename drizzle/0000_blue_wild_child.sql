@@ -70,6 +70,22 @@ CREATE TABLE `person_phones` (
 --> statement-breakpoint
 CREATE UNIQUE INDEX `person_phones_value_unique` ON `person_phones` (`value`);--> statement-breakpoint
 CREATE UNIQUE INDEX `person_phones_one_primary` ON `person_phones` (`person_id`) WHERE "person_phones"."is_primary" = 1;--> statement-breakpoint
+CREATE TABLE `person_tags` (
+	`person_id` integer NOT NULL,
+	`tag_id` integer NOT NULL,
+	PRIMARY KEY(`person_id`, `tag_id`),
+	FOREIGN KEY (`person_id`) REFERENCES `people`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`tag_id`) REFERENCES `tags`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE TABLE `tags` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`name` text NOT NULL,
+	`color` text NOT NULL,
+	`created_at` integer NOT NULL
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `tags_name_unique` ON `tags` (lower("name"));--> statement-breakpoint
 CREATE TABLE `task_notes` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`task_id` integer NOT NULL,
@@ -85,6 +101,14 @@ CREATE TABLE `task_people` (
 	PRIMARY KEY(`task_id`, `person_id`),
 	FOREIGN KEY (`task_id`) REFERENCES `tasks`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`person_id`) REFERENCES `people`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE TABLE `task_tags` (
+	`task_id` integer NOT NULL,
+	`tag_id` integer NOT NULL,
+	PRIMARY KEY(`task_id`, `tag_id`),
+	FOREIGN KEY (`task_id`) REFERENCES `tasks`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`tag_id`) REFERENCES `tags`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
 CREATE TABLE `tasks` (

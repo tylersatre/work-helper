@@ -30,6 +30,7 @@ export interface Person {
   phones: ContactEntry[];
   extraFields: Record<string, string>;
   createdAt: number;
+  tags: Tag[];
 }
 
 export interface PersonInput {
@@ -63,4 +64,16 @@ export interface LinkedPerson {
 export interface TaskDetail extends Task {
   people: LinkedPerson[];
   notes: Note[];
+  tags: Tag[];
+}
+
+export interface Tag {
+  id: number;
+  name: string;
+  color: string;
+}
+
+export interface TagWithCounts extends Tag {
+  peopleCount: number;
+  tasksCount: number;
 }
