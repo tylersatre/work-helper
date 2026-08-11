@@ -2,10 +2,13 @@ import { mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createGraphAuth, fileCachePlugin } from '../../src/server/services/email/graph-auth.js';
+import { MailboxNotConnectedError, createGraphAuth, fileCachePlugin } from '../../src/server/services/email/graph-auth.js';
 
 const msalConstructorConfigs: { auth?: { clientId?: string; authority?: string } }[] = [];
 const acquireTokenByDeviceCode = vi.fn();
+const acquireTokenSilent = vi.fn();
+const removeAccount = vi.fn();
+let mockAccounts: { username: string }[] = [];
 
 vi.mock('@azure/msal-node', () => ({
   PublicClientApplication: class {
@@ -13,10 +16,13 @@ vi.mock('@azure/msal-node', () => ({
       msalConstructorConfigs.push(config);
     }
     getTokenCache() {
-      return { getAllAccounts: async () => [] };
+      return { getAllAccounts: async () => mockAccounts, removeAccount };
     }
     acquireTokenByDeviceCode(request: never) {
       return acquireTokenByDeviceCode(request);
+    }
+    acquireTokenSilent(request: never) {
+      return acquireTokenSilent(request);
     }
   },
 }));
@@ -80,6 +86,9 @@ describe('createGraphAuth', () => {
   beforeEach(() => {
     msalConstructorConfigs.length = 0;
     acquireTokenByDeviceCode.mockReset();
+    acquireTokenSilent.mockReset();
+    removeAccount.mockReset();
+    mockAccounts = [];
   });
 
   it('authenticates against the tenant-specific authority, not /common — single-tenant app registrations are rejected at /common (AADSTS50059)', () => {
@@ -89,28 +98,121 @@ describe('createGraphAuth', () => {
     expect(msalConstructorConfigs[0]?.auth?.authority).toBe('https://login.microsoftonline.com/tenant-id-guid');
   });
 
-  it('passes the verification URI and user code to onCode during sign-in', async () => {
-    acquireTokenByDeviceCode.mockImplementation(async (request: { deviceCodeCallback: (response: unknown) => void }) => {
-      request.deviceCodeCallback({ verificationUri: 'https://login.microsoft.com/device', userCode: 'ABC123' });
-      return { account: {} };
+  describe('beginSignIn', () => {
+    it('passes the verification URI, user code, and an expiry derived from expiresIn to onCode, resolving the signed-in account', async () => {
+      const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+      acquireTokenByDeviceCode.mockImplementation(async (request: { deviceCodeCallback: (response: unknown) => void }) => {
+        request.deviceCodeCallback({ verificationUri: 'https://login.microsoft.com/device', userCode: 'ABC123', expiresIn: 900 });
+        return { account: { username: 'tyler@example.com' } };
+      });
+      const onCode = vi.fn();
+
+      const result = await createGraphAuth(options).beginSignIn(onCode);
+
+      expect(onCode).toHaveBeenCalledWith('https://login.microsoft.com/device', 'ABC123', 1_000_000 + 900_000);
+      expect(result).toEqual({ account: 'tyler@example.com' });
+      nowSpy.mockRestore();
     });
-    const onCode = vi.fn();
 
-    await createGraphAuth(options).signIn(onCode);
+    it('rejects with an error naming the likely registration problems when the device-code response carries no code — never shows "undefined" to the user', async () => {
+      // msal-node blindly destructures Microsoft's error body, so a rejected device-code
+      // request reaches the callback as { userCode: undefined, verificationUri: undefined }.
+      acquireTokenByDeviceCode.mockImplementation(async (request: { deviceCodeCallback: (response: unknown) => void }) => {
+        request.deviceCodeCallback({});
+        return null;
+      });
+      const onCode = vi.fn();
 
-    expect(onCode).toHaveBeenCalledWith('https://login.microsoft.com/device', 'ABC123');
+      await expect(createGraphAuth(options).beginSignIn(onCode)).rejects.toThrow(/MS_TENANT_ID|public client/i);
+      expect(onCode).not.toHaveBeenCalled();
+    });
   });
 
-  it('rejects with an error naming the likely registration problems when the device-code response carries no code — never shows "undefined" to the user', async () => {
-    // msal-node blindly destructures Microsoft's error body, so a rejected device-code
-    // request reaches the callback as { userCode: undefined, verificationUri: undefined }.
-    acquireTokenByDeviceCode.mockImplementation(async (request: { deviceCodeCallback: (response: unknown) => void }) => {
-      request.deviceCodeCallback({});
-      return null;
-    });
-    const onCode = vi.fn();
+  describe('verifyConnection', () => {
+    it('returns connected: true with the account username when silent acquisition succeeds', async () => {
+      mockAccounts = [{ username: 'tyler@example.com' }];
+      acquireTokenSilent.mockResolvedValue({ accessToken: 'token-abc' });
 
-    await expect(createGraphAuth(options).signIn(onCode)).rejects.toThrow(/MS_TENANT_ID|public client/i);
-    expect(onCode).not.toHaveBeenCalled();
+      const result = await createGraphAuth(options).verifyConnection();
+
+      expect(result).toEqual({ connected: true, account: 'tyler@example.com' });
+    });
+
+    it('returns not-connected with reason never-signed-in when no account is cached', async () => {
+      mockAccounts = [];
+
+      const result = await createGraphAuth(options).verifyConnection();
+
+      expect(result).toEqual({ connected: false, reason: 'never-signed-in' });
+    });
+
+    it('returns not-connected with reason expired and the provider detail when an account exists but silent acquisition fails', async () => {
+      mockAccounts = [{ username: 'tyler@example.com' }];
+      acquireTokenSilent.mockRejectedValue(new Error('AADSTS70008: expired refresh token'));
+
+      const result = await createGraphAuth(options).verifyConnection();
+
+      expect(result).toEqual({ connected: false, reason: 'expired', detail: 'AADSTS70008: expired refresh token' });
+    });
+  });
+
+  describe('signOut', () => {
+    it('calls getTokenCache().removeAccount with the cached account so the cache plugin persists the removal', async () => {
+      mockAccounts = [{ username: 'tyler@example.com' }];
+
+      await createGraphAuth(options).signOut();
+
+      expect(removeAccount).toHaveBeenCalledWith(mockAccounts[0]);
+    });
+
+    it('is a no-op when no account is cached', async () => {
+      mockAccounts = [];
+
+      await createGraphAuth(options).signOut();
+
+      expect(removeAccount).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getAccessToken', () => {
+    it('throws a typed MailboxNotConnectedError with reason never-signed-in when no account is cached', async () => {
+      mockAccounts = [];
+
+      const auth = createGraphAuth(options);
+
+      await expect(auth.getAccessToken()).rejects.toThrow(MailboxNotConnectedError);
+      await expect(auth.getAccessToken()).rejects.toMatchObject({ reason: 'never-signed-in' });
+    });
+
+    it('throws a typed MailboxNotConnectedError with reason expired and detail when silent acquisition fails', async () => {
+      mockAccounts = [{ username: 'tyler@example.com' }];
+      acquireTokenSilent.mockRejectedValue(new Error('AADSTS70008: expired refresh token'));
+
+      const auth = createGraphAuth(options);
+
+      await expect(auth.getAccessToken()).rejects.toMatchObject({ reason: 'expired', detail: 'AADSTS70008: expired refresh token' });
+    });
+
+    it('returns the access token when silent acquisition succeeds', async () => {
+      mockAccounts = [{ username: 'tyler@example.com' }];
+      acquireTokenSilent.mockResolvedValue({ accessToken: 'token-abc' });
+
+      const token = await createGraphAuth(options).getAccessToken();
+
+      expect(token).toBe('token-abc');
+    });
+
+    it("the thrown error's message directs to the Sync page and never mentions the CLI", async () => {
+      mockAccounts = [];
+
+      await expect(createGraphAuth(options).getAccessToken()).rejects.toThrow(/sync page/i);
+      let error: Error | undefined;
+      try {
+        await createGraphAuth(options).getAccessToken();
+      } catch (caught) {
+        error = caught as Error;
+      }
+      expect(error?.message).not.toMatch(/mail:signin/i);
+    });
   });
 });

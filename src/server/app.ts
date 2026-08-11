@@ -13,6 +13,7 @@ import { emailSyncRoutes } from './routes/email-sync.js';
 import { peopleRoutes } from './routes/people.js';
 import { tagRoutes } from './routes/tags.js';
 import { taskRoutes } from './routes/tasks.js';
+import type { MailboxAuth } from './services/email/graph-auth.js';
 import type { MailProvider } from './services/email/provider.js';
 import { SyncCoordinator } from './services/email/sync-coordinator.js';
 
@@ -27,6 +28,8 @@ declare module 'fastify' {
     identityVerifier?: IdentityVerifier;
     mailProvider?: MailProvider;
     syncCoordinator: SyncCoordinator;
+    mailboxAuth?: MailboxAuth;
+    mailboxMissingSettings: string[];
   }
 }
 
@@ -40,6 +43,10 @@ export interface AppOptions {
   mcpTokenSecret?: string;
   identityVerifier?: IdentityVerifier;
   mailProvider?: MailProvider;
+  /** Real (createGraphAuth) or injected fake mailbox auth — undefined means mail sign-in is not configured. */
+  mailboxAuth?: MailboxAuth;
+  /** Concrete env setting names still unset, e.g. ['MS_CLIENT_ID', 'MS_TENANT_ID'] — empty when configured (dev fakes count as configured). */
+  mailboxMissingSettings?: string[];
 }
 
 const NON_CLIENT_PATH_PREFIXES = ['/api', '/mcp', '/oauth', '/.well-known'];
@@ -59,6 +66,8 @@ export function buildApp(options: AppOptions): FastifyInstance {
   app.decorate('identityVerifier', options.identityVerifier);
   app.decorate('mailProvider', options.mailProvider);
   app.decorate('syncCoordinator', new SyncCoordinator(options.db));
+  app.decorate('mailboxAuth', options.mailboxAuth);
+  app.decorate('mailboxMissingSettings', options.mailboxMissingSettings ?? []);
 
   app.register(boardRoutes);
   app.register(taskRoutes);
