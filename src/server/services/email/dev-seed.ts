@@ -111,7 +111,9 @@ const samPersonal: SeedMessage = {
 
 const FIXED_MESSAGES: SeedMessage[] = [pricingQuestion, pricingReply, quoteAttached, signatureOnly, jordanSmith, samPersonal];
 
-const FIXED_CONVERSATION_COUNT = 6;
+// pricingQuestion + pricingReply share one conversation ("dev-conv-pricing"), so the 6 fixed
+// messages above form only 5 distinct conversations.
+const FIXED_CONVERSATION_COUNT = 5;
 const FILLER_COUNT = 30 - FIXED_CONVERSATION_COUNT;
 
 /** Filler conversations so the Emails page has 30 total (25 shown, load-more reveals the rest). */
