@@ -9,6 +9,7 @@ services:
       MCP_TOKEN_SECRET: ${MCP_TOKEN_SECRET:?MCP_TOKEN_SECRET is required — create .env from .env.example}
       AUTHENTIK_USERINFO_URL: ${AUTHENTIK_USERINFO_URL:-}
       MS_CLIENT_ID: ${MS_CLIENT_ID:-}
+      MS_TENANT_ID: ${MS_TENANT_ID:-}
     volumes:
       - ./data:/app/data
       - ./config:/app/config

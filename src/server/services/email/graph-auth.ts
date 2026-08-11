@@ -3,8 +3,9 @@ import { dirname } from 'node:path';
 import { PublicClientApplication, type AccountInfo, type ICachePlugin } from '@azure/msal-node';
 
 const SCOPES = ['Mail.Read', 'offline_access'];
-const AUTHORITY = 'https://login.microsoftonline.com/common';
 const SIGN_IN_ERROR = 'Mailbox sign-in required — run npm run mail:signin';
+const DEVICE_CODE_REJECTED =
+  'Microsoft rejected the device-code request before issuing a sign-in code. Check that MS_TENANT_ID matches the app registration\'s Directory (tenant) ID, MS_CLIENT_ID matches its Application (client) ID, and "Allow public client flows" is enabled under Authentication.';
 
 export function fileCachePlugin(path: string): ICachePlugin {
   return {
@@ -26,6 +27,8 @@ export function fileCachePlugin(path: string): ICachePlugin {
 
 export interface GraphAuthOptions {
   clientId: string;
+  /** Entra Directory (tenant) ID. Single-tenant app registrations are rejected at the /common authority, so the tenant is always named explicitly. */
+  tenantId: string;
   tokenCachePath: string;
 }
 
@@ -38,7 +41,7 @@ export interface GraphAuth {
 
 export function createGraphAuth(options: GraphAuthOptions): GraphAuth {
   const pca = new PublicClientApplication({
-    auth: { clientId: options.clientId, authority: AUTHORITY },
+    auth: { clientId: options.clientId, authority: `https://login.microsoftonline.com/${options.tenantId}` },
     cache: { cachePlugin: fileCachePlugin(options.tokenCachePath) },
   });
 
@@ -66,7 +69,15 @@ export function createGraphAuth(options: GraphAuthOptions): GraphAuth {
     async signIn(onCode) {
       const result = await pca.acquireTokenByDeviceCode({
         scopes: SCOPES,
-        deviceCodeCallback: (response) => onCode(response.verificationUri, response.userCode),
+        deviceCodeCallback: (response) => {
+          // msal-node destructures Microsoft's response without checking for an error body,
+          // so a rejected request arrives here with every field undefined. Throwing rejects
+          // the acquireTokenByDeviceCode promise before the doomed token polling starts.
+          if (!response.verificationUri || !response.userCode) {
+            throw new Error(DEVICE_CODE_REJECTED);
+          }
+          onCode(response.verificationUri, response.userCode);
+        },
       });
       if (!result) {
         throw new Error('Sign-in did not complete');

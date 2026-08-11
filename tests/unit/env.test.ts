@@ -37,6 +37,23 @@ describe('validateEnv', () => {
     expect(() => validateEnv({})).not.toThrow();
   });
 
+  it('throws naming MS_TENANT_ID when MS_CLIENT_ID is set without it in production', () => {
+    expect(() => validateEnv({ ...BOTH_SET, MS_CLIENT_ID: 'client-id-guid' })).toThrow(/MS_TENANT_ID/);
+  });
+
+  it('points at .env.example when MS_TENANT_ID is missing', () => {
+    expect(() => validateEnv({ ...BOTH_SET, MS_CLIENT_ID: 'client-id-guid' })).toThrow(/\.env\.example/);
+  });
+
+  it('passes when MS_CLIENT_ID and MS_TENANT_ID are both set in production', () => {
+    expect(() => validateEnv({ ...BOTH_SET, MS_CLIENT_ID: 'client-id-guid', MS_TENANT_ID: 'tenant-id-guid' })).not.toThrow();
+  });
+
+  it('does not require MS_TENANT_ID when MS_CLIENT_ID is unset — email sync is optional', () => {
+    expect(() => validateEnv({ ...BOTH_SET, MS_CLIENT_ID: undefined, MS_TENANT_ID: undefined })).not.toThrow();
+    expect(() => validateEnv({ ...BOTH_SET, MS_CLIENT_ID: '', MS_TENANT_ID: undefined })).not.toThrow();
+  });
+
   it('never mentions CONNECTOR_PASSWORD', () => {
     expect(() => validateEnv({ NODE_ENV: 'production' })).toThrow();
     try {

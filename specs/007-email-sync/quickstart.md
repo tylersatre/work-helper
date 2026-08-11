@@ -41,7 +41,7 @@ Seed for these via the dev API/fake-provider harness before driving the browser.
 1. One-time sign-in (device code flow; writes the token cache under `./data/`):
 
 ```bash
-MS_CLIENT_ID=<app-registration-client-id> npm run mail:signin
+MS_CLIENT_ID=<application-client-id> MS_TENANT_ID=<directory-tenant-id> npm run mail:signin
 ```
 
 2. Start the app (`npm run dev` — feature 007 → API port 3007) with `MS_CLIENT_ID` set, connect an MCP client through the existing OAuth flow, and call `sync-emails` with a one-month range.

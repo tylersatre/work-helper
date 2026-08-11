@@ -30,6 +30,7 @@ The app is now reachable at `http://<your-server>:8080` (or the port you set in 
 | `AUTHENTIK_USERINFO_URL` | yes | — | Your Authentik instance's userinfo endpoint, reachable from the app container — e.g. `http://<authentik-server-container>:9000/application/o/userinfo/` on the shared `work-helper` network. Used to verify that an MCP connect request genuinely came through your Authentik sign-in. See [Fronting with Caddy and Authentik](#fronting-with-caddy-and-authentik) below. |
 | `WORK_HELPER_PORT` | no | `8080` | The host port the stack publishes. Change this if 8080 is already taken on your server. |
 | `MS_CLIENT_ID` | no | — | Entra ID app registration client id for email sync. Leave unset to run without email sync — the `sync-emails` tool reports a clear "not connected" error instead of failing to start. See [Email sync mailbox sign-in](#email-sync-mailbox-sign-in) below. |
+| `MS_TENANT_ID` | with `MS_CLIENT_ID` | — | The same app registration's Directory (tenant) ID. Required whenever `MS_CLIENT_ID` is set — startup fails with a clear error otherwise. |
 
 ## Updating
 
@@ -119,10 +120,12 @@ A malformed config file fails startup — `docker compose logs` names the file s
 Email sync (the `sync-emails` MCP tool and friends) needs a one-time interactive sign-in that the container itself can't perform — `npm run mail:signin` opens a device-code flow, and the runtime image doesn't ship the dev tooling (`tsx`, `scripts/`) that command needs. Run it from your host clone instead, against the same `./data/` directory the container reads:
 
 ```bash
-MS_CLIENT_ID=<your-app-registration-client-id> npm run mail:signin
+MS_CLIENT_ID=<application-client-id> MS_TENANT_ID=<directory-tenant-id> npm run mail:signin
 ```
 
-This writes `./data/mail-token-cache.json` — the same path the container reads by default. Then set `MS_CLIENT_ID` in `.env` and restart the stack:
+Both GUIDs come from the app registration's Overview page in the Entra portal — "Application (client) ID" and "Directory (tenant) ID". The registration needs "Allow public client flows" enabled (Authentication → Advanced settings) and the delegated Microsoft Graph `Mail.Read` permission; it does not need to be multi-tenant, because sign-in targets your tenant directly rather than the `/common` endpoint.
+
+This writes `./data/mail-token-cache.json` — the same path the container reads by default. Then set `MS_CLIENT_ID` and `MS_TENANT_ID` in `.env` and restart the stack:
 
 ```bash
 docker compose up -d
