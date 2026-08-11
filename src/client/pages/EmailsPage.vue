@@ -118,6 +118,14 @@ onMounted(() => fetchPage());
   font-weight: 700;
 }
 
+.email-conversation-unread-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #3b82f6;
+}
+
 .email-conversation-subject.subject-placeholder {
   color: rgba(255, 255, 255, 0.5);
   font-style: italic;

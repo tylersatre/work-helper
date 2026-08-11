@@ -9,13 +9,18 @@ const props = defineProps<{ personId: number }>();
 
 const conversations = ref<PersonEmailConversation[]>([]);
 const showAll = ref(false);
+const loaded = ref(false);
 
 const visible = computed(() => (showAll.value ? conversations.value : conversations.value.slice(0, 5)));
 
 async function fetchConversations(): Promise<void> {
-  const response = await fetch(`/api/people/${props.personId}/email-conversations`);
-  const body = await response.json();
-  conversations.value = body.conversations ?? [];
+  try {
+    const response = await fetch(`/api/people/${props.personId}/email-conversations`);
+    const body = await response.json();
+    conversations.value = body.conversations ?? [];
+  } finally {
+    loaded.value = true;
+  }
 }
 
 onMounted(fetchConversations);
@@ -25,7 +30,7 @@ onMounted(fetchConversations);
   <div class="person-email-section">
     <h3>Email</h3>
 
-    <NEmpty v-if="conversations.length === 0" data-testid="person-emails-empty" description="No synced email" class="person-emails-empty" />
+    <NEmpty v-if="loaded && conversations.length === 0" data-testid="person-emails-empty" description="No synced email" class="person-emails-empty" />
 
     <ul v-else class="person-email-list">
       <li v-for="conversation in visible" :key="conversation.conversationId" class="person-email-row" data-testid="person-email-row">

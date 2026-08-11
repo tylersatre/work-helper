@@ -12,10 +12,6 @@ const conversation = ref<EmailConversationDetail | null>(null);
 const errorMessage = ref('');
 const notFound = ref(false);
 
-function participantLabel(participant: { address: string; displayName: string }): string {
-  return participant.displayName.trim() !== '' ? `${participant.displayName} <${participant.address}>` : participant.address;
-}
-
 function participantsByRole(message: EmailConversationDetail['messages'][number], role: 'from' | 'to' | 'cc' | 'bcc') {
   return message.participants.filter((p) => p.role === role);
 }
@@ -56,7 +52,7 @@ onMounted(fetchConversation);
               <RouterLink v-if="participant.person" :to="`/people/${participant.person.id}`" class="email-message-participant-link">
                 {{ participant.person.name }}
               </RouterLink>
-              <span v-else>{{ participantLabel(participant) }}</span>
+              <span v-else-if="participant.displayName.trim()">{{ participant.displayName }}</span>
               <span class="email-message-address">&lt;{{ participant.address }}&gt;</span>
               <AddressLinkControls
                 v-if="!participant.person"
