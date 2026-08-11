@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import type { ContactEntry, Person, Tag } from '../../shared/types.js';
 import ContactEntryList from '../components/ContactEntryList.vue';
+import PersonEmailSection from '../components/PersonEmailSection.vue';
 import PersonForm from '../components/PersonForm.vue';
 import TagChip from '../components/TagChip.vue';
 import TagInput from '../components/TagInput.vue';
@@ -115,6 +116,10 @@ onMounted(fetchPerson);
         :entries="person.phones"
         @update:entries="onUpdatePhones"
       />
+    </div>
+
+    <div class="person-detail-section">
+      <PersonEmailSection :person-id="person.id" />
     </div>
 
     <div class="person-detail-section">

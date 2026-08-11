@@ -248,4 +248,49 @@ describe('PersonDetailPage', () => {
     );
     expect(await screen.findByText('Roadmap')).toBeTruthy();
   });
+
+  it('mounts the email section between Phones and Tags (FR-015)', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url === '/api/people/1') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            id: 1,
+            firstName: 'Sam',
+            lastName: 'Rivera',
+            emails: [],
+            phones: [],
+            extraFields: {},
+            createdAt: 1,
+            tags: [],
+          }),
+        });
+      }
+      if (url === '/api/people/1/email-conversations') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            conversations: [{ conversationId: 9, subject: 'Quote attached', latestMessageAt: 1, addresses: [{ address: 'sam.rivera@example.com', roles: ['from'] }] }],
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => [] });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const router = makeRouter('/people/1');
+    await router.isReady();
+    render(PersonDetailPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    const sections = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    const phonesIndex = sections.indexOf('Phones');
+    const emailIndex = sections.indexOf('Email');
+    const tagsIndex = sections.indexOf('Tags');
+    expect(phonesIndex).toBeGreaterThanOrEqual(0);
+    expect(emailIndex).toBeGreaterThan(phonesIndex);
+    expect(tagsIndex).toBeGreaterThan(emailIndex);
+
+    expect(await screen.findByTestId('person-email-row')).toBeTruthy();
+  });
 });

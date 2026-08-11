@@ -261,6 +261,41 @@ describe('GET /api/people/:personId/email-conversations', () => {
     expect(conversations[0]!.addresses).toEqual([{ address: 'sam.rivera@example.com', roles: ['from'] }]);
   });
 
+  it("shows every distinct involved address with all of its distinct roles, and includes a cc-only conversation", async () => {
+    buildTestApp([
+      quoteAttached({
+        toRecipients: [
+          { address: 'tyler@example.com', name: 'Tyler Satre' },
+          { address: 'sam.rivera@example.com', name: 'Sam Rivera' },
+        ],
+        ccRecipients: [{ address: 'sam.personal@example.com', name: 'Sam Rivera' }],
+      }),
+      pricingQuestion({
+        id: 'msg-cc-only',
+        conversationId: 'conv-cc-only',
+        subject: 'CC only',
+        from: { address: 'other@example.com' },
+        toRecipients: [{ address: 'tyler@example.com' }],
+        ccRecipients: [{ address: 'sam.rivera@example.com' }],
+        receivedDateTime: '2026-08-03T09:00:00Z',
+        sentDateTime: '2026-08-03T09:00:00Z',
+      }),
+    ]);
+    const sam = await createPerson({ firstName: 'Sam', lastName: 'Rivera', email: 'sam.rivera@example.com' });
+    await app.inject({ method: 'POST', url: `/api/people/${sam}/emails`, payload: { value: 'sam.personal@example.com' } });
+    await sync();
+
+    const response = await app.inject({ method: 'GET', url: `/api/people/${sam}/email-conversations` });
+    const { conversations } = response.json() as { conversations: { subject: string; addresses: { address: string; roles: string[] }[] }[] };
+
+    const quote = conversations.find((c) => c.subject === 'Quote attached')!;
+    expect(quote.addresses).toContainEqual({ address: 'sam.rivera@example.com', roles: ['from', 'to'] });
+    expect(quote.addresses).toContainEqual({ address: 'sam.personal@example.com', roles: ['cc'] });
+
+    const ccOnly = conversations.find((c) => c.subject === 'CC only')!;
+    expect(ccOnly.addresses).toEqual([{ address: 'sam.rivera@example.com', roles: ['cc'] }]);
+  });
+
   it('a person with no synced mail returns an empty list', async () => {
     buildTestApp([]);
     const cy = await createPerson({ firstName: 'Cy', lastName: 'Cole' });
