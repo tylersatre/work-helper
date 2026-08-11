@@ -19,7 +19,13 @@ export async function mcpRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const server = createMcpServer({ db: app.db, lanes: app.lanes, personFields: app.personFields, mailProvider: app.mailProvider });
+    const server = createMcpServer({
+      db: app.db,
+      lanes: app.lanes,
+      personFields: app.personFields,
+      mailProvider: app.mailProvider,
+      syncCoordinator: app.syncCoordinator,
+    });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 
     reply.hijack();

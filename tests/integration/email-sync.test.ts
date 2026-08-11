@@ -6,9 +6,10 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
-import { emailAddresses, emailConversations, emailMessages, emailParticipants } from '../../src/server/db/schema.js';
+import { emailAddresses, emailAttachments, emailConversations, emailMessages, emailParticipants } from '../../src/server/db/schema.js';
 import type * as schema from '../../src/server/db/schema.js';
 import { createIdentityVerifier } from '../../src/server/mcp/auth/identity.js';
+import type { MailProvider } from '../../src/server/services/email/provider.js';
 import { connectThroughApproval } from './helpers/oauth-client.js';
 import { FakeMailProvider, type SeedMessage } from './helpers/fake-mail-provider.js';
 import { startStubIdentityProvider, type StubIdentityProvider } from './helpers/stub-identity-provider.js';
@@ -102,7 +103,7 @@ function invoiceAttached(): SeedMessage {
   };
 }
 
-function buildTestApp(mailProvider: FakeMailProvider) {
+function buildTestApp(mailProvider?: MailProvider) {
   const created = createDb(':memory:');
   db = created.db;
   app = buildApp({ db, lanes: LANES, mcpTokenSecret: MCP_TOKEN_SECRET, identityVerifier: createIdentityVerifier(stub.url), mailProvider });
@@ -127,6 +128,10 @@ async function syncEmails(startDate: string | undefined, endDate: string | undef
   if (startDate !== undefined) args.startDate = startDate;
   if (endDate !== undefined) args.endDate = endDate;
   return client.callTool({ name: 'sync-emails', arguments: args });
+}
+
+async function listConversations(args: Record<string, unknown> = {}) {
+  return client.callTool({ name: 'list-conversations', arguments: args });
 }
 
 function allMessages() {
@@ -164,7 +169,7 @@ describe('US1: sync-emails', () => {
     const result = await syncEmails('2026-07-01', '2026-07-31');
 
     expect(result.isError).toBeFalsy();
-    expect(result.structuredContent).toEqual({ status: 'complete', syncedCount: 3 });
+    expect(result.structuredContent).toEqual({ status: 'complete', syncedCount: 3, updatedCount: 0 });
 
     const messages = allMessages();
     expect(messages).toHaveLength(3);
@@ -185,7 +190,7 @@ describe('US1: sync-emails', () => {
     const second = await syncEmails('2026-07-15', '2026-08-05');
 
     expect(second.isError).toBeFalsy();
-    expect(second.structuredContent).toEqual({ status: 'complete', syncedCount: 1 });
+    expect(second.structuredContent).toEqual({ status: 'complete', syncedCount: 1, updatedCount: 1 });
 
     const messages = allMessages();
     expect(messages).toHaveLength(4);
@@ -231,7 +236,7 @@ describe('US1: sync-emails', () => {
     app.mailProvider = new FakeMailProvider([pricingQuestion(), pricingReply(), oldThread()]);
     const rerun = await syncEmails('2026-07-01', '2026-07-31');
 
-    expect(rerun.structuredContent).toEqual({ status: 'complete', syncedCount: 0 });
+    expect(rerun.structuredContent).toEqual({ status: 'complete', syncedCount: 0, updatedCount: 2 });
     const lunchMessage = allMessages().find((m) => m.graphMessageId === 'msg-lunch-1');
     expect(lunchMessage).toBeDefined();
     expect(lunchMessage?.subject).toBe('Lunch Thursday');
@@ -318,18 +323,346 @@ describe('US1: sync-emails', () => {
     const interrupted = await syncEmails('2026-07-01', '2026-07-31');
 
     expect(interrupted.isError).toBeFalsy();
-    const interruptedContent = interrupted.structuredContent as { status: string; syncedCount: number; error?: string };
+    const interruptedContent = interrupted.structuredContent as { status: string; syncedCount: number; updatedCount: number; error?: string };
     expect(interruptedContent.status).toBe('interrupted');
     expect(interruptedContent.syncedCount).toBe(2);
+    expect(interruptedContent.updatedCount).toBe(0);
     expect(typeof interruptedContent.error).toBe('string');
     expect(allMessages()).toHaveLength(2);
 
     app.mailProvider = new FakeMailProvider(allSeeded);
     const completed = await syncEmails('2026-07-01', '2026-07-31');
 
-    expect(completed.structuredContent).toEqual({ status: 'complete', syncedCount: 1 });
+    expect(completed.structuredContent).toEqual({ status: 'complete', syncedCount: 1, updatedCount: 2 });
     expect(allMessages()).toHaveLength(3);
     const graphIds = allMessages().map((m) => m.graphMessageId);
     expect(new Set(graphIds).size).toBe(3);
+  });
+});
+
+describe('US1: sync-emails records run history through the shared coordinator', () => {
+  interface RunSummary {
+    id: number;
+    source: string;
+    status: string;
+    newCount: number;
+    updatedCount: number;
+    error: string | null;
+  }
+
+  async function getRuns(): Promise<RunSummary[]> {
+    const response = await app.inject({ method: 'GET', url: '/api/email-sync/runs' });
+    return (response.json() as { runs: RunSummary[] }).runs;
+  }
+
+  it('records an executed run with source "mcp" and its counts (US1 scenario 6, FR-007)', async () => {
+    buildTestApp(new FakeMailProvider([pricingQuestion(), lunchThursday()]));
+    await startAndConnect();
+
+    await syncEmails('2026-07-01', '2026-07-31');
+
+    const runs = await getRuns();
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ source: 'mcp', status: 'success', newCount: 2, updatedCount: 0, error: null });
+  });
+
+  it('rejects a tool call arriving while a sync is active with "A sync is already running" and records nothing for it', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    class GatedProvider implements MailProvider {
+      async listFolders() {
+        return [{ id: 'inbox', name: 'Inbox', wellKnown: 'inbox' as const, children: [] }];
+      }
+
+      async *fetchMessages(): AsyncIterable<never[]> {
+        markStarted();
+        await gate;
+        yield [];
+      }
+
+      async fetchAttachmentMetadata() {
+        return [];
+      }
+    }
+    buildTestApp(new GatedProvider());
+    await startAndConnect();
+
+    const firstPromise = syncEmails('2026-07-01', '2026-07-31');
+    await started;
+
+    const second = await syncEmails('2026-07-01', '2026-07-31');
+    expect(second.isError).toBe(true);
+    expect(JSON.stringify(second.content)).toMatch(/already running/i);
+
+    release();
+    await firstPromise;
+
+    const runs = await getRuns();
+    expect(runs).toHaveLength(1);
+  });
+
+  it('records a failure run when the mailbox is unreachable, alongside the existing tool-error response', async () => {
+    buildTestApp(new FakeMailProvider([], { failImmediately: true }));
+    await startAndConnect();
+
+    const result = await syncEmails('2026-07-01', '2026-07-31');
+    expect(result.isError).toBe(true);
+
+    const runs = await getRuns();
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ source: 'mcp', status: 'failure' });
+    expect(typeof runs[0]!.error).toBe('string');
+  });
+
+  it('records a failure run when the mailbox is not connected at all, alongside the existing tool-error response (contracts/mcp-tools.md, FR-008)', async () => {
+    buildTestApp(undefined);
+    await startAndConnect();
+
+    const result = await syncEmails('2026-07-01', '2026-07-31');
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toMatch(/not connected/i);
+
+    const runs = await getRuns();
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ source: 'mcp', status: 'failure' });
+    expect(runs[0]!.error).toMatch(/not connected/i);
+  });
+});
+
+describe('US2: full metadata capture', () => {
+  function quoteAttached(): SeedMessage {
+    return {
+      id: 'msg-quote-1',
+      conversationId: 'conv-quote',
+      subject: 'Quote attached',
+      body: { content: 'See the attached quote.', contentType: 'text' },
+      receivedDateTime: '2026-08-06T09:01:00Z',
+      sentDateTime: '2026-08-06T09:00:00Z',
+      from: { address: 'sam.rivera@example.com', name: 'Sam Rivera' },
+      toRecipients: [{ address: 'tyler@example.com', name: 'Tyler Satre' }],
+      ccRecipients: [],
+      bccRecipients: [],
+      folder: 'inbox',
+      isRead: false,
+      importance: 'high',
+      flagStatus: 'flagged',
+      categories: ['Orange category'],
+      webLink: 'https://outlook.office.com/mail/msg-quote-1',
+      internetMessageId: '<msg-quote-1@example.com>',
+      attachments: [{ name: 'quote.pdf', contentType: 'application/pdf', sizeBytes: 53248 }],
+    };
+  }
+
+  it('stores every FR-009 field for a fully-populated message (US2 scenario 1)', async () => {
+    buildTestApp(new FakeMailProvider([quoteAttached()]));
+    await startAndConnect();
+
+    await syncEmails('2026-08-01', '2026-08-08');
+
+    const [stored] = allMessages();
+    expect(stored).toMatchObject({
+      subject: 'Quote attached',
+      sourceFolder: 'Inbox',
+      isRead: false,
+      importance: 'high',
+      flagStatus: 'flagged',
+      categories: ['Orange category'],
+      webLink: 'https://outlook.office.com/mail/msg-quote-1',
+      internetMessageId: '<msg-quote-1@example.com>',
+    });
+    expect(stored!.sentAt).toBe(Date.parse('2026-08-06T09:00:00Z'));
+    expect(stored!.receivedAt).toBe(Date.parse('2026-08-06T09:01:00Z'));
+
+    const participants = db
+      .select({ role: emailParticipants.role, address: emailAddresses.value, displayName: emailParticipants.displayName })
+      .from(emailParticipants)
+      .innerJoin(emailAddresses, eq(emailParticipants.addressId, emailAddresses.id))
+      .where(eq(emailParticipants.messageId, stored!.id))
+      .all();
+    expect(participants).toContainEqual({ role: 'from', address: 'sam.rivera@example.com', displayName: 'Sam Rivera' });
+    expect(participants).toContainEqual({ role: 'to', address: 'tyler@example.com', displayName: 'Tyler Satre' });
+
+    const attachments = db.select().from(emailAttachments).where(eq(emailAttachments.messageId, stored!.id)).all();
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0]).toMatchObject({ name: 'quote.pdf', contentType: 'application/pdf', sizeBytes: 53248 });
+  });
+
+  it('syncs a message with no attachments, normal importance, no flag, no categories, and an address-only sender cleanly (FR-011)', async () => {
+    const plain: SeedMessage = {
+      id: 'msg-plain-1',
+      conversationId: 'conv-plain',
+      subject: 'Just checking in',
+      body: { content: 'Hi', contentType: 'text' },
+      receivedDateTime: '2026-08-06T09:01:00Z',
+      sentDateTime: '2026-08-06T09:00:00Z',
+      from: { address: 'someone@example.com' },
+      toRecipients: [{ address: 'tyler@example.com' }],
+      ccRecipients: [],
+      bccRecipients: [],
+      folder: 'inbox',
+    };
+    buildTestApp(new FakeMailProvider([plain]));
+    await startAndConnect();
+
+    await syncEmails('2026-08-01', '2026-08-08');
+
+    const [stored] = allMessages();
+    expect(stored).toMatchObject({
+      importance: 'normal',
+      flagStatus: 'notFlagged',
+      categories: [],
+      webLink: '',
+      internetMessageId: '',
+    });
+
+    const attachments = db.select().from(emailAttachments).where(eq(emailAttachments.messageId, stored!.id)).all();
+    expect(attachments).toHaveLength(0);
+
+    const participants = db
+      .select({ displayName: emailParticipants.displayName })
+      .from(emailParticipants)
+      .where(eq(emailParticipants.messageId, stored!.id))
+      .all();
+    expect(participants.every((p) => p.displayName === '')).toBe(true);
+  });
+});
+
+describe('US3: sync all meaningful folders', () => {
+  function folderMessage(id: string, subject: string, folder: string): SeedMessage {
+    return {
+      id,
+      conversationId: `conv-${id}`,
+      subject,
+      body: { content: subject, contentType: 'text' },
+      receivedDateTime: '2026-08-06T12:00:00Z',
+      sentDateTime: '2026-08-06T12:00:00Z',
+      from: { address: 'someone@example.com' },
+      toRecipients: [{ address: 'tyler@example.com' }],
+      ccRecipients: [],
+      bccRecipients: [],
+      folder,
+    };
+  }
+
+  it('covers Inbox, Archive, and custom folders while excluding Junk/Drafts/Deleted Items (US3 scenario 1)', async () => {
+    const seeds = [
+      folderMessage('msg-hello', 'Hello', 'inbox'),
+      folderMessage('msg-board', 'Board minutes', 'archive'),
+      folderMessage('msg-survey', 'Site survey', 'Projects'),
+      folderMessage('msg-prize', 'You won a prize', 'junk'),
+      folderMessage('msg-draft', 'Half-written', 'drafts'),
+      folderMessage('msg-old', 'Old news', 'deleted items'),
+    ];
+    buildTestApp(new FakeMailProvider(seeds));
+    await startAndConnect();
+
+    const result = await syncEmails('2026-08-01', '2026-08-08');
+    expect(result.structuredContent).toMatchObject({ status: 'complete', syncedCount: 3 });
+
+    const stored = allMessages();
+    expect(stored).toHaveLength(3);
+    const bySubject = new Map(stored.map((m) => [m.subject, m.sourceFolder]));
+    expect(bySubject.get('Hello')).toBe('Inbox');
+    expect(bySubject.get('Board minutes')).toBe('Archive');
+    expect(bySubject.get('Site survey')).toBe('Projects');
+    expect(bySubject.has('You won a prize')).toBe(false);
+    expect(bySubject.has('Half-written')).toBe(false);
+    expect(bySubject.has('Old news')).toBe(false);
+
+    const listed = await listConversations();
+    const { conversations } = listed.structuredContent as { conversations: { subject: string }[] };
+    const subjects = conversations.map((c) => c.subject);
+    expect(subjects).toEqual(expect.arrayContaining(['Hello', 'Board minutes', 'Site survey']));
+    expect(subjects).not.toContain('You won a prize');
+    expect(subjects).not.toContain('Half-written');
+    expect(subjects).not.toContain('Old news');
+  });
+});
+
+describe('US4: keep stored metadata fresh on re-sync', () => {
+  function quoteAttachedUnreadInbox(): SeedMessage {
+    return {
+      id: 'msg-quote-1',
+      conversationId: 'conv-quote',
+      subject: 'Quote attached',
+      body: { content: 'See the attached quote.', contentType: 'text' },
+      receivedDateTime: '2026-08-06T09:01:00Z',
+      sentDateTime: '2026-08-06T09:00:00Z',
+      from: { address: 'sam.rivera@example.com', name: 'Sam Rivera' },
+      toRecipients: [{ address: 'tyler@example.com', name: 'Tyler Satre' }],
+      ccRecipients: [],
+      bccRecipients: [],
+      folder: 'inbox',
+      isRead: false,
+      attachments: [{ name: 'quote.pdf', contentType: 'application/pdf', sizeBytes: 53248 }],
+    };
+  }
+
+  it('refreshes read state and folder while leaving subject/body/participants/timestamps unchanged, with no duplicate (US4 scenario 1, FR-013)', async () => {
+    buildTestApp(new FakeMailProvider([quoteAttachedUnreadInbox()]));
+    await startAndConnect();
+
+    await syncEmails('2026-08-01', '2026-08-08');
+    const [before] = allMessages();
+    const conversationsBefore = allConversations();
+
+    app.mailProvider = new FakeMailProvider([{ ...quoteAttachedUnreadInbox(), folder: 'archive', isRead: true }]);
+    const result = await syncEmails('2026-08-01', '2026-08-08');
+
+    expect(result.structuredContent).toMatchObject({ status: 'complete', syncedCount: 0, updatedCount: 1 });
+
+    const messages = allMessages();
+    expect(messages).toHaveLength(1);
+    const [after] = messages;
+    expect(after!.id).toBe(before!.id);
+    expect(after!.subject).toBe(before!.subject);
+    expect(after!.bodyOriginal).toBe(before!.bodyOriginal);
+    expect(after!.bodyText).toBe(before!.bodyText);
+    expect(after!.sentAt).toBe(before!.sentAt);
+    expect(after!.receivedAt).toBe(before!.receivedAt);
+    expect(after!.sourceFolder).toBe('Archive');
+    expect(after!.isRead).toBe(true);
+
+    expect(allConversations()).toHaveLength(conversationsBefore.length);
+
+    const participants = participantsFor(after!.id);
+    expect(participants).toContainEqual({ role: 'from', address: 'sam.rivera@example.com' });
+
+    const attachments = db.select().from(emailAttachments).where(eq(emailAttachments.messageId, after!.id)).all();
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0]).toMatchObject({ name: 'quote.pdf' });
+  });
+
+  it('stores each message exactly once across two runs with overlapping ranges (SC-004)', async () => {
+    buildTestApp(new FakeMailProvider([quoteAttachedUnreadInbox()]));
+    await startAndConnect();
+
+    await syncEmails('2026-08-01', '2026-08-06');
+    const first = await syncEmails('2026-08-05', '2026-08-08');
+
+    expect(first.structuredContent).toMatchObject({ status: 'complete', syncedCount: 0, updatedCount: 1 });
+    expect(allMessages()).toHaveLength(1);
+  });
+
+  it('keeps a stored message with its last-known metadata when it is moved into an excluded folder (edge case)', async () => {
+    buildTestApp(new FakeMailProvider([quoteAttachedUnreadInbox()]));
+    await startAndConnect();
+
+    await syncEmails('2026-08-01', '2026-08-08');
+    const [before] = allMessages();
+
+    app.mailProvider = new FakeMailProvider([{ ...quoteAttachedUnreadInbox(), folder: 'junk', isRead: true }]);
+    const result = await syncEmails('2026-08-01', '2026-08-08');
+
+    expect(result.structuredContent).toMatchObject({ status: 'complete', syncedCount: 0, updatedCount: 0 });
+
+    const [after] = allMessages();
+    expect(after).toEqual(before);
   });
 });

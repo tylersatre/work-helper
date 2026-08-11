@@ -6,7 +6,8 @@ import { getPerson, listPeople } from '../services/people.js';
 import { addNote, createTask, getTaskDetail, listTasksByLane } from '../services/tasks.js';
 import type * as schema from '../db/schema.js';
 import type { MailProvider } from '../services/email/provider.js';
-import { computeSyncWindow, runSync } from '../services/email/sync.js';
+import { computeSyncWindow } from '../services/email/sync.js';
+import type { SyncCoordinator } from '../services/email/sync-coordinator.js';
 import { emailsForPerson, getConversation, listConversations } from '../services/email/queries.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
@@ -16,6 +17,7 @@ export interface McpToolsContext {
   lanes: string[];
   personFields: string[];
   mailProvider?: MailProvider;
+  syncCoordinator: SyncCoordinator;
 }
 
 function toolError(message: string) {
@@ -184,11 +186,13 @@ export function createMcpServer(context: McpToolsContext): McpServer {
   server.registerTool(
     'sync-emails',
     {
-      description: 'Pulls Inbox + Sent messages for a date range (inclusive, server-local timezone) from the connected mailbox into the store.',
+      description:
+        'Pulls messages for a date range (inclusive, server-local timezone) from every mailbox folder except Junk, Deleted Items, and Drafts into the store, refreshing already-stored messages it re-encounters.',
       inputSchema: { startDate: z.string().optional(), endDate: z.string().optional() },
       outputSchema: {
         status: z.enum(['complete', 'interrupted']),
         syncedCount: z.number(),
+        updatedCount: z.number(),
         error: z.string().optional(),
       },
     },
@@ -204,44 +208,71 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         return toolError('startDate and endDate must be valid YYYY-MM-DD dates, with endDate not before startDate');
       }
 
-      if (!context.mailProvider) {
-        return toolError('Mailbox is not connected — run npm run mail:signin');
+      const outcome = await context.syncCoordinator.trigger({ startDate, endDate, window, source: 'mcp', provider: context.mailProvider });
+      if (outcome.kind === 'already-running') {
+        return toolError('A sync is already running');
       }
 
-      try {
-        const result = await runSync(context.db, context.mailProvider, window);
-        const text =
-          result.status === 'complete'
-            ? `Synced ${result.syncedCount} email(s).`
-            : `Sync interrupted after storing ${result.syncedCount} email(s): ${result.error}`;
-        const structuredContent = { status: result.status, syncedCount: result.syncedCount, error: result.error };
-        return { content: [{ type: 'text', text }], structuredContent };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return toolError(`Could not reach the mailbox (${message}) — run npm run mail:signin to reconnect.`);
+      const { run } = outcome;
+      if (run.status === 'failure' && run.newCount === 0 && run.updatedCount === 0) {
+        return toolError(`Could not reach the mailbox (${run.error}) — run npm run mail:signin to reconnect.`);
       }
+
+      const status = run.status === 'success' ? 'complete' : 'interrupted';
+      const text =
+        status === 'complete'
+          ? `Synced ${run.newCount} email(s).`
+          : `Sync interrupted after storing ${run.newCount} email(s): ${run.error}`;
+      const structuredContent = { status, syncedCount: run.newCount, updatedCount: run.updatedCount, error: run.error ?? undefined };
+      return { content: [{ type: 'text', text }], structuredContent };
     },
   );
+
+  const personRefSchema = z.object({ id: z.number(), name: z.string() }).nullable();
+
+  const conversationParticipantSummarySchema = z.object({
+    address: z.string(),
+    displayName: z.string(),
+    person: personRefSchema,
+  });
 
   const conversationSummarySchema = {
     id: z.number(),
     subject: z.string(),
     messageCount: z.number(),
     latestMessageAt: z.number(),
+    hasUnread: z.boolean(),
+    hasAttachments: z.boolean(),
+    participants: z.array(conversationParticipantSummarySchema),
   };
 
   const participantSchema = z.object({
     address: z.string(),
+    displayName: z.string(),
     role: z.enum(['from', 'to', 'cc', 'bcc']),
-    person: z.object({ id: z.number(), name: z.string() }).nullable(),
+    person: personRefSchema,
+  });
+
+  const attachmentSchema = z.object({
+    name: z.string(),
+    contentType: z.string().nullable(),
+    sizeBytes: z.number(),
   });
 
   const conversationMessageSchema = z.object({
     id: z.number(),
     subject: z.string(),
     sentAt: z.number(),
+    receivedAt: z.number(),
     bodyText: z.string(),
-    sourceFolder: z.enum(['inbox', 'sent']),
+    sourceFolder: z.string(),
+    isRead: z.boolean(),
+    importance: z.enum(['low', 'normal', 'high']),
+    flagStatus: z.enum(['notFlagged', 'complete', 'flagged']),
+    categories: z.array(z.string()),
+    webLink: z.string(),
+    internetMessageId: z.string(),
+    attachments: z.array(attachmentSchema),
     participants: z.array(participantSchema),
   });
 
@@ -316,7 +347,16 @@ export function createMcpServer(context: McpToolsContext): McpServer {
             conversationId: z.number(),
             subject: z.string(),
             sentAt: z.number(),
-            addresses: z.array(z.object({ address: z.string(), role: z.enum(['from', 'to', 'cc', 'bcc']) })),
+            receivedAt: z.number(),
+            sourceFolder: z.string(),
+            isRead: z.boolean(),
+            importance: z.enum(['low', 'normal', 'high']),
+            flagStatus: z.enum(['notFlagged', 'complete', 'flagged']),
+            categories: z.array(z.string()),
+            webLink: z.string(),
+            internetMessageId: z.string(),
+            attachments: z.array(attachmentSchema),
+            addresses: z.array(z.object({ address: z.string(), role: z.enum(['from', 'to', 'cc', 'bcc']), displayName: z.string() })),
           }),
         ),
         nextCursor: z.string().nullable(),

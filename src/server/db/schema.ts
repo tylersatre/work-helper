@@ -53,12 +53,23 @@ export const emailMessages = sqliteTable(
       .notNull()
       .references(() => emailConversations.id),
     graphMessageId: text('graph_message_id').notNull(),
-    sourceFolder: text('source_folder', { enum: ['inbox', 'sent'] }).notNull(),
+    sourceFolder: text('source_folder').notNull(),
     subject: text('subject').notNull().default(''),
     bodyOriginal: text('body_original').notNull(),
     bodyContentType: text('body_content_type', { enum: ['html', 'text'] }).notNull(),
     bodyText: text('body_text').notNull(),
     sentAt: integer('sent_at').notNull(),
+    receivedAt: integer('received_at').notNull(),
+    isRead: integer('is_read', { mode: 'boolean' }).notNull(),
+    importance: text('importance', { enum: ['low', 'normal', 'high'] })
+      .notNull()
+      .default('normal'),
+    flagStatus: text('flag_status', { enum: ['notFlagged', 'complete', 'flagged'] })
+      .notNull()
+      .default('notFlagged'),
+    categories: text('categories', { mode: 'json' }).$type<string[]>().notNull().default([]),
+    webLink: text('web_link').notNull().default(''),
+    internetMessageId: text('internet_message_id').notNull().default(''),
     createdAt: integer('created_at').notNull(),
   },
   (t) => [
@@ -79,11 +90,42 @@ export const emailParticipants = sqliteTable(
       .notNull()
       .references(() => emailAddresses.id),
     role: text('role', { enum: ['from', 'to', 'cc', 'bcc'] }).notNull(),
+    displayName: text('display_name').notNull().default(''),
   },
   (t) => [
     uniqueIndex('email_participants_message_address_role_unique').on(t.messageId, t.addressId, t.role),
     index('email_participants_address_id').on(t.addressId),
   ],
+);
+
+export const emailAttachments = sqliteTable(
+  'email_attachments',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    messageId: integer('message_id')
+      .notNull()
+      .references(() => emailMessages.id),
+    name: text('name').notNull(),
+    contentType: text('content_type'),
+    sizeBytes: integer('size_bytes').notNull(),
+  },
+  (t) => [index('email_attachments_message_id').on(t.messageId)],
+);
+
+export const syncRuns = sqliteTable(
+  'sync_runs',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    ranAt: integer('ran_at').notNull(),
+    startDate: text('start_date').notNull(),
+    endDate: text('end_date').notNull(),
+    source: text('source', { enum: ['web', 'mcp'] }).notNull(),
+    status: text('status', { enum: ['success', 'failure'] }).notNull(),
+    newCount: integer('new_count').notNull(),
+    updatedCount: integer('updated_count').notNull(),
+    error: text('error'),
+  },
+  (t) => [index('sync_runs_ran_at').on(t.ranAt)],
 );
 
 export const personPhones = sqliteTable(

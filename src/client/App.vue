@@ -6,9 +6,10 @@ import { themeOverrides } from './theme.js';
 
 const route = useRoute();
 
-const activeSection = computed<'board' | 'people' | 'tags'>(() => {
+const activeSection = computed<'board' | 'people' | 'tags' | 'sync'>(() => {
   if (route.path === '/people' || route.path.startsWith('/people/')) return 'people';
   if (route.path === '/tags') return 'tags';
+  if (route.path === '/sync') return 'sync';
   return 'board';
 });
 </script>
@@ -28,6 +29,9 @@ const activeSection = computed<'board' | 'people' | 'tags'>(() => {
           </RouterLink>
           <RouterLink v-slot="{ href, navigate }" to="/tags" custom>
             <a :href="href" :aria-current="activeSection === 'tags' ? 'page' : undefined" @click="navigate">Tags</a>
+          </RouterLink>
+          <RouterLink v-slot="{ href, navigate }" to="/sync" custom>
+            <a :href="href" :aria-current="activeSection === 'sync' ? 'page' : undefined" @click="navigate">Email Sync</a>
           </RouterLink>
         </nav>
       </header>

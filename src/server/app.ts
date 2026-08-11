@@ -9,10 +9,12 @@ import { oauthRoutes } from './mcp/auth/oauth-routes.js';
 import { deriveKey } from './mcp/auth/tokens.js';
 import { mcpRoutes } from './mcp/routes.js';
 import { boardRoutes } from './routes/board.js';
+import { emailSyncRoutes } from './routes/email-sync.js';
 import { peopleRoutes } from './routes/people.js';
 import { tagRoutes } from './routes/tags.js';
 import { taskRoutes } from './routes/tasks.js';
 import type { MailProvider } from './services/email/provider.js';
+import { SyncCoordinator } from './services/email/sync-coordinator.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
 
@@ -24,6 +26,7 @@ declare module 'fastify' {
     mcpKey?: Buffer;
     identityVerifier?: IdentityVerifier;
     mailProvider?: MailProvider;
+    syncCoordinator: SyncCoordinator;
   }
 }
 
@@ -55,11 +58,13 @@ export function buildApp(options: AppOptions): FastifyInstance {
   app.decorate('mcpKey', options.mcpTokenSecret ? deriveKey(options.mcpTokenSecret) : undefined);
   app.decorate('identityVerifier', options.identityVerifier);
   app.decorate('mailProvider', options.mailProvider);
+  app.decorate('syncCoordinator', new SyncCoordinator(options.db));
 
   app.register(boardRoutes);
   app.register(taskRoutes);
   app.register(peopleRoutes);
   app.register(tagRoutes);
+  app.register(emailSyncRoutes);
   app.register(oauthRoutes);
   app.register(mcpRoutes);
 
