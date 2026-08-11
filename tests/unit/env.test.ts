@@ -50,7 +50,8 @@ describe('validateEnv', () => {
   });
 
   it('does not require MS_TENANT_ID when MS_CLIENT_ID is unset — email sync is optional', () => {
-    expect(() => validateEnv(BOTH_SET)).not.toThrow();
+    expect(() => validateEnv({ ...BOTH_SET, MS_CLIENT_ID: undefined, MS_TENANT_ID: undefined })).not.toThrow();
+    expect(() => validateEnv({ ...BOTH_SET, MS_CLIENT_ID: '', MS_TENANT_ID: undefined })).not.toThrow();
   });
 
   it('never mentions CONNECTOR_PASSWORD', () => {

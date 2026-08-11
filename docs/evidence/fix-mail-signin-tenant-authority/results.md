@@ -2,6 +2,16 @@
 
 Bug: `npm run mail:signin` printed `To sign in, go to undefined and enter the code: undefined` followed by `post_request_failed: invalid_grant`. Root cause: `graph-auth.ts` hardcoded the `/common` MSAL authority, which Microsoft rejects for single-tenant app registrations (AADSTS50059) — and msal-node destructures the error body without checking it, so the real error was swallowed.
 
+## Acceptance criteria
+
+This fix has no product spec (it is a deployment bugfix, not a feature); these are the criteria it was built and verified against, each mapped to its evidence below.
+
+1. **Given** a single-tenant app registration, **when** `mail:signin` runs with `MS_CLIENT_ID` and `MS_TENANT_ID` set, **then** it prints a real verification URL and user code. — *Live end-to-end run below; unit test asserting the MSAL authority is `https://login.microsoftonline.com/<tenantId>` (`tests/unit/email-graph-auth.test.ts`).*
+2. **Given** Microsoft rejects the device-code request, **when** sign-in runs, **then** the error names the likely registration problems and the string `undefined` is never shown. — *Unit test: `signIn` rejects with a message matching `MS_TENANT_ID`/`public client` and `onCode` is never invoked.*
+3. **Given** `MS_CLIENT_ID` or `MS_TENANT_ID` is missing, **when** `mail:signin` runs, **then** it exits 1 naming the specific missing variable. — *Both guard paths executed live by the verifier agent (output recorded under Automated checks).*
+4. **Given** production with `MS_CLIENT_ID` set but `MS_TENANT_ID` unset, **when** the server starts, **then** startup fails fast pointing at `.env.example`; outside production a warning is logged and email sync stays disabled. — *Unit tests on `validateEnv` (`tests/unit/env.test.ts`); dev warning in `src/server/index.ts`.*
+5. **Given** the documented deploy flow, **when** a reader follows `docs/deploy.md`, `.env.example`, or `specs/007-email-sync/quickstart.md`, **then** every `mail:signin` invocation shows both variables and `compose.yaml` passes `MS_TENANT_ID` through. — *Doc/config diffs in this PR; verifier grep across `.md`/`.yaml`/`.json`.*
+
 ## Live end-to-end run (2026-08-11, real tenant)
 
 Reproduction of the failure, direct against Microsoft's endpoint with a valid single-tenant client id at `/common` (client/tenant GUIDs redacted):
