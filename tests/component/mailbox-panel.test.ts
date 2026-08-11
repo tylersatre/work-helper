@@ -123,6 +123,40 @@ describe('MailboxPanel', () => {
 
     expect(screen.getByTestId('mailbox-connected')).toBeTruthy();
   });
+
+  it('names the missing settings and renders no Connect button given a not-configured status (FR-002)', async () => {
+    vi.stubGlobal('fetch', mockFetch(() => ({ state: 'not-configured', missing: ['MS_CLIENT_ID', 'MS_TENANT_ID'] })));
+
+    mount(MailboxPanel, { attachTo: document.body });
+    await flushPromises();
+
+    const notConfigured = screen.getByTestId('mailbox-not-configured');
+    expect(notConfigured.textContent).toContain('MS_CLIENT_ID');
+    expect(notConfigured.textContent).toContain('MS_TENANT_ID');
+    expect(screen.queryByTestId('mailbox-connect')).toBeNull();
+  });
+
+  it('renders a Disconnect button given a connected status (US2-2)', async () => {
+    vi.stubGlobal('fetch', mockFetch(() => ({ state: 'connected', account: 'tyler@example.com' })));
+
+    mount(MailboxPanel, { attachTo: document.body });
+    await flushPromises();
+
+    expect(screen.getByTestId('mailbox-disconnect')).toBeTruthy();
+  });
+
+  it('renders the not-connected readout, never a connected one, given reason expired (US2-3)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockFetch(() => ({ state: 'not-connected', reason: 'expired', detail: 'AADSTS70008: expired refresh token' })),
+    );
+
+    mount(MailboxPanel, { attachTo: document.body });
+    await flushPromises();
+
+    expect(screen.getByTestId('mailbox-not-connected')).toBeTruthy();
+    expect(screen.queryByTestId('mailbox-connected')).toBeNull();
+  });
 });
 
 describe('SyncPage', () => {

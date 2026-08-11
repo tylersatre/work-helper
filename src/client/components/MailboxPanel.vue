@@ -55,7 +55,11 @@ async function copyCode(): Promise<void> {
 
 <template>
   <section v-if="status" class="mailbox-panel">
-    <template v-if="status.state === 'not-connected'">
+    <div v-if="status.state === 'not-configured'" data-testid="mailbox-not-configured">
+      Mail is not configured — set {{ status.missing.join(' and ') }} (see .env.example).
+    </div>
+
+    <template v-else-if="status.state === 'not-connected'">
       <div v-if="status.attempt?.status === 'pending'" data-testid="mailbox-pending" class="mailbox-pending">
         <a :href="status.attempt.verificationUri" target="_blank" rel="noreferrer" data-testid="mailbox-verification-link">
           {{ status.attempt.verificationUri }}
@@ -70,7 +74,10 @@ async function copyCode(): Promise<void> {
       </div>
     </template>
 
-    <div v-else-if="status.state === 'connected'" data-testid="mailbox-connected">Connected as {{ status.account }}</div>
+    <div v-else-if="status.state === 'connected'">
+      <span data-testid="mailbox-connected">Connected as {{ status.account }}</span>
+      <NButton data-testid="mailbox-disconnect" size="small">Disconnect</NButton>
+    </div>
   </section>
 </template>
 

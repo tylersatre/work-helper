@@ -105,3 +105,59 @@ describe('POST /api/mailbox/connect', () => {
     expect(body).toEqual({ state: 'connected', account: 'tyler@example.com' });
   });
 });
+
+describe('US2 — truthful status at a glance', () => {
+  it('GET /api/mailbox on an unconfigured app names exactly the unset settings — FR-002', async () => {
+    buildTestApp(undefined, ['MS_CLIENT_ID', 'MS_TENANT_ID']);
+
+    const { statusCode, body } = await getStatus();
+
+    expect(statusCode).toBe(200);
+    expect(body).toEqual({ state: 'not-configured', missing: ['MS_CLIENT_ID', 'MS_TENANT_ID'] });
+  });
+
+  it('POST /api/mailbox/connect on an unconfigured app returns 409 with the app-wide error envelope', async () => {
+    buildTestApp(undefined, ['MS_CLIENT_ID', 'MS_TENANT_ID']);
+
+    const { statusCode, body } = await postConnect();
+
+    expect(statusCode).toBe(409);
+    expect(body).toEqual({ error: { message: expect.stringMatching(/MS_CLIENT_ID.*MS_TENANT_ID/) } });
+  });
+
+  it('a fake seeded with a dead/expired sign-in reports not-connected/expired — never connected (FR-007, FR-011, SC-003)', async () => {
+    const fake = new FakeMailboxAuth({ statePath });
+    fake.seedState({ status: 'expired', account: 'tyler@example.com', expiredDetail: 'AADSTS70008: expired refresh token' });
+    buildTestApp(fake);
+
+    const { statusCode, body } = await getStatus();
+
+    expect(statusCode).toBe(200);
+    expect(body).toEqual({ state: 'not-connected', reason: 'expired', detail: 'AADSTS70008: expired refresh token' });
+  });
+
+  it('a fake seeded connected reports connected', async () => {
+    const fake = new FakeMailboxAuth({ statePath });
+    fake.seedState({ status: 'connected', account: 'tyler@example.com' });
+    buildTestApp(fake);
+
+    const { body } = await getStatus();
+
+    expect(body).toEqual({ state: 'connected', account: 'tyler@example.com' });
+  });
+
+  it('last-completed-sign-in-wins: mutating the fake store to connected after the app is already running is reflected on the next GET (spec edge case)', async () => {
+    const fake = new FakeMailboxAuth({ statePath });
+    buildTestApp(fake);
+
+    const before = await getStatus();
+    expect(before.body).toEqual({ state: 'not-connected', reason: 'never-signed-in' });
+
+    // Simulates the legacy CLI (npm run mail:signin) completing a sign-in out-of-band while the server runs.
+    const outOfBand = new FakeMailboxAuth({ statePath });
+    outOfBand.seedState({ status: 'connected', account: 'tyler@example.com' });
+
+    const { body } = await getStatus();
+    expect(body).toEqual({ state: 'connected', account: 'tyler@example.com' });
+  });
+});
