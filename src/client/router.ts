@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router';
+import EmailConversationPage from './pages/EmailConversationPage.vue';
 import EmailsPage from './pages/EmailsPage.vue';
 import BoardPage from './pages/BoardPage.vue';
 import PeoplePage from './pages/PeoplePage.vue';
@@ -17,5 +18,6 @@ export const router = createRouter({
     { path: '/tags', component: TagsPage },
     { path: '/sync', component: SyncPage },
     { path: '/emails', component: EmailsPage },
+    { path: '/emails/:id', component: EmailConversationPage },
   ],
 });
