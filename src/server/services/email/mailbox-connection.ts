@@ -10,6 +10,8 @@ export type SignInAttempt =
  */
 export class MailboxConnectionManager {
   private attempt: SignInAttempt | null = null;
+  /** Covers the race window between calling beginSignIn and onCode firing — this.attempt isn't set yet, so a second connect() before then would otherwise start a second device-code flow. */
+  private inFlightConnect: Promise<SignInAttempt> | null = null;
 
   constructor(private readonly auth: MailboxAuth) {}
 
@@ -29,8 +31,11 @@ export class MailboxConnectionManager {
     if (this.attempt?.status === 'pending') {
       return this.attempt;
     }
+    if (this.inFlightConnect) {
+      return this.inFlightConnect;
+    }
 
-    return new Promise<SignInAttempt>((resolve, reject) => {
+    const promise = new Promise<SignInAttempt>((resolve, reject) => {
       let codeAttempt: SignInAttempt | null = null;
 
       this.auth
@@ -40,6 +45,12 @@ export class MailboxConnectionManager {
           resolve(codeAttempt);
         })
         .then(() => {
+          if (!codeAttempt) {
+            // beginSignIn resolved without ever invoking onCode — violates the MailboxAuth
+            // contract. Reject rather than leaving this connect() call unsettled forever.
+            reject(new Error('Sign-in completed without ever issuing a device code'));
+            return;
+          }
           // Success — clear the attempt. Connected truth then comes from verifyConnection,
           // never from the attempt itself, which resolves the near-expiry race by construction.
           if (this.attempt === codeAttempt) {
@@ -59,5 +70,18 @@ export class MailboxConnectionManager {
           }
         });
     });
+
+    this.inFlightConnect = promise;
+    // Cleared once the race window closes (onCode fired, or the device-code request itself was
+    // rejected) — the this.attempt pending-check above takes over as the guard from then on.
+    promise.then(
+      () => {
+        this.inFlightConnect = null;
+      },
+      () => {
+        this.inFlightConnect = null;
+      },
+    );
+    return promise;
   }
 }

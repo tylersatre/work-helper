@@ -52,7 +52,10 @@ export class SyncCoordinator {
     const ranAt = Date.now();
     try {
       if (!params.provider) {
-        throw new Error('Mailbox is not connected (never signed in) — connect the mailbox on the Sync page.');
+        // Reachable only when mail is entirely unconfigured (index.ts always wires a real
+        // mailProvider once a mailboxAuth exists) — the panel offers no Connect button here,
+        // so the copy points at env setup, not the Sync page.
+        throw new Error('Mail is not configured — set MS_CLIENT_ID and MS_TENANT_ID (see .env.example).');
       }
       const result = await runSync(this.db, params.provider, params.window);
       const run = this.record(params, ranAt, {

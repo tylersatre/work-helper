@@ -466,18 +466,18 @@ describe('US1: sync-emails records run history through the shared coordinator', 
     expect(typeof runs[0]!.error).toBe('string');
   });
 
-  it('records a failure run when the mailbox is not connected at all, alongside the existing tool-error response (contracts/mcp-tools.md, FR-008)', async () => {
+  it('records a failure run when mail is not configured at all, alongside the existing tool-error response (contracts/mcp-tools.md, FR-008)', async () => {
     buildTestApp(undefined);
     await startAndConnect();
 
     const result = await syncEmails('2026-07-01', '2026-07-31');
     expect(result.isError).toBe(true);
-    expect(JSON.stringify(result.content)).toMatch(/not connected/i);
+    expect(JSON.stringify(result.content)).toMatch(/not configured/i);
 
     const runs = await getRuns();
     expect(runs).toHaveLength(1);
     expect(runs[0]).toMatchObject({ source: 'mcp', status: 'failure' });
-    expect(runs[0]!.error).toMatch(/not connected/i);
+    expect(runs[0]!.error).toMatch(/not configured/i);
   });
 });
 

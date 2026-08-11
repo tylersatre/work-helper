@@ -175,6 +175,80 @@ describe('MailboxPanel', () => {
     expect(screen.getByTestId('mailbox-connect')).toBeTruthy();
   });
 
+  it('retries the initial status fetch on rejection instead of leaving the panel permanently blank', async () => {
+    vi.useFakeTimers();
+    let attempts = 0;
+    const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+      if (url === '/api/mailbox' && (!options || options.method === undefined)) {
+        attempts += 1;
+        if (attempts === 1) {
+          return Promise.reject(new Error('network error'));
+        }
+        return Promise.resolve({ ok: true, json: async () => ({ state: 'not-connected', reason: 'never-signed-in' }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    mount(MailboxPanel, { attachTo: document.body });
+    await flushPromises();
+
+    expect(screen.queryByTestId('mailbox-not-connected')).toBeNull();
+    expect(attempts).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(3500);
+    await flushPromises();
+
+    expect(attempts).toBeGreaterThanOrEqual(2);
+    expect(screen.getByTestId('mailbox-not-connected')).toBeTruthy();
+  });
+
+  it('shows the provider error and keeps the Connect button when connect() returns a non-2xx error (e.g. wrong-tenant 502), instead of blanking the panel', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+      if (url === '/api/mailbox' && (!options || options.method === undefined)) {
+        return Promise.resolve({ ok: true, json: async () => ({ state: 'not-connected', reason: 'never-signed-in' }) });
+      }
+      if (url === '/api/mailbox/connect' && options?.method === 'POST') {
+        return Promise.resolve({ ok: false, status: 502, json: async () => ({ error: { message: 'Microsoft rejected the device-code request.' } }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const wrapper = mount(MailboxPanel, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.get('[data-testid="mailbox-connect"]').trigger('click');
+    await flushPromises();
+
+    expect(screen.getByTestId('mailbox-connect-error').textContent).toContain('Microsoft rejected the device-code request.');
+    expect(screen.getByTestId('mailbox-connect')).toBeTruthy();
+    expect(screen.getByTestId('mailbox-not-connected')).toBeTruthy();
+  });
+
+  it('shows the provider error when disconnect() returns a non-2xx error, instead of blanking the panel', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+      if (url === '/api/mailbox' && (!options || options.method === undefined)) {
+        return Promise.resolve({ ok: true, json: async () => ({ state: 'connected', account: 'tyler@example.com' }) });
+      }
+      if (url === '/api/mailbox/disconnect' && options?.method === 'POST') {
+        return Promise.resolve({ ok: false, status: 409, json: async () => ({ error: { message: 'Mail is not configured.' } }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const wrapper = mount(MailboxPanel, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.get('[data-testid="mailbox-disconnect"]').trigger('click');
+    await flushPromises();
+
+    expect(screen.getByTestId('mailbox-connect-error').textContent).toContain('Mail is not configured.');
+    // The panel must still show the last-known connected status, not blank out.
+    expect(screen.getByTestId('mailbox-connected')).toBeTruthy();
+  });
+
   it('clicking Disconnect calls POST /api/mailbox/disconnect and renders the returned not-connected status (US3-2)', async () => {
     const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
       if (url === '/api/mailbox' && (!options || options.method === undefined)) {

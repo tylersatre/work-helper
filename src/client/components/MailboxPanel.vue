@@ -14,25 +14,48 @@ type MailboxStatus =
 const POLL_INTERVAL_MS = 3000;
 
 const status = ref<MailboxStatus | null>(null);
+const actionError = ref<string | null>(null);
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+async function readActionResult(response: Response): Promise<MailboxStatus | null> {
+  const body = (await response.json()) as unknown;
+  if (!response.ok) {
+    const message = (body as { error?: { message?: string } })?.error?.message;
+    actionError.value = message ?? 'Something went wrong — try again';
+    return null;
+  }
+  actionError.value = null;
+  return body as MailboxStatus;
+}
 
 function isPending(value: MailboxStatus | null): boolean {
   return value?.state === 'not-connected' && value.attempt?.status === 'pending';
 }
 
+// Also true while status is still null (initial fetch hasn't succeeded yet) so a rejected
+// mount-time GET keeps retrying instead of leaving the panel permanently blank.
+function shouldPoll(value: MailboxStatus | null): boolean {
+  return value === null || isPending(value);
+}
+
 function syncPolling(): void {
-  if (isPending(status.value) && !pollTimer) {
+  if (shouldPoll(status.value) && !pollTimer) {
     pollTimer = setInterval(fetchStatus, POLL_INTERVAL_MS);
-  } else if (!isPending(status.value) && pollTimer) {
+  } else if (!shouldPoll(status.value) && pollTimer) {
     clearInterval(pollTimer);
     pollTimer = null;
   }
 }
 
 async function fetchStatus(): Promise<void> {
-  const response = await fetch('/api/mailbox');
-  status.value = (await response.json()) as MailboxStatus;
-  syncPolling();
+  try {
+    const response = await fetch('/api/mailbox');
+    status.value = (await response.json()) as MailboxStatus;
+  } catch {
+    // Leave status as-is — syncPolling() below keeps retrying while it's still null.
+  } finally {
+    syncPolling();
+  }
 }
 
 onMounted(fetchStatus);
@@ -42,7 +65,8 @@ onUnmounted(() => {
 
 async function onConnect(): Promise<void> {
   const response = await fetch('/api/mailbox/connect', { method: 'POST' });
-  status.value = (await response.json()) as MailboxStatus;
+  const result = await readActionResult(response);
+  if (result) status.value = result;
   syncPolling();
 }
 
@@ -54,13 +78,16 @@ async function copyCode(): Promise<void> {
 
 async function onDisconnect(): Promise<void> {
   const response = await fetch('/api/mailbox/disconnect', { method: 'POST' });
-  status.value = (await response.json()) as MailboxStatus;
+  const result = await readActionResult(response);
+  if (result) status.value = result;
   syncPolling();
 }
 </script>
 
 <template>
   <section v-if="status" class="mailbox-panel">
+    <p v-if="actionError" data-testid="mailbox-connect-error" role="alert">{{ actionError }}</p>
+
     <div v-if="status.state === 'not-configured'" data-testid="mailbox-not-configured">
       Mail is not configured — set {{ status.missing.join(' and ') }} (see .env.example).
     </div>

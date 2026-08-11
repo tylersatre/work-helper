@@ -2,8 +2,51 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { ConnectionVerification, MailboxAuth } from '../../src/server/services/email/graph-auth.js';
 import { FakeMailboxAuth } from '../../src/server/services/email/fake-mailbox-auth.js';
 import { MailboxConnectionManager } from '../../src/server/services/email/mailbox-connection.js';
+
+/** Defers invoking onCode until the microtask queue drains — mirrors real MSAL's network round-trip before deviceCodeCallback fires, unlike FakeMailboxAuth's synchronous onCode. */
+class DeferredCodeAuth implements MailboxAuth {
+  beginSignInCallCount = 0;
+
+  async getAccessToken(): Promise<string> {
+    throw new Error('not implemented');
+  }
+
+  async verifyConnection(): Promise<ConnectionVerification> {
+    return { connected: false, reason: 'never-signed-in' };
+  }
+
+  async beginSignIn(onCode: (verificationUri: string, userCode: string, expiresAt: number) => void): Promise<{ account: string }> {
+    this.beginSignInCallCount += 1;
+    await Promise.resolve();
+    await Promise.resolve();
+    onCode('https://microsoft.com/devicelogin', `CODE-${this.beginSignInCallCount}`, Date.now() + 900_000);
+    return new Promise(() => {
+      // Never settles — the test only cares about the pre-onCode race window.
+    });
+  }
+
+  async signOut(): Promise<void> {}
+}
+
+/** Resolves beginSignIn successfully without ever invoking onCode — an ill-behaved MailboxAuth (violates the interface contract), used to prove connect() doesn't hang forever on it. */
+class NeverCodesAuth implements MailboxAuth {
+  async getAccessToken(): Promise<string> {
+    throw new Error('not implemented');
+  }
+
+  async verifyConnection(): Promise<ConnectionVerification> {
+    return { connected: false, reason: 'never-signed-in' };
+  }
+
+  async beginSignIn(): Promise<{ account: string }> {
+    return { account: 'tyler@example.com' };
+  }
+
+  async signOut(): Promise<void> {}
+}
 
 let dir: string;
 let statePath: string;
@@ -82,6 +125,23 @@ describe('MailboxConnectionManager', () => {
   it('a new manager instance has no attempt (restart edge case)', () => {
     const manager = new MailboxConnectionManager(auth());
 
+    expect(manager.getAttempt()).toBeNull();
+  });
+
+  it('two overlapping connect() calls before onCode fires share one device-code flow, not two (FR-004 concurrency)', async () => {
+    const deferredAuth = new DeferredCodeAuth();
+    const manager = new MailboxConnectionManager(deferredAuth);
+
+    const [first, second] = await Promise.all([manager.connect(), manager.connect()]);
+
+    expect(deferredAuth.beginSignInCallCount).toBe(1);
+    expect(second).toEqual(first);
+  });
+
+  it('connect() rejects instead of hanging forever if beginSignIn resolves without ever calling onCode', async () => {
+    const manager = new MailboxConnectionManager(new NeverCodesAuth());
+
+    await expect(manager.connect()).rejects.toThrow();
     expect(manager.getAttempt()).toBeNull();
   });
 

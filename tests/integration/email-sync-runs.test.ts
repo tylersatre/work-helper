@@ -207,7 +207,7 @@ describe('POST /api/email-sync/runs', () => {
     expect(runs[0]!.status).toBe('failure');
   });
 
-  it('records a failed run with 201 when the mailbox is not connected at all (contracts/http-api.md, FR-008)', async () => {
+  it('records a failed run with 201 when mail is not configured at all (contracts/http-api.md, FR-008)', async () => {
     buildTestApp(undefined);
 
     const response = await postRun({ startDate: '2026-08-01', endDate: '2026-08-08' });
@@ -215,7 +215,7 @@ describe('POST /api/email-sync/runs', () => {
     expect(response.statusCode).toBe(201);
     const run = response.json() as SyncRunView;
     expect(run.status).toBe('failure');
-    expect(run.error).toMatch(/not connected/i);
+    expect(run.error).toMatch(/not configured/i);
 
     const { runs } = await getRuns();
     expect(runs).toHaveLength(1);
