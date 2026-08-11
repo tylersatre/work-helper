@@ -48,7 +48,7 @@ onMounted(() => fetchPage());
     <p v-if="errorMessage" role="alert" class="emails-page-error">{{ errorMessage }}</p>
 
     <NEmpty
-      v-if="loaded && conversations.length === 0"
+      v-if="loaded && !errorMessage && conversations.length === 0"
       data-testid="emails-empty"
       description="No conversations yet"
       class="emails-empty"

@@ -371,14 +371,13 @@ export function conversationsForPerson(db: AppDb, personId: number): PersonConve
     WHERE ea.person_id = ${personId}
   `);
 
-  const byConversation = new Map<number, { latestMessageAt: number; addresses: Map<string, Set<string>> }>();
+  const byConversation = new Map<number, { addresses: Map<string, Set<string>> }>();
   for (const row of rows) {
     let entry = byConversation.get(row.conversationId);
     if (!entry) {
-      entry = { latestMessageAt: row.sentAt, addresses: new Map() };
+      entry = { addresses: new Map() };
       byConversation.set(row.conversationId, entry);
     }
-    entry.latestMessageAt = Math.max(entry.latestMessageAt, row.sentAt);
     const roles = entry.addresses.get(row.address) ?? new Set<string>();
     roles.add(row.role);
     entry.addresses.set(row.address, roles);
@@ -386,17 +385,20 @@ export function conversationsForPerson(db: AppDb, personId: number): PersonConve
 
   return [...byConversation.entries()]
     .map(([conversationId, entry]) => {
-      const [earliest] = db
-        .select({ subject: emailMessages.subject })
-        .from(emailMessages)
-        .where(eq(emailMessages.conversationId, conversationId))
-        .orderBy(asc(emailMessages.sentAt), asc(emailMessages.id))
-        .limit(1)
-        .all();
+      // The conversation's own latest message date (not just the person's own messages within
+      // it) — a person can drop off later replies in a long thread while the thread itself stays
+      // recent, and the person's row must sort/display by the thread's true recency.
+      const [agg] = db.all<{ subject: string; latestMessageAt: number }>(sql`
+        SELECT
+          (SELECT subject FROM email_messages WHERE conversation_id = ${conversationId} ORDER BY sent_at ASC, id ASC LIMIT 1) AS subject,
+          MAX(sent_at) AS latestMessageAt
+        FROM email_messages
+        WHERE conversation_id = ${conversationId}
+      `);
       return {
         conversationId,
-        subject: earliest?.subject ?? '',
-        latestMessageAt: entry.latestMessageAt,
+        subject: agg?.subject ?? '',
+        latestMessageAt: agg?.latestMessageAt ?? 0,
         addresses: [...entry.addresses.entries()].map(([address, roles]) => ({
           address,
           roles: [...roles] as ('from' | 'to' | 'cc' | 'bcc')[],

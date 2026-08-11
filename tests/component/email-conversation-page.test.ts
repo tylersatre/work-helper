@@ -264,6 +264,38 @@ describe('EmailConversationPage — link/create controls (US4)', () => {
     expect((within(controls).getByLabelText(/^email/i) as HTMLInputElement).value).toBe('jordan.smith@example.com');
   });
 
+  it('the create-person submit forwards the phone and an edited email, not just first/last name', async () => {
+    let createBody: unknown;
+    const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+      if (url === '/api/people' && options?.method === 'POST') {
+        createBody = JSON.parse(options.body as string);
+        return Promise.resolve({ ok: true, status: 201, json: async () => ({ id: 9 }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => unmatchedDetail() });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const router = makeRouter('/emails/12');
+    await router.isReady();
+    render(EmailConversationPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    const controls = screen.getByTestId('address-link-controls');
+    await fireEvent.click(within(controls).getByRole('button', { name: /create person/i }));
+    await flushPromises();
+
+    await fireEvent.update(within(controls).getByLabelText(/^email/i), 'jordan.edited@example.com');
+    await fireEvent.update(within(controls).getByLabelText(/phone/i), '555-0100');
+    await fireEvent.click(within(controls).getByRole('button', { name: /create person/i }));
+    await flushPromises();
+
+    expect(createBody).toMatchObject({
+      firstName: 'Jordan',
+      lastName: 'Smith',
+      email: 'jordan.edited@example.com',
+      phone: '555-0100',
+    });
+  });
+
   it('a 409 response from the create-person submit surfaces as the control error text', async () => {
     const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
       if (url === '/api/people' && options?.method === 'POST') {

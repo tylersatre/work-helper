@@ -78,7 +78,7 @@ onMounted(fetchConversation);
         <EmailBody :body-original="message.bodyOriginal" :body-content-type="message.bodyContentType" />
 
         <ul v-if="message.attachments.length" class="email-message-attachments">
-          <li v-for="attachment in message.attachments" :key="attachment.name" data-testid="message-attachment">
+          <li v-for="(attachment, index) in message.attachments" :key="`${attachment.name}-${index}`" data-testid="message-attachment">
             {{ attachment.name }} ({{ attachment.contentType ?? 'unknown type' }}, {{ formatBytes(attachment.sizeBytes) }})
           </li>
         </ul>

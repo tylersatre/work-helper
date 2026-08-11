@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { NButton, NInput } from 'naive-ui';
-import { ref, watch } from 'vue';
+import { ref, useId, watch } from 'vue';
 import { primaryValue } from '../../shared/contacts.js';
 import type { Person } from '../../shared/types.js';
 import { splitDisplayName } from '../utils/email-format.js';
@@ -18,6 +18,7 @@ const creating = ref(false);
 const createError = ref('');
 
 const split = splitDisplayName(props.displayName);
+const searchInputId = `address-link-search-${useId()}`;
 
 watch(query, (value) => {
   if (debounceTimer) clearTimeout(debounceTimer);
@@ -49,11 +50,23 @@ async function linkPerson(personId: number): Promise<void> {
   emit('linked');
 }
 
-async function onCreate(values: { firstName: string; lastName: string }): Promise<void> {
+async function onCreate(values: {
+  firstName: string;
+  lastName: string;
+  email?: string;
+  phone?: string;
+  extraFields?: Record<string, string>;
+}): Promise<void> {
   const response = await fetch('/api/people', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ firstName: values.firstName, lastName: values.lastName, email: props.address }),
+    body: JSON.stringify({
+      firstName: values.firstName,
+      lastName: values.lastName,
+      email: values.email?.trim() ? values.email : props.address,
+      phone: values.phone ?? '',
+      extraFields: values.extraFields,
+    }),
   });
   const body = await response.json();
   if (!response.ok) {
@@ -67,12 +80,12 @@ async function onCreate(values: { firstName: string; lastName: string }): Promis
 
 <template>
   <div class="address-link-controls" data-testid="address-link-controls">
-    <label class="address-link-label" :for="`address-link-search-${address}`">Search people to link</label>
+    <label class="address-link-label" :for="searchInputId">Search people to link</label>
     <NInput
       v-model:value="query"
       size="small"
       class="address-link-search"
-      :input-props="{ id: `address-link-search-${address}`, name: 'search', 'aria-label': 'Search people to link' }"
+      :input-props="{ id: searchInputId, name: 'search', 'aria-label': 'Search people to link' }"
     />
 
     <ul v-if="results.length" class="address-link-results">

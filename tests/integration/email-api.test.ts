@@ -296,6 +296,36 @@ describe('GET /api/people/:personId/email-conversations', () => {
     expect(ccOnly.addresses).toEqual([{ address: 'sam.rivera@example.com', roles: ['cc'] }]);
   });
 
+  it("uses the conversation's true latest-message date, not just the person's own last involvement in it", async () => {
+    const early = quoteAttached({
+      id: 'msg-thread-early',
+      conversationId: 'conv-thread',
+      subject: 'Long thread',
+      ccRecipients: [{ address: 'sam.rivera@example.com', name: 'Sam Rivera' }],
+      from: { address: 'someone-else@example.com' },
+      toRecipients: [{ address: 'tyler@example.com' }],
+      sentDateTime: '2026-08-01T09:00:00Z',
+      receivedDateTime: '2026-08-01T09:00:00Z',
+    });
+    const laterWithoutSam = pricingQuestion({
+      id: 'msg-thread-later',
+      conversationId: 'conv-thread',
+      subject: 'Re: Long thread',
+      from: { address: 'someone-else@example.com' },
+      toRecipients: [{ address: 'tyler@example.com' }],
+      sentDateTime: '2026-08-20T09:00:00Z',
+      receivedDateTime: '2026-08-20T09:00:00Z',
+    });
+    buildTestApp([early, laterWithoutSam]);
+    const sam = await createPerson({ firstName: 'Sam', lastName: 'Rivera', email: 'sam.rivera@example.com' });
+    await sync();
+
+    const response = await app.inject({ method: 'GET', url: `/api/people/${sam}/email-conversations` });
+    const { conversations } = response.json() as { conversations: { subject: string; latestMessageAt: number }[] };
+    const thread = conversations.find((c) => c.subject === 'Long thread')!;
+    expect(thread.latestMessageAt).toBe(Date.parse('2026-08-20T09:00:00Z'));
+  });
+
   it('a person with no synced mail returns an empty list', async () => {
     buildTestApp([]);
     const cy = await createPerson({ firstName: 'Cy', lastName: 'Cole' });

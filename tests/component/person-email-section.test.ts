@@ -83,4 +83,15 @@ describe('PersonEmailSection', () => {
     expect(screen.getByTestId('person-emails-empty')).toBeTruthy();
     expect(screen.queryByTestId('person-email-row')).toBeNull();
   });
+
+  it('shows error text, not the empty state, when the fetch fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({ error: { message: 'Server error' } }) }));
+    const router = makeRouter();
+    await router.isReady();
+    render(PersonEmailSection, { props: { personId: 3 }, global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(await screen.findByText('Server error')).toBeTruthy();
+    expect(screen.queryByTestId('person-emails-empty')).toBeNull();
+  });
 });

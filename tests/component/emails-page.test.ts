@@ -119,6 +119,16 @@ describe('EmailsPage', () => {
     expect(screen.queryByTestId('email-conversation-row')).toBeNull();
   });
 
+  it('shows error text, not the "no conversations" empty state, when the fetch fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({ error: { message: 'Server error' } }) }));
+
+    await renderPage();
+    await flushPromises();
+
+    expect(await screen.findByText('Server error')).toBeTruthy();
+    expect(screen.queryByTestId('emails-empty')).toBeNull();
+  });
+
   it('shows a load-more control only when nextCursor is non-null, and activating it appends the next page', async () => {
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url === '/api/emails/conversations') {
