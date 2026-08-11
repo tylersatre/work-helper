@@ -14,6 +14,7 @@ import { mailboxRoutes } from './routes/mailbox.js';
 import { peopleRoutes } from './routes/people.js';
 import { tagRoutes } from './routes/tags.js';
 import { taskRoutes } from './routes/tasks.js';
+import { AttachmentBackfillService } from './services/email/attachment-backfill.js';
 import type { MailboxAuth } from './services/email/graph-auth.js';
 import { MailboxConnectionManager } from './services/email/mailbox-connection.js';
 import type { MailProvider } from './services/email/provider.js';
@@ -29,6 +30,7 @@ declare module 'fastify' {
     mcpKey?: Buffer;
     identityVerifier?: IdentityVerifier;
     mailProvider?: MailProvider;
+    attachmentBackfill?: AttachmentBackfillService;
     syncCoordinator: SyncCoordinator;
     mailboxAuth?: MailboxAuth;
     mailboxMissingSettings: string[];
@@ -68,7 +70,9 @@ export function buildApp(options: AppOptions): FastifyInstance {
   app.decorate('mcpKey', options.mcpTokenSecret ? deriveKey(options.mcpTokenSecret) : undefined);
   app.decorate('identityVerifier', options.identityVerifier);
   app.decorate('mailProvider', options.mailProvider);
-  app.decorate('syncCoordinator', new SyncCoordinator(options.db));
+  const attachmentBackfill = options.mailProvider ? new AttachmentBackfillService(options.db, options.mailProvider, app.log) : undefined;
+  app.decorate('attachmentBackfill', attachmentBackfill);
+  app.decorate('syncCoordinator', new SyncCoordinator(options.db, attachmentBackfill));
   app.decorate('mailboxAuth', options.mailboxAuth);
   app.decorate('mailboxMissingSettings', options.mailboxMissingSettings ?? []);
   app.decorate('mailboxConnection', options.mailboxAuth ? new MailboxConnectionManager(options.mailboxAuth) : undefined);
