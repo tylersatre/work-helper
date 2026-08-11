@@ -14,6 +14,10 @@ Declare the home-server deployment production: flip the constitution's developme
 
 `home-server-deploy` shipped (there is a deployment to declare production). Realistically also gated on Tyler deciding the app is trustworthy enough for real data.
 
+## Status (2026-08-11): partially done
+
+The policy flip happened: the app is deployed on Tyler's home server with real data, and the constitution (v2.0.0) and CLAUDE.md now require data-preserving drizzle-kit migrations, with any unavoidably lossy step flagged and approved before merge. What remains of this stub is **backups**: automated backup cadence, destination, and restore drills for the `./data/` volume are still unbuilt (docs/deploy.md currently suggests a manual `cp -a data ...` before updates).
+
 ## Notes
 
 - The constitution (v1.1.0, "Data & migrations (development phase)") and CLAUDE.md both say the no-migrations policy "expires once real data exists (first production deployment or real email ingestion begins)" and must then be amended to require migrations that avoid data loss where possible and flag any unavoidably lossy step. That amendment is the core of this feature — Tyler confirmed in the home-server-deploy interview (2026-08-07) that the first deploy does not trigger it.

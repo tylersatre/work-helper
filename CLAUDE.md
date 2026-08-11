@@ -19,9 +19,9 @@ Every acceptance criterion has a passing automated check **and** surface-appropr
 - Email ingestion pulls directly from Microsoft Graph (scheduled/webhook) inside the server. AI agents are consumers of the work-helper MCP (query/link/tag tools), never the ingestion path.
 - Deployment target: self-hosted Docker.
 
-## Data & migrations (development phase)
+## Data & migrations (production — real data exists)
 
-The project is under active development and holds no real data yet, so data loss is not a concern. Do not accumulate migration files: apply schema changes by editing the base schema in place and resetting/recreating the dev database freely. Do not spend effort on data-preserving migration paths, backfills, backups, or loss warnings. This policy ends once real data exists (first production deployment or real email ingestion begins) — at that point this section and the constitution must be updated to require migrations that avoid data loss where possible and flag any unavoidably lossy step.
+As of 2026-08-11 the app is deployed on Tyler's home server and holds real data, so every schema change must preserve existing data. Schema changes are made by editing `src/server/db/schema.ts` and generating a new numbered migration with `npx drizzle-kit generate`; migrations in `drizzle/` are applied automatically at startup. Never edit, regenerate, or delete a migration file that has already landed on `main` — the deployed database has recorded it as applied. Where drizzle-kit's generated SQL would drop or truncate data (e.g. SQLite column type changes that recreate a table), hand-adjust the migration so data survives. If a change is unavoidably lossy, it must be explicitly called out in the spec and the PR description and approved by Tyler before merge — never silently. Do not reset or recreate the dev database as a substitute for writing a working migration; a fresh dev database and an upgraded existing database must both end up at the same schema.
 
 ## Conventions
 

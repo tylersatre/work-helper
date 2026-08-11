@@ -39,7 +39,11 @@ git pull
 docker compose up -d --build
 ```
 
-All your data lives in `./data/` on the host, outside the container, so it survives every update — the new image starts up, sees the existing files, and keeps going. (Dev-phase caveat: a schema-changing update may still reset data — this project doesn't yet build data-preserving migrations.)
+All your data lives in `./data/` on the host, outside the container, so it survives every update — the new image starts up, applies any pending database migrations automatically, and keeps going. Schema-changing updates ship as data-preserving migrations; any release with an unavoidably lossy step is flagged explicitly in its PR, so an ordinary `git pull` + rebuild never silently loses data. There's no automated backup yet, so consider copying `./data/` somewhere safe before updating (the stack can keep running while you copy, or `docker compose down` first for a clean snapshot):
+
+```bash
+cp -a data "data.backup-$(date +%Y%m%d)"
+```
 
 ## Fronting with Caddy
 

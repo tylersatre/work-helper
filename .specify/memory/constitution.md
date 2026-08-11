@@ -21,7 +21,7 @@ Features land in small, independently shippable vertical slices. Every change la
 
 Technology stack: TypeScript throughout (app + MCP server). MCP server built on `@modelcontextprotocol/sdk` — no other MCP framework. Self-hosted via Docker; no dependency on a specific cloud provider for the core app.
 
-Data & migrations (development phase): the project holds no real data yet, so data loss is not a concern. Schema changes are made by editing the base schema in place and resetting/recreating the dev database — do not accumulate migration files or build data-preserving migration paths, backfills, or backups. This constraint expires once real data exists (first production deployment or real email ingestion begins); at that point this constitution must be amended to require migrations that avoid data loss where possible and explicitly flag any unavoidably lossy step.
+Data & migrations (production): real data exists as of 2026-08-11 (home-server deployment in active use), so schema changes must preserve existing data. Every schema change ships as a new numbered drizzle-kit migration file committed alongside the schema edit; migration files already on `main` are immutable — never edited, regenerated, or deleted, because deployed databases have recorded them as applied. Migrations must avoid data loss wherever possible (hand-adjusting generated SQL when drizzle-kit's default would drop data); an unavoidably lossy step must be explicitly flagged in the spec and PR description and approved by Tyler before merge. Resetting or recreating a database is not an acceptable substitute for a working migration.
 
 ## Development Workflow
 
@@ -31,4 +31,4 @@ feature spec → `/speckit-specify` → `/speckit-plan` → `/speckit-tasks` →
 
 This constitution supersedes ad hoc practice. Amendments require updating this file, bumping the version below, and recording the change in the amendment's PR description. The verification gate and `verifier` agent enforce Principles II and III mechanically; violations block the Stop hook and are called out by the verifier agent, not silently waved through.
 
-**Version**: 1.2.0 | **Ratified**: 2026-08-06 | **Last Amended**: 2026-08-08
+**Version**: 2.0.0 | **Ratified**: 2026-08-06 | **Last Amended**: 2026-08-11
