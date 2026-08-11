@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import type { EmailConversationDetail } from '../../shared/types.js';
+import AddressLinkControls from '../components/AddressLinkControls.vue';
 import EmailBody from '../components/EmailBody.vue';
 import { formatBytes, subjectOrPlaceholder } from '../utils/email-format.js';
 import { absoluteLocal } from '../utils/time.js';
@@ -57,6 +58,12 @@ onMounted(fetchConversation);
               </RouterLink>
               <span v-else>{{ participantLabel(participant) }}</span>
               <span class="email-message-address">&lt;{{ participant.address }}&gt;</span>
+              <AddressLinkControls
+                v-if="!participant.person"
+                :address="participant.address"
+                :display-name="participant.displayName"
+                @linked="fetchConversation"
+              />
             </template>
           </div>
 

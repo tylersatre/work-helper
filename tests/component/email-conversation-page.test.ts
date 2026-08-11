@@ -1,9 +1,14 @@
 // @vitest-environment jsdom
-import { render, screen, within } from '@testing-library/vue';
+import { fireEvent, render, screen, within } from '@testing-library/vue';
 import { flushPromises } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import EmailConversationPage from '../../src/client/pages/EmailConversationPage.vue';
+
+async function waitForDebounce(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  await flushPromises();
+}
 
 function makeRouter(initialPath: string) {
   const router = createRouter({
@@ -133,5 +138,151 @@ describe('EmailConversationPage', () => {
     for (const name of [/mark read/i, /mark unread/i, /^flag$/i, /move/i, /^delete$/i, /reply/i, /forward/i, /compose/i]) {
       expect(screen.queryByRole('button', { name })).toBeNull();
     }
+  });
+});
+
+describe('EmailConversationPage — link/create controls (US4)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function unmatchedDetail() {
+    return detail({
+      messages: [
+        baseMessage({
+          participants: [
+            { address: 'sam.rivera@example.com', displayName: 'Sam Rivera', role: 'from', person: { id: 3, name: 'Sam Rivera' } },
+            { address: 'jordan.smith@example.com', displayName: 'Jordan Smith', role: 'to', person: null },
+          ],
+        }),
+      ],
+    });
+  }
+
+  it('renders link/create controls only for unmatched participants', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => unmatchedDetail() }));
+    const router = makeRouter('/emails/12');
+    await router.isReady();
+    render(EmailConversationPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    const controls = screen.getAllByTestId('address-link-controls');
+    expect(controls).toHaveLength(1);
+  });
+
+  it('searches GET /api/people?q= after a debounce and renders "First Last — email" result rows', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.startsWith('/api/people?q=')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [
+            { id: 5, firstName: 'Jordan', lastName: 'Smith', emails: [{ id: 1, value: 'jordan.other@example.com', isPrimary: true, createdAt: 1 }], phones: [], extraFields: {}, createdAt: 1, tags: [] },
+          ],
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => unmatchedDetail() });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const router = makeRouter('/emails/12');
+    await router.isReady();
+    render(EmailConversationPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    const controls = screen.getByTestId('address-link-controls');
+    await fireEvent.update(within(controls).getByRole('textbox', { name: /search people/i }), 'jordan');
+    await waitForDebounce();
+
+    const result = within(controls).getByTestId('search-result');
+    expect(result.textContent).toContain('Jordan Smith');
+    expect(result.textContent).toContain('jordan.other@example.com');
+  });
+
+  it('selecting a search result POSTs to /api/people/:personId/emails and the address then shows as linked', async () => {
+    let linked = false;
+    const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+      if (typeof url === 'string' && url.startsWith('/api/people?q=')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [
+            { id: 5, firstName: 'Jordan', lastName: 'Smith', emails: [], phones: [], extraFields: {}, createdAt: 1, tags: [] },
+          ],
+        });
+      }
+      if (url === '/api/people/5/emails' && options?.method === 'POST') {
+        linked = true;
+        return Promise.resolve({ ok: true, status: 201, json: async () => ({ entries: [] }) });
+      }
+      if (linked) {
+        const linkedDetail = detail({
+          messages: [
+            baseMessage({
+              participants: [
+                { address: 'sam.rivera@example.com', displayName: 'Sam Rivera', role: 'from', person: { id: 3, name: 'Sam Rivera' } },
+                { address: 'jordan.smith@example.com', displayName: 'Jordan Smith', role: 'to', person: { id: 5, name: 'Jordan Smith' } },
+              ],
+            }),
+          ],
+        });
+        return Promise.resolve({ ok: true, json: async () => linkedDetail });
+      }
+      return Promise.resolve({ ok: true, json: async () => unmatchedDetail() });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const router = makeRouter('/emails/12');
+    await router.isReady();
+    render(EmailConversationPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    const controls = screen.getByTestId('address-link-controls');
+    await fireEvent.update(within(controls).getByRole('textbox', { name: /search people/i }), 'jordan');
+    await waitForDebounce();
+    await fireEvent.click(within(controls).getByRole('button', { name: 'Link' }));
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/people/5/emails',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ value: 'jordan.smith@example.com' }) }),
+    );
+    expect(screen.queryByTestId('address-link-controls')).toBeNull();
+    const message = screen.getByTestId('email-message');
+    expect(within(message).getByRole('link', { name: 'Jordan Smith' })).toBeTruthy();
+  });
+
+  it('the create-person control expands PersonForm prefilled from the display-name split and address', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => unmatchedDetail() }));
+    const router = makeRouter('/emails/12');
+    await router.isReady();
+    render(EmailConversationPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    const controls = screen.getByTestId('address-link-controls');
+    await fireEvent.click(within(controls).getByRole('button', { name: /create person/i }));
+    await flushPromises();
+
+    expect((within(controls).getByLabelText(/first name/i) as HTMLInputElement).value).toBe('Jordan');
+    expect((within(controls).getByLabelText(/last name/i) as HTMLInputElement).value).toBe('Smith');
+    expect((within(controls).getByLabelText(/^email/i) as HTMLInputElement).value).toBe('jordan.smith@example.com');
+  });
+
+  it('a 409 response from the create-person submit surfaces as the control error text', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+      if (url === '/api/people' && options?.method === 'POST') {
+        return Promise.resolve({ ok: false, status: 409, json: async () => ({ error: { message: 'That email is already in use' } }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => unmatchedDetail() });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const router = makeRouter('/emails/12');
+    await router.isReady();
+    render(EmailConversationPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    const controls = screen.getByTestId('address-link-controls');
+    await fireEvent.click(within(controls).getByRole('button', { name: /create person/i }));
+    await flushPromises();
+    await fireEvent.click(within(controls).getByRole('button', { name: /create person/i }));
+    await flushPromises();
+
+    expect(await within(controls).findByText(/that email is already in use/i)).toBeTruthy();
   });
 });

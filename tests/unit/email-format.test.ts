@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatBytes, subjectOrPlaceholder } from '../../src/client/utils/email-format.js';
+import { formatBytes, splitDisplayName, subjectOrPlaceholder } from '../../src/client/utils/email-format.js';
 
 describe('subjectOrPlaceholder', () => {
   it('returns the placeholder for an empty subject', () => {
@@ -26,5 +26,23 @@ describe('formatBytes', () => {
 
   it('formats an MB-scale size as human-readable MB', () => {
     expect(formatBytes(5 * 1024 * 1024)).toBe('5 MB');
+  });
+});
+
+describe('splitDisplayName', () => {
+  it('splits a two-word display name into first and last', () => {
+    expect(splitDisplayName('Jordan Smith')).toEqual({ firstName: 'Jordan', lastName: 'Smith' });
+  });
+
+  it('leaves both fields blank for a single-word display name', () => {
+    expect(splitDisplayName('Jordan')).toEqual({ firstName: '', lastName: '' });
+  });
+
+  it('leaves both fields blank for an empty display name', () => {
+    expect(splitDisplayName('')).toEqual({ firstName: '', lastName: '' });
+  });
+
+  it('leaves both fields blank for a display name with more than two words', () => {
+    expect(splitDisplayName('Sam J. Rivera')).toEqual({ firstName: '', lastName: '' });
   });
 });
