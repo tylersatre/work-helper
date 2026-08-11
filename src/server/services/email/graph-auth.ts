@@ -3,7 +3,6 @@ import { dirname } from 'node:path';
 import { PublicClientApplication, type AccountInfo, type ICachePlugin } from '@azure/msal-node';
 
 const SCOPES = ['Mail.Read', 'offline_access'];
-const SIGN_IN_ERROR = 'Mailbox sign-in required — run npm run mail:signin';
 const DEVICE_CODE_REJECTED =
   'Microsoft rejected the device-code request before issuing a sign-in code. Check that MS_TENANT_ID matches the app registration\'s Directory (tenant) ID, MS_CLIENT_ID matches its Application (client) ID, and "Allow public client flows" is enabled under Authentication.';
 
@@ -32,14 +31,40 @@ export interface GraphAuthOptions {
   tokenCachePath: string;
 }
 
-export interface GraphAuth {
-  /** Silently acquires an access token from the cached refresh token; throws the sign-in error if none is cached or valid. */
-  getAccessToken: () => Promise<string>;
-  /** Runs the interactive device-code flow, invoking `onCode` with the verification URL and user code to show. */
-  signIn: (onCode: (verificationUri: string, userCode: string) => void) => Promise<void>;
+export type ConnectionVerification =
+  | { connected: true; account: string }
+  | { connected: false; reason: 'never-signed-in' }
+  | { connected: false; reason: 'expired'; detail: string };
+
+/** Thrown by getAccessToken() when the mailbox needs (re)connecting; carries the same reason/detail as ConnectionVerification (FR-011). */
+export class MailboxNotConnectedError extends Error {
+  readonly reason: 'never-signed-in' | 'expired';
+  readonly detail?: string;
+
+  constructor(reason: 'never-signed-in' | 'expired', detail?: string) {
+    super(
+      reason === 'never-signed-in'
+        ? 'Mailbox is not connected (never signed in) — connect the mailbox on the Sync page.'
+        : `Mailbox sign-in has expired (${detail}) — reconnect the mailbox on the Sync page.`,
+    );
+    this.name = 'MailboxNotConnectedError';
+    this.reason = reason;
+    this.detail = detail;
+  }
 }
 
-export function createGraphAuth(options: GraphAuthOptions): GraphAuth {
+export interface MailboxAuth {
+  /** Silently acquires an access token from the cached refresh token; throws MailboxNotConnectedError if none is cached or valid. */
+  getAccessToken: () => Promise<string>;
+  /** Proves connection state right now via silent token acquisition — never cached (FR-007). */
+  verifyConnection: () => Promise<ConnectionVerification>;
+  /** Runs the interactive device-code flow, invoking `onCode` with the verification URL, user code, and code expiry to show; resolves the signed-in account's username. */
+  beginSignIn: (onCode: (verificationUri: string, userCode: string, expiresAt: number) => void) => Promise<{ account: string }>;
+  /** Removes the cached account, persisting the removal through the file cache plugin (FR-009). */
+  signOut: () => Promise<void>;
+}
+
+export function createGraphAuth(options: GraphAuthOptions): MailboxAuth {
   const pca = new PublicClientApplication({
     auth: { clientId: options.clientId, authority: `https://login.microsoftonline.com/${options.tenantId}` },
     cache: { cachePlugin: fileCachePlugin(options.tokenCachePath) },
@@ -54,19 +79,36 @@ export function createGraphAuth(options: GraphAuthOptions): GraphAuth {
     async getAccessToken() {
       const account = await currentAccount();
       if (!account) {
-        throw new Error(SIGN_IN_ERROR);
+        throw new MailboxNotConnectedError('never-signed-in');
       }
       try {
         const result = await pca.acquireTokenSilent({ account, scopes: SCOPES });
         if (!result?.accessToken) {
-          throw new Error(SIGN_IN_ERROR);
+          throw new Error('Silent token acquisition returned no access token');
         }
         return result.accessToken;
-      } catch {
-        throw new Error(SIGN_IN_ERROR);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new MailboxNotConnectedError('expired', detail);
       }
     },
-    async signIn(onCode) {
+    async verifyConnection() {
+      const account = await currentAccount();
+      if (!account) {
+        return { connected: false, reason: 'never-signed-in' };
+      }
+      try {
+        const result = await pca.acquireTokenSilent({ account, scopes: SCOPES });
+        if (!result?.accessToken) {
+          throw new Error('Silent token acquisition returned no access token');
+        }
+        return { connected: true, account: account.username };
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        return { connected: false, reason: 'expired', detail };
+      }
+    },
+    async beginSignIn(onCode) {
       const result = await pca.acquireTokenByDeviceCode({
         scopes: SCOPES,
         deviceCodeCallback: (response) => {
@@ -76,11 +118,18 @@ export function createGraphAuth(options: GraphAuthOptions): GraphAuth {
           if (!response.verificationUri || !response.userCode) {
             throw new Error(DEVICE_CODE_REJECTED);
           }
-          onCode(response.verificationUri, response.userCode);
+          onCode(response.verificationUri, response.userCode, Date.now() + response.expiresIn * 1000);
         },
       });
       if (!result) {
         throw new Error('Sign-in did not complete');
+      }
+      return { account: result.account?.username ?? '' };
+    },
+    async signOut() {
+      const account = await currentAccount();
+      if (account) {
+        await pca.getTokenCache().removeAccount(account);
       }
     },
   };

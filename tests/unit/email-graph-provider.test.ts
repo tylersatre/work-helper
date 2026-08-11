@@ -232,6 +232,20 @@ describe('GraphMailProvider', () => {
     await expect(drain(provider, INBOX_FOLDER, WINDOW)).rejects.toThrow(/sign-in|connection/i);
   });
 
+  it('maps a 401/403 mid-sync response to reconnect-on-Sync-page copy, never mentioning the CLI (FR-010)', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('unauthorized', { status: 401 }));
+    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+
+    let error: Error | undefined;
+    try {
+      await drain(provider, INBOX_FOLDER, WINDOW);
+    } catch (caught) {
+      error = caught as Error;
+    }
+    expect(error?.message).toMatch(/sync page/i);
+    expect(error?.message).not.toMatch(/mail:signin/i);
+  });
+
   it('maps a thrown network error to a clear connection error', async () => {
     fetchMock.mockRejectedValueOnce(new Error('ECONNREFUSED'));
     const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });

@@ -134,7 +134,7 @@ export class GraphMailProvider implements MailProvider {
     }
 
     if (response.status === 401 || response.status === 403) {
-      throw new Error('Mailbox sign-in has expired or is not authorized — run npm run mail:signin');
+      throw new Error('Mailbox sign-in has expired or is not authorized — reconnect the mailbox on the Sync page.');
     }
     if (response.status === 404 && options?.allowNotFound) {
       return null;

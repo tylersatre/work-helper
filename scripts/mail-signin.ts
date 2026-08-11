@@ -16,7 +16,7 @@ async function main(): Promise<void> {
   const tokenCachePath = process.env.MAIL_TOKEN_CACHE_PATH ?? './data/mail-token-cache.json';
   const auth = createGraphAuth({ clientId, tenantId, tokenCachePath });
 
-  await auth.signIn((verificationUri, userCode) => {
+  await auth.beginSignIn((verificationUri, userCode) => {
     console.log(`To sign in, go to ${verificationUri} and enter the code: ${userCode}`);
   });
 

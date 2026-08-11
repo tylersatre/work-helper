@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { NButton, NDatePicker, NEmpty } from 'naive-ui';
 import { onMounted, ref } from 'vue';
+import MailboxPanel from '../components/MailboxPanel.vue';
 
 interface SyncRunView {
   id: number;
@@ -122,6 +123,8 @@ function formatWhen(ms: number): string {
 <template>
   <section class="sync-page">
     <h2>Email Sync</h2>
+
+    <MailboxPanel />
 
     <form class="sync-form" @submit.prevent="onSync">
       <NDatePicker v-model:value="startValue" type="date" clearable size="small" />

@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -9,6 +12,8 @@ import { createDb } from '../../src/server/db/index.js';
 import { emailAddresses, emailAttachments, emailConversations, emailMessages, emailParticipants } from '../../src/server/db/schema.js';
 import type * as schema from '../../src/server/db/schema.js';
 import { createIdentityVerifier } from '../../src/server/mcp/auth/identity.js';
+import { FakeMailboxAuth } from '../../src/server/services/email/fake-mailbox-auth.js';
+import { GraphMailProvider } from '../../src/server/services/email/graph-provider.js';
 import type { MailProvider } from '../../src/server/services/email/provider.js';
 import { connectThroughApproval } from './helpers/oauth-client.js';
 import { FakeMailProvider, type SeedMessage } from './helpers/fake-mail-provider.js';
@@ -311,8 +316,49 @@ describe('US1: sync-emails', () => {
     const result = await syncEmails('2026-07-01', '2026-07-31');
 
     expect(result.isError).toBe(true);
-    expect(JSON.stringify(result.content)).toMatch(/mail:signin/);
+    const content = JSON.stringify(result.content);
+    expect(content).not.toMatch(/mail:signin/);
+    expect(content).toMatch(/sync page/i);
     expect(allMessages()).toHaveLength(0);
+  });
+
+  it('records a distinguishable never-signed-in error directing to the Sync page, with no CLI mention (FR-010, FR-011)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mailbox-auth-'));
+    try {
+      const auth = new FakeMailboxAuth({ statePath: join(dir, 'state.json') });
+      buildTestApp(new GraphMailProvider({ getAccessToken: () => auth.getAccessToken() }));
+      await startAndConnect();
+
+      const result = await syncEmails('2026-07-01', '2026-07-31');
+
+      const content = JSON.stringify(result.content);
+      expect(content).toMatch(/never signed in/i);
+      expect(content).toMatch(/sync page/i);
+      expect(content).not.toMatch(/mail:signin/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('records a distinguishable expired-sign-in error directing to the Sync page, with no CLI mention (FR-010, FR-011)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mailbox-auth-'));
+    try {
+      const auth = new FakeMailboxAuth({ statePath: join(dir, 'state.json') });
+      auth.seedState({ status: 'expired', account: 'tyler@example.com', expiredDetail: 'AADSTS70008: expired refresh token' });
+      buildTestApp(new GraphMailProvider({ getAccessToken: () => auth.getAccessToken() }));
+      await startAndConnect();
+
+      const result = await syncEmails('2026-07-01', '2026-07-31');
+
+      const content = JSON.stringify(result.content);
+      expect(content).toMatch(/expired/i);
+      expect(content).toMatch(/sync page/i);
+      expect(content).not.toMatch(/mail:signin/);
+      // Distinguishable from the never-signed-in case above.
+      expect(content).not.toMatch(/never signed in/i);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('keeps partial progress and reports "interrupted" when the connection drops mid-run, then completes on re-run without duplicates', async () => {
@@ -420,18 +466,18 @@ describe('US1: sync-emails records run history through the shared coordinator', 
     expect(typeof runs[0]!.error).toBe('string');
   });
 
-  it('records a failure run when the mailbox is not connected at all, alongside the existing tool-error response (contracts/mcp-tools.md, FR-008)', async () => {
+  it('records a failure run when mail is not configured at all, alongside the existing tool-error response (contracts/mcp-tools.md, FR-008)', async () => {
     buildTestApp(undefined);
     await startAndConnect();
 
     const result = await syncEmails('2026-07-01', '2026-07-31');
     expect(result.isError).toBe(true);
-    expect(JSON.stringify(result.content)).toMatch(/not connected/i);
+    expect(JSON.stringify(result.content)).toMatch(/not configured/i);
 
     const runs = await getRuns();
     expect(runs).toHaveLength(1);
     expect(runs[0]).toMatchObject({ source: 'mcp', status: 'failure' });
-    expect(runs[0]!.error).toMatch(/not connected/i);
+    expect(runs[0]!.error).toMatch(/not configured/i);
   });
 });
 
