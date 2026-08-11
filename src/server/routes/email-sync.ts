@@ -20,9 +20,10 @@ export async function emailSyncRoutes(app: FastifyInstance): Promise<void> {
     let window;
     try {
       window = computeSyncWindow(startDate, endDate);
-    } catch {
+    } catch (error) {
       reply.status(400);
-      return { error: { message: 'Start date must not be after end date' } };
+      const message = error instanceof Error && error.message.startsWith('Invalid date') ? error.message : 'Start date must not be after end date';
+      return { error: { message } };
     }
 
     const outcome = await app.syncCoordinator.trigger({ startDate, endDate, window, source: 'web', provider: app.mailProvider });

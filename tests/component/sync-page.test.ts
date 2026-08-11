@@ -158,7 +158,7 @@ describe('SyncPage', () => {
 
     expect(button.disabled).toBe(false);
     const result = screen.getByTestId('sync-result');
-    expect(result.textContent).toMatch(/2/);
+    expect(result.textContent).toContain('2 new, 0 updated');
   });
 
   it('renders a failure result with the error text', async () => {
@@ -173,6 +173,54 @@ describe('SyncPage', () => {
     await flushPromises();
 
     expect(screen.getByTestId('sync-result').textContent).toContain('Mailbox unreachable');
+  });
+
+  it('shows a fallback error message (not a blank screen) when a failed POST returns an error body outside the {error:{message}} shape', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+      if (url === '/api/email-sync/runs' && options?.method === 'POST') {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: async () => ({ statusCode: 500, error: 'Internal Server Error', message: 'boom' }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ runs: [] }) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    mountPage();
+    await flushPromises();
+    await fireEvent.click(screen.getByRole('button', { name: /sync/i }));
+    await flushPromises();
+
+    expect(screen.getByTestId('sync-validation-error').textContent?.trim()).toBeTruthy();
+    const button = screen.getByRole('button', { name: /sync/i }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+  });
+
+  it('shows a fallback error message (not a blank screen) when the POST response body is not valid JSON', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+      if (url === '/api/email-sync/runs' && options?.method === 'POST') {
+        return Promise.resolve({
+          ok: false,
+          status: 502,
+          json: async () => {
+            throw new SyntaxError('Unexpected token < in JSON');
+          },
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ runs: [] }) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    mountPage();
+    await flushPromises();
+    await fireEvent.click(screen.getByRole('button', { name: /sync/i }));
+    await flushPromises();
+
+    expect(screen.getByTestId('sync-validation-error').textContent?.trim()).toBeTruthy();
+    const button = screen.getByRole('button', { name: /sync/i }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
   });
 
   it('renders the run history newest-first with when/range/source/status/counts', async () => {
@@ -190,8 +238,7 @@ describe('SyncPage', () => {
     const rows = await screen.findAllByTestId('sync-history-row');
     expect(rows).toHaveLength(2);
     expect(rows[0]!.textContent).toContain('mcp');
-    expect(rows[0]!.textContent).toMatch(/1/);
-    expect(rows[0]!.textContent).toMatch(/3/);
+    expect(rows[0]!.textContent).toContain('1 new / 3 updated');
     expect(rows[1]!.textContent).toContain('web');
     expect(rows[1]!.textContent).toContain('boom');
   });

@@ -176,6 +176,22 @@ describe('POST /api/email-sync/runs', () => {
     expect((await getRuns()).runs).toHaveLength(0);
   });
 
+  it('rejects a malformed or unreal date with 400 and a message distinct from the start-after-end case, recording nothing', async () => {
+    buildTestApp(new FakeMailProvider([pricingQuestion()]));
+
+    const malformed = await postRun({ startDate: '2026-8-1', endDate: '2026-08-09' });
+    expect(malformed.statusCode).toBe(400);
+    expect(malformed.json().error.message).not.toBe('Start date must not be after end date');
+    expect(malformed.json().error.message).toMatch(/invalid date/i);
+
+    const unreal = await postRun({ startDate: '2026-02-30', endDate: '2026-08-09' });
+    expect(unreal.statusCode).toBe(400);
+    expect(unreal.json().error.message).not.toBe('Start date must not be after end date');
+    expect(unreal.json().error.message).toMatch(/invalid date/i);
+
+    expect((await getRuns()).runs).toHaveLength(0);
+  });
+
   it('records a failed run with 201 when the mailbox is unreachable', async () => {
     buildTestApp(new FakeMailProvider([], { failImmediately: true }));
 

@@ -319,6 +319,30 @@ describe('GraphMailProvider', () => {
       expect(tree.map((f) => f.id)).toEqual(['id-a', 'id-b']);
       expect(fetchMock.mock.calls[8]![0]).toBe('https://graph.microsoft.com/v1.0/me/mailFolders?$skiptoken=next');
     });
+
+    it('skips a well-known folder that 404s (mailbox has no such folder) instead of aborting the whole sync', async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ id: 'id-inbox' }))
+        .mockResolvedValueOnce(jsonResponse({ id: 'id-sentitems' }))
+        .mockResolvedValueOnce(new Response('not found', { status: 404 }))
+        .mockResolvedValueOnce(jsonResponse({ id: 'id-junk' }))
+        .mockResolvedValueOnce(jsonResponse({ id: 'id-deleted' }))
+        .mockResolvedValueOnce(jsonResponse({ id: 'id-drafts' }))
+        .mockResolvedValueOnce(jsonResponse({ value: [{ id: 'id-inbox', displayName: 'Inbox' }] }))
+        .mockResolvedValueOnce(jsonResponse({ value: [] }));
+      const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+
+      const tree = await provider.listFolders();
+
+      expect(tree).toEqual([{ id: 'id-inbox', name: 'Inbox', wellKnown: 'inbox', children: [] }]);
+    });
+
+    it('still throws on a 401 during well-known folder resolution', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'id-inbox' })).mockResolvedValueOnce(new Response('unauthorized', { status: 401 }));
+      const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+
+      await expect(provider.listFolders()).rejects.toThrow(/sign-in|connection/i);
+    });
   });
 
   describe('fetchAttachmentMetadata', () => {

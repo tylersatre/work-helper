@@ -81,16 +81,32 @@ async function onSync(): Promise<void> {
 
   syncing.value = true;
   try {
-    const response = await fetch('/api/email-sync/runs', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ startDate, endDate }),
-    });
-    const body = await response.json();
-    if (!response.ok) {
-      validationError.value = body.error.message;
+    let response: Response;
+    try {
+      response = await fetch('/api/email-sync/runs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ startDate, endDate }),
+      });
+    } catch {
+      validationError.value = 'Could not reach the server — try again';
       return;
     }
+
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      body = null;
+    }
+
+    if (!response.ok) {
+      const errorField = body && typeof body === 'object' && 'error' in body ? (body as { error: unknown }).error : undefined;
+      const message = typeof errorField === 'string' ? errorField : (errorField as { message?: string } | undefined)?.message;
+      validationError.value = message ?? 'Sync failed — try again';
+      return;
+    }
+
     result.value = body as SyncRunView;
     await fetchRuns();
   } finally {

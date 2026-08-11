@@ -63,12 +63,13 @@ function participantsForConversation(db: AppDb, conversationId: number): Convers
     firstName: string | null;
     lastName: string | null;
   }>(sql`
-    SELECT DISTINCT ea.value AS address, ep.display_name AS displayName, p.id AS personId, p.first_name AS firstName, p.last_name AS lastName
+    SELECT ea.value AS address, ep.display_name AS displayName, p.id AS personId, p.first_name AS firstName, p.last_name AS lastName
     FROM email_participants ep
     JOIN email_addresses ea ON ea.id = ep.address_id
     JOIN email_messages m ON m.id = ep.message_id
     LEFT JOIN people p ON p.id = ea.person_id
     WHERE m.conversation_id = ${conversationId}
+    ORDER BY (ep.display_name = '') ASC, m.sent_at DESC
   `);
 
   const byAddress = new Map<string, ConversationParticipantSummary>();

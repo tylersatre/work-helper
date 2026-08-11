@@ -117,7 +117,9 @@ function firstPageUrl(folder: MailFolderRef, window: MailWindow): string {
 export class GraphMailProvider implements MailProvider {
   constructor(private readonly options: GraphMailProviderOptions) {}
 
-  private async authorizedFetch(url: string): Promise<Response> {
+  private async authorizedFetch(url: string, options: { allowNotFound: true }): Promise<Response | null>;
+  private async authorizedFetch(url: string, options?: { allowNotFound?: false }): Promise<Response>;
+  private async authorizedFetch(url: string, options?: { allowNotFound?: boolean }): Promise<Response | null> {
     const token = await this.options.getAccessToken();
 
     let response: Response;
@@ -133,6 +135,9 @@ export class GraphMailProvider implements MailProvider {
 
     if (response.status === 401 || response.status === 403) {
       throw new Error('Mailbox sign-in has expired or is not authorized — run npm run mail:signin');
+    }
+    if (response.status === 404 && options?.allowNotFound) {
+      return null;
     }
     if (!response.ok) {
       throw new Error(`Mailbox request failed with a connection error (HTTP ${response.status})`);
@@ -166,7 +171,10 @@ export class GraphMailProvider implements MailProvider {
     for (const [wellKnown, name] of Object.entries(WELL_KNOWN_NAMES) as [WellKnownFolder, string][]) {
       const url = new URL(`${GRAPH_BASE}/me/mailFolders/${name}`);
       url.searchParams.set('$select', 'id');
-      const response = await this.authorizedFetch(url.toString());
+      const response = await this.authorizedFetch(url.toString(), { allowNotFound: true });
+      if (response == null) {
+        continue;
+      }
       const body = (await response.json()) as { id: string };
       wellKnownIds.set(body.id, wellKnown);
     }

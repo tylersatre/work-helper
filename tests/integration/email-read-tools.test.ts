@@ -377,11 +377,48 @@ describe('US2: get-conversation and list-conversations expose the full FR-009/FR
 
     const result = await listConversations();
     const { conversations } = result.structuredContent as {
-      conversations: { subject: string; participants: { address: string }[] }[];
+      conversations: { subject: string; participants: { address: string; displayName: string }[] }[];
     };
     const conversation = conversations.find((c) => c.subject === 'Name drift')!;
 
     const samEntries = conversation.participants.filter((p) => p.address === 'sam.rivera@example.com');
     expect(samEntries).toHaveLength(1);
+    expect(samEntries[0]!.displayName).toBe('Samuel Rivera');
+  });
+
+  it('list-conversations reports the real display name for a participant even when an earlier message from the same address in the conversation was address-only (FR-011)', async () => {
+    const nameless: SeedMessage = {
+      id: 'msg-nameless-1',
+      conversationId: 'conv-nameless',
+      subject: 'Address only first',
+      body: { content: 'first', contentType: 'text' },
+      receivedDateTime: '2026-08-06T09:00:00Z',
+      sentDateTime: '2026-08-06T09:00:00Z',
+      from: { address: 'sam.rivera@example.com' },
+      toRecipients: [{ address: 'tyler@example.com' }],
+      ccRecipients: [],
+      bccRecipients: [],
+      folder: 'inbox',
+    };
+    const named: SeedMessage = {
+      ...nameless,
+      id: 'msg-nameless-2',
+      receivedDateTime: '2026-08-05T09:00:00Z',
+      sentDateTime: '2026-08-05T09:00:00Z',
+      from: { address: 'sam.rivera@example.com', name: 'Sam Rivera' },
+    };
+    buildTestApp(new FakeMailProvider([nameless, named]));
+    await startAndConnect();
+    await syncEmails('2026-08-01', '2026-08-08');
+
+    const result = await listConversations();
+    const { conversations } = result.structuredContent as {
+      conversations: { subject: string; participants: { address: string; displayName: string }[] }[];
+    };
+    const conversation = conversations.find((c) => c.subject === 'Address only first')!;
+
+    const samEntries = conversation.participants.filter((p) => p.address === 'sam.rivera@example.com');
+    expect(samEntries).toHaveLength(1);
+    expect(samEntries[0]!.displayName).toBe('Sam Rivera');
   });
 });
