@@ -12,7 +12,7 @@ Download and store the actual attachment files on synced email, not just their m
 
 ## Depends on
 
-`email-sync-improvements` shipped (attachment metadata exists to hang files off). Viewing/downloading attachments in the app naturally pairs with `email-ui`.
+`email-sync-improvements` shipped (attachment metadata exists to hang files off). Viewing/downloading attachments in the app naturally pairs with the `email-ui` feature (specced 2026-08-11, `docs/product/features/email-ui.md`), whose detail view deliberately shows attachment metadata only.
 
 ## Notes
 

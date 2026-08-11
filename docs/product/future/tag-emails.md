@@ -12,7 +12,7 @@ Extend tags to synced email — the third entity from the brief's "tags across p
 
 ## Depends on
 
-`tags` shipped (the tag model and vocabulary) and `email-sync` shipped (emails exist to tag). A UI for applying and seeing email tags effectively depends on `email-ui`; MCP-side tagging depends on tag write tools from `mcp-tool-expansion`.
+`tags` shipped (the tag model and vocabulary) and `email-sync` shipped (emails exist to tag). A UI for applying and seeing email tags effectively depends on the `email-ui` feature (specced 2026-08-11, `docs/product/features/email-ui.md` — the browsing surfaces tags would appear on); MCP-side tagging depends on tag write tools from `mcp-tool-expansion`.
 
 ## Notes
 
