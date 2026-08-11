@@ -41,6 +41,79 @@ export interface PersonInput {
   extraFields?: Record<string, string>;
 }
 
+export interface EmailParticipantSummary {
+  address: string;
+  displayName: string;
+  person: { id: number; name: string } | null;
+}
+
+export interface EmailConversationSummary {
+  id: number;
+  subject: string;
+  messageCount: number;
+  latestMessageAt: number;
+  hasUnread: boolean;
+  hasAttachments: boolean;
+  participants: EmailParticipantSummary[];
+}
+
+export interface EmailConversationsPage {
+  conversations: EmailConversationSummary[];
+  nextCursor: string | null;
+}
+
+export interface EmailAttachmentSummary {
+  name: string;
+  contentType: string | null;
+  sizeBytes: number;
+}
+
+export interface EmailConversationParticipant {
+  address: string;
+  displayName: string;
+  role: 'from' | 'to' | 'cc' | 'bcc';
+  person: { id: number; name: string } | null;
+}
+
+export interface EmailConversationMessage {
+  id: number;
+  subject: string;
+  sentAt: number;
+  receivedAt: number;
+  bodyOriginal: string;
+  bodyContentType: 'html' | 'text';
+  sourceFolder: string;
+  isRead: boolean;
+  importance: 'low' | 'normal' | 'high';
+  flagStatus: 'notFlagged' | 'complete' | 'flagged';
+  categories: string[];
+  webLink: string;
+  attachments: EmailAttachmentSummary[];
+  participants: EmailConversationParticipant[];
+}
+
+export interface EmailConversationDetail {
+  id: number;
+  subject: string;
+  messages: EmailConversationMessage[];
+}
+
+export interface PersonEmailAddress {
+  address: string;
+  roles: ('from' | 'to' | 'cc' | 'bcc')[];
+}
+
+export interface PersonEmailConversation {
+  conversationId: number;
+  subject: string;
+  latestMessageAt: number;
+  addresses: PersonEmailAddress[];
+}
+
+export interface PersonEmailConversationsPage {
+  conversations: PersonEmailConversation[];
+}
+
 export type NoteSource = 'ui' | 'mcp';
 
 export interface Note {

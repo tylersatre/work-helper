@@ -398,6 +398,85 @@ describe('US3: connect synced email to people', () => {
   });
 });
 
+describe('US4: linking/creating a person from an email surfaces through the new REST endpoints', () => {
+  function ccAnaUnmatched(): SeedMessage {
+    return {
+      id: 'msg-quote-ana',
+      conversationId: 'conv-quote-ana',
+      subject: 'Quote attached',
+      body: { content: 'See attached.', contentType: 'text' },
+      receivedDateTime: '2026-08-06T09:01:00Z',
+      sentDateTime: '2026-08-06T09:00:00Z',
+      from: { address: 'sam.rivera@example.com', name: 'Sam Rivera' },
+      toRecipients: [{ address: 'tyler@example.com', name: 'Tyler Satre' }],
+      ccRecipients: [{ address: 'ana.alvarez@example.com', name: 'Ana Alvarez' }],
+      bccRecipients: [],
+      folder: 'inbox',
+    };
+  }
+
+  it('linking an unmatched address makes it appear linked in the detail view and surfaces the conversation on the person record', async () => {
+    buildTestApp(new FakeMailProvider([ccAnaUnmatched()]));
+    const ana = await createPerson({ firstName: 'Ana', lastName: 'Alvarez' });
+    await startAndConnect();
+    await syncEmails('2026-08-01', '2026-08-08');
+
+    const [message] = db.select().from(emailMessages).all();
+    const linkResponse = await addEmail(ana, 'ana.alvarez@example.com');
+    expect(linkResponse.statusCode).toBe(201);
+
+    const detail = await app.inject({ method: 'GET', url: `/api/emails/conversations/${message!.conversationId}` });
+    const body = detail.json() as { messages: { participants: { address: string; person: { id: number } | null }[] }[] };
+    const ccParticipant = body.messages[0]!.participants.find((p) => p.address === 'ana.alvarez@example.com')!;
+    expect(ccParticipant.person).toEqual({ id: ana, name: 'Ana Alvarez' });
+
+    const personConversations = await app.inject({ method: 'GET', url: `/api/people/${ana}/email-conversations` });
+    const { conversations } = personConversations.json() as { conversations: { subject: string }[] };
+    expect(conversations.map((c) => c.subject)).toContain('Quote attached');
+  });
+
+  it('creating a person with the prefill payload links the pre-existing unlinked address row (no duplicate), observed through the same two endpoints', async () => {
+    buildTestApp(new FakeMailProvider([ccAnaUnmatched()]));
+    await startAndConnect();
+    await syncEmails('2026-08-01', '2026-08-08');
+
+    const [message] = db.select().from(emailMessages).all();
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/api/people',
+      payload: { firstName: 'Ana', lastName: 'Alvarez', email: 'ana.alvarez@example.com' },
+    });
+    expect(createResponse.statusCode).toBe(201);
+    const created = createResponse.json();
+
+    const addressRows = db.select().from(emailAddresses).where(eq(emailAddresses.value, 'ana.alvarez@example.com')).all();
+    expect(addressRows).toHaveLength(1);
+
+    const detail = await app.inject({ method: 'GET', url: `/api/emails/conversations/${message!.conversationId}` });
+    const body = detail.json() as { messages: { participants: { address: string; person: { id: number } | null }[] }[] };
+    expect(body.messages[0]!.participants.find((p) => p.address === 'ana.alvarez@example.com')!.person).toEqual({
+      id: created.id,
+      name: 'Ana Alvarez',
+    });
+
+    const personConversations = await app.inject({ method: 'GET', url: `/api/people/${created.id}/email-conversations` });
+    const { conversations } = personConversations.json() as { conversations: { subject: string }[] };
+    expect(conversations.map((c) => c.subject)).toContain('Quote attached');
+  });
+
+  it('linking an already-linked address returns 409 "That email is already in use"', async () => {
+    buildTestApp(new FakeMailProvider([ccAnaUnmatched()]));
+    await createPerson({ firstName: 'Sam', lastName: 'Rivera', email: 'sam.rivera@example.com' });
+    const ana = await createPerson({ firstName: 'Ana', lastName: 'Alvarez' });
+    await startAndConnect();
+    await syncEmails('2026-08-01', '2026-08-08');
+
+    const response = await addEmail(ana, 'sam.rivera@example.com');
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ error: { message: 'That email is already in use' } });
+  });
+});
+
 describe('US2: emails-for-person exposes the full FR-009/FR-010 field set', () => {
   it('surfaces per-message metadata, attachments, and address displayName for a fully-populated message', async () => {
     const quoteAttached: SeedMessage = {

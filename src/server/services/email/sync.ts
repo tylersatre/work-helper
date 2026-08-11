@@ -156,7 +156,7 @@ async function ingestMessage(db: AppDb, provider: MailProvider, message: MailMes
 
   const sentAt = Date.parse(message.sentDateTime);
   const receivedAt = Date.parse(message.receivedDateTime);
-  const attachments = message.hasAttachments ? await provider.fetchAttachmentMetadata(message.id) : [];
+  const attachments = message.hasAttachments ? ((await provider.fetchAttachmentMetadata(message.id)) ?? []) : [];
 
   if (existing) {
     db.transaction((tx) => {
@@ -178,7 +178,13 @@ async function ingestMessage(db: AppDb, provider: MailProvider, message: MailMes
       tx.delete(emailAttachments).where(eq(emailAttachments.messageId, existing.id)).run();
       for (const attachment of attachments) {
         tx.insert(emailAttachments)
-          .values({ messageId: existing.id, name: attachment.name, contentType: attachment.contentType, sizeBytes: attachment.sizeBytes })
+          .values({
+            messageId: existing.id,
+            name: attachment.name,
+            contentType: attachment.contentType,
+            sizeBytes: attachment.sizeBytes,
+            isInline: attachment.isInline,
+          })
           .run();
       }
     });
@@ -222,7 +228,13 @@ async function ingestMessage(db: AppDb, provider: MailProvider, message: MailMes
 
     for (const attachment of attachments) {
       tx.insert(emailAttachments)
-        .values({ messageId: inserted!.id, name: attachment.name, contentType: attachment.contentType, sizeBytes: attachment.sizeBytes })
+        .values({
+          messageId: inserted!.id,
+          name: attachment.name,
+          contentType: attachment.contentType,
+          sizeBytes: attachment.sizeBytes,
+          isInline: attachment.isInline,
+        })
         .run();
     }
   });

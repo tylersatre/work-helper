@@ -25,6 +25,7 @@ export interface SeedAttachment {
   name: string;
   contentType: string | null;
   sizeBytes: number;
+  isInline?: boolean;
 }
 
 export interface SeedMessage {
@@ -169,8 +170,14 @@ export class FakeMailProvider implements MailProvider {
     }
   }
 
-  async fetchAttachmentMetadata(messageId: string): Promise<MailAttachmentMeta[]> {
+  async fetchAttachmentMetadata(messageId: string, options?: { allowNotFound?: boolean }): Promise<MailAttachmentMeta[] | null> {
     const seed = this.seeded.find((s) => s.id === messageId);
-    return (seed?.attachments ?? []).map((a) => ({ name: a.name, contentType: a.contentType, sizeBytes: a.sizeBytes }));
+    if (!seed) {
+      if (options?.allowNotFound) {
+        return null;
+      }
+      throw new Error(`message ${messageId} not found`);
+    }
+    return (seed.attachments ?? []).map((a) => ({ name: a.name, contentType: a.contentType, sizeBytes: a.sizeBytes, isInline: a.isInline ?? false }));
   }
 }

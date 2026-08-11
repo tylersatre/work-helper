@@ -1,6 +1,7 @@
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { syncRuns } from '../../db/schema.js';
 import type * as schema from '../../db/schema.js';
+import type { AttachmentBackfillService } from './attachment-backfill.js';
 import type { MailProvider } from './provider.js';
 import { runSync, type SyncWindow } from './sync.js';
 
@@ -41,7 +42,10 @@ export type TriggerOutcome = { kind: 'already-running' } | { kind: 'ran'; run: S
 export class SyncCoordinator {
   private running = false;
 
-  constructor(private readonly db: AppDb) {}
+  constructor(
+    private readonly db: AppDb,
+    private readonly backfill?: AttachmentBackfillService,
+  ) {}
 
   async trigger(params: TriggerParams): Promise<TriggerOutcome> {
     if (this.running) {
@@ -64,6 +68,9 @@ export class SyncCoordinator {
         updatedCount: result.updatedCount,
         error: result.error ?? null,
       });
+      if (run.status === 'success') {
+        void this.backfill?.run();
+      }
       return { kind: 'ran', run };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

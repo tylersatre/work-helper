@@ -94,4 +94,5 @@ app.listen({ port, host: '0.0.0.0' }, (error) => {
     app.log.error(error);
     process.exit(1);
   }
+  void app.attachmentBackfill?.run();
 });

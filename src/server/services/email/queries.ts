@@ -1,4 +1,4 @@
-import { asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { emailAddresses, emailAttachments, emailConversations, emailMessages, emailParticipants, people, syncRuns } from '../../db/schema.js';
 import type * as schema from '../../db/schema.js';
@@ -84,11 +84,15 @@ function participantsForConversation(db: AppDb, conversationId: number): Convers
   return [...byAddress.values()];
 }
 
-export function listConversations(db: AppDb, params: { limit: number; cursor?: string }): ConversationsPage {
+export function listConversations(
+  db: AppDb,
+  params: { limit: number; cursor?: string; attachmentRollup?: 'all' | 'non-inline' },
+): ConversationsPage {
   const cursor = params.cursor ? decodeCursor(params.cursor) : undefined;
   const cursorCondition = cursor
     ? sql`AND (agg.latestMessageAt < ${cursor.primary} OR (agg.latestMessageAt = ${cursor.primary} AND agg.id < ${cursor.id}))`
     : sql``;
+  const attachInlineCondition = params.attachmentRollup === 'non-inline' ? sql`WHERE a.is_inline = 0` : sql``;
 
   const rows = db.all<{
     id: number;
@@ -113,6 +117,7 @@ export function listConversations(db: AppDb, params: { limit: number; cursor?: s
       SELECT DISTINCT m.conversation_id AS id
       FROM email_messages m
       JOIN email_attachments a ON a.message_id = m.id
+      ${attachInlineCondition}
     )
     SELECT agg.id AS id, earliest.subject AS subject, agg.messageCount AS messageCount, agg.latestMessageAt AS latestMessageAt,
            agg.hasUnreadRaw AS hasUnreadRaw,
@@ -162,6 +167,8 @@ export interface ConversationMessage {
   sentAt: number;
   receivedAt: number;
   bodyText: string;
+  bodyOriginal?: string;
+  bodyContentType?: 'html' | 'text';
   sourceFolder: string;
   isRead: boolean;
   importance: 'low' | 'normal' | 'high';
@@ -207,11 +214,15 @@ export interface PersonEmailsPage {
   nextCursor: string | null;
 }
 
-function attachmentsForMessage(db: AppDb, messageId: number): EmailAttachment[] {
+function attachmentsForMessage(db: AppDb, messageId: number, filter: 'all' | 'non-inline' = 'all'): EmailAttachment[] {
+  const condition =
+    filter === 'non-inline'
+      ? and(eq(emailAttachments.messageId, messageId), eq(emailAttachments.isInline, false))
+      : eq(emailAttachments.messageId, messageId);
   return db
     .select({ name: emailAttachments.name, contentType: emailAttachments.contentType, sizeBytes: emailAttachments.sizeBytes })
     .from(emailAttachments)
-    .where(eq(emailAttachments.messageId, messageId))
+    .where(condition)
     .all();
 }
 
@@ -293,7 +304,11 @@ export function listSyncRuns(db: AppDb): SyncRunRecord[] {
   return db.select().from(syncRuns).orderBy(desc(syncRuns.ranAt), desc(syncRuns.id)).all();
 }
 
-export function getConversation(db: AppDb, conversationId: number): ConversationDetail | undefined {
+export function getConversation(
+  db: AppDb,
+  conversationId: number,
+  options?: { attachments?: 'all' | 'non-inline'; includeOriginalBody?: boolean },
+): ConversationDetail | undefined {
   const [conversation] = db
     .select({ id: emailConversations.id })
     .from(emailConversations)
@@ -320,6 +335,7 @@ export function getConversation(db: AppDb, conversationId: number): Conversation
       sentAt: message.sentAt,
       receivedAt: message.receivedAt,
       bodyText: message.bodyText,
+      ...(options?.includeOriginalBody ? { bodyOriginal: message.bodyOriginal, bodyContentType: message.bodyContentType } : {}),
       sourceFolder: message.sourceFolder,
       isRead: message.isRead,
       importance: message.importance,
@@ -327,8 +343,67 @@ export function getConversation(db: AppDb, conversationId: number): Conversation
       categories: message.categories,
       webLink: message.webLink,
       internetMessageId: message.internetMessageId,
-      attachments: attachmentsForMessage(db, message.id),
+      attachments: attachmentsForMessage(db, message.id, options?.attachments ?? 'all'),
       participants: participantsForMessage(db, message.id),
     })),
   };
+}
+
+export interface PersonConversationAddress {
+  address: string;
+  roles: ('from' | 'to' | 'cc' | 'bcc')[];
+}
+
+export interface PersonConversationSummary {
+  conversationId: number;
+  subject: string;
+  latestMessageAt: number;
+  addresses: PersonConversationAddress[];
+}
+
+/** All conversations involving any of a person's linked addresses, with per-address distinct-role rollups (R8). */
+export function conversationsForPerson(db: AppDb, personId: number): PersonConversationSummary[] {
+  const rows = db.all<{ conversationId: number; address: string; role: 'from' | 'to' | 'cc' | 'bcc'; sentAt: number }>(sql`
+    SELECT DISTINCT m.conversation_id AS conversationId, ea.value AS address, ep.role AS role, m.sent_at AS sentAt
+    FROM email_participants ep
+    JOIN email_addresses ea ON ea.id = ep.address_id
+    JOIN email_messages m ON m.id = ep.message_id
+    WHERE ea.person_id = ${personId}
+  `);
+
+  const byConversation = new Map<number, { addresses: Map<string, Set<string>> }>();
+  for (const row of rows) {
+    let entry = byConversation.get(row.conversationId);
+    if (!entry) {
+      entry = { addresses: new Map() };
+      byConversation.set(row.conversationId, entry);
+    }
+    const roles = entry.addresses.get(row.address) ?? new Set<string>();
+    roles.add(row.role);
+    entry.addresses.set(row.address, roles);
+  }
+
+  return [...byConversation.entries()]
+    .map(([conversationId, entry]) => {
+      // The conversation's own latest message date (not just the person's own messages within
+      // it) — a person can drop off later replies in a long thread while the thread itself stays
+      // recent, and the person's row must sort/display by the thread's true recency.
+      const [agg] = db.all<{ subject: string; latestMessageAt: number }>(sql`
+        SELECT
+          (SELECT subject FROM email_messages WHERE conversation_id = ${conversationId} ORDER BY sent_at ASC, id ASC LIMIT 1) AS subject,
+          MAX(sent_at) AS latestMessageAt
+        FROM email_messages
+        WHERE conversation_id = ${conversationId}
+      `);
+      return {
+        conversationId,
+        subject: agg?.subject ?? '',
+        latestMessageAt: agg?.latestMessageAt ?? 0,
+        addresses: [...entry.addresses.entries()].map(([address, roles]) => ({
+          address,
+          roles: [...roles] as ('from' | 'to' | 'cc' | 'bcc')[],
+        })),
+      };
+    })
+    .sort((a, b) => b.latestMessageAt - a.latestMessageAt || b.conversationId - a.conversationId);
 }

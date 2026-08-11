@@ -422,3 +422,68 @@ describe('US2: get-conversation and list-conversations expose the full FR-009/FR
     expect(samEntries[0]!.displayName).toBe('Sam Rivera');
   });
 });
+
+describe('MCP invariance when inline attachments exist (FR-018 regression pin)', () => {
+  function quoteWithMixedAttachments(): SeedMessage {
+    return {
+      id: 'msg-quote-inline-pin',
+      conversationId: 'conv-quote-inline-pin',
+      subject: 'Quote attached',
+      body: { content: 'See attached.', contentType: 'text' },
+      receivedDateTime: '2026-08-06T09:01:00Z',
+      sentDateTime: '2026-08-06T09:00:00Z',
+      from: { address: 'sam.rivera@example.com', name: 'Sam Rivera' },
+      toRecipients: [{ address: 'tyler@example.com', name: 'Tyler Satre' }],
+      ccRecipients: [],
+      bccRecipients: [],
+      folder: 'inbox',
+      attachments: [
+        { name: 'quote.pdf', contentType: 'application/pdf', sizeBytes: 53248, isInline: false },
+        { name: 'signature.png', contentType: 'image/png', sizeBytes: 1024, isInline: true },
+      ],
+    };
+  }
+
+  it('list-conversations still counts inline attachments toward hasAttachments (characterization: must pass unmodified)', async () => {
+    buildTestApp(new FakeMailProvider([quoteWithMixedAttachments()]));
+    await startAndConnect();
+    await syncEmails('2026-08-01', '2026-08-08');
+
+    const result = await listConversations();
+    expect(result.isError).toBeFalsy();
+    const { conversations } = result.structuredContent as { conversations: { subject: string; hasAttachments: boolean }[] };
+    expect(conversations.find((c) => c.subject === 'Quote attached')!.hasAttachments).toBe(true);
+  });
+
+  it('get-conversation still lists inline attachments and never exposes bodyOriginal/bodyContentType (characterization: must pass unmodified)', async () => {
+    buildTestApp(new FakeMailProvider([quoteWithMixedAttachments()]));
+    await startAndConnect();
+    await syncEmails('2026-08-01', '2026-08-08');
+
+    const listed = await listConversations();
+    const { conversations } = listed.structuredContent as { conversations: { id: number; subject: string }[] };
+    const conversationId = conversations.find((c) => c.subject === 'Quote attached')!.id;
+
+    const result = await getConversation(conversationId);
+    expect(result.isError).toBeFalsy();
+    const conversation = result.structuredContent as {
+      messages: { attachments: { name: string }[]; bodyOriginal?: string; bodyContentType?: string }[];
+    };
+    const message = conversation.messages[0]!;
+    expect(message.attachments.map((a) => a.name).sort()).toEqual(['quote.pdf', 'signature.png']);
+    expect(message.bodyOriginal).toBeUndefined();
+    expect(message.bodyContentType).toBeUndefined();
+  });
+
+  it('emails-for-person still lists inline attachments (characterization: must pass unmodified)', async () => {
+    buildTestApp(new FakeMailProvider([quoteWithMixedAttachments()]));
+    const sam = await createPerson({ firstName: 'Sam', lastName: 'Rivera', email: 'sam.rivera@example.com' });
+    await startAndConnect();
+    await syncEmails('2026-08-01', '2026-08-08');
+
+    const result = await client.callTool({ name: 'emails-for-person', arguments: { personId: sam } });
+    expect(result.isError).toBeFalsy();
+    const { emails } = result.structuredContent as { emails: { attachments: { name: string }[] }[] };
+    expect(emails[0]!.attachments.map((a) => a.name).sort()).toEqual(['quote.pdf', 'signature.png']);
+  });
+});

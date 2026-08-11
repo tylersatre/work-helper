@@ -360,11 +360,11 @@ describe('GraphMailProvider', () => {
   });
 
   describe('fetchAttachmentMetadata', () => {
-    it('requests name, contentType, size only — never contentBytes — and maps the response', async () => {
+    it('requests name, contentType, size, isInline only — never contentBytes — and maps the response', async () => {
       fetchMock.mockResolvedValueOnce(
         jsonResponse({
           value: [
-            { name: 'quote.pdf', contentType: 'application/pdf', size: 53248 },
+            { name: 'quote.pdf', contentType: 'application/pdf', size: 53248, isInline: false },
             { name: 'image.dat', contentType: null, size: 10 },
           ],
         }),
@@ -376,13 +376,22 @@ describe('GraphMailProvider', () => {
       const [url, init] = fetchMock.mock.calls[0]!;
       const parsed = new URL(url as string);
       expect(parsed.origin + parsed.pathname).toBe('https://graph.microsoft.com/v1.0/me/messages/AAMk-immutable-1/attachments');
-      expect(parsed.searchParams.get('$select')).toBe('name,contentType,size');
+      expect(parsed.searchParams.get('$select')).toBe('name,contentType,size,isInline');
       expect((init as RequestInit).method ?? 'GET').toBe('GET');
 
       expect(attachments).toEqual([
-        { name: 'quote.pdf', contentType: 'application/pdf', sizeBytes: 53248 },
-        { name: 'image.dat', contentType: null, sizeBytes: 10 },
+        { name: 'quote.pdf', contentType: 'application/pdf', sizeBytes: 53248, isInline: false },
+        { name: 'image.dat', contentType: null, sizeBytes: 10, isInline: false },
       ]);
+    });
+
+    it('returns null when allowNotFound is set and the message is gone (404)', async () => {
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
+      const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+
+      const attachments = await provider.fetchAttachmentMetadata('AAMk-gone-1', { allowNotFound: true });
+
+      expect(attachments).toBeNull();
     });
   });
 });

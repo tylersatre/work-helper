@@ -1,11 +1,12 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { eq } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
-import { emailMessages } from '../../src/server/db/schema.js';
+import { emailAttachments, emailMessages } from '../../src/server/db/schema.js';
 import type { MailMessage, MailProvider } from '../../src/server/services/email/provider.js';
 import { FakeMailProvider, type SeedMessage } from './helpers/fake-mail-provider.js';
 
@@ -279,5 +280,58 @@ describe('POST /api/email-sync/runs', () => {
 
     const { runs } = await getRuns();
     expect(runs).toHaveLength(1);
+  });
+});
+
+describe('sync records each attachment isInline flag (FR-018)', () => {
+  function quoteWithMixedAttachments(): SeedMessage {
+    return {
+      id: 'msg-quote-mixed',
+      conversationId: 'conv-quote-mixed',
+      subject: 'Quote attached',
+      body: { content: 'See attached.', contentType: 'text' },
+      receivedDateTime: '2026-08-06T09:01:00Z',
+      sentDateTime: '2026-08-06T09:00:00Z',
+      from: { address: 'sam.rivera@example.com' },
+      toRecipients: [{ address: 'tyler@example.com' }],
+      ccRecipients: [],
+      bccRecipients: [],
+      folder: 'inbox',
+      attachments: [
+        { name: 'quote.pdf', contentType: 'application/pdf', sizeBytes: 53248, isInline: false },
+        { name: 'signature.png', contentType: 'image/png', sizeBytes: 1024, isInline: true },
+      ],
+    };
+  }
+
+  it('records is_inline correctly on the new-message attachment insert path', async () => {
+    buildTestApp(new FakeMailProvider([quoteWithMixedAttachments()]));
+
+    const response = await postRun({ startDate: '2026-08-01', endDate: '2026-08-08' });
+    expect(response.statusCode).toBe(201);
+
+    const [message] = app.db.select().from(emailMessages).all();
+    const attachments = app.db.select().from(emailAttachments).where(eq(emailAttachments.messageId, message!.id)).all();
+    expect(attachments.find((a) => a.name === 'quote.pdf')?.isInline).toBe(false);
+    expect(attachments.find((a) => a.name === 'signature.png')?.isInline).toBe(true);
+  });
+
+  it('records is_inline correctly on the refresh delete+reinsert path', async () => {
+    buildTestApp(new FakeMailProvider([quoteWithMixedAttachments()]));
+    await postRun({ startDate: '2026-08-01', endDate: '2026-08-08' });
+
+    const refreshed: SeedMessage = {
+      ...quoteWithMixedAttachments(),
+      attachments: [{ name: 'quote-v2.pdf', contentType: 'application/pdf', sizeBytes: 60000, isInline: true }],
+    };
+    app.mailProvider = new FakeMailProvider([refreshed]);
+    const response = await postRun({ startDate: '2026-08-01', endDate: '2026-08-08' });
+    expect(response.statusCode).toBe(201);
+    expect((response.json() as SyncRunView).updatedCount).toBe(1);
+
+    const [message] = app.db.select().from(emailMessages).all();
+    const attachments = app.db.select().from(emailAttachments).where(eq(emailAttachments.messageId, message!.id)).all();
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0]).toMatchObject({ name: 'quote-v2.pdf', isInline: true });
   });
 });
