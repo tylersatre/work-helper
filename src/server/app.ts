@@ -10,10 +10,12 @@ import { deriveKey } from './mcp/auth/tokens.js';
 import { mcpRoutes } from './mcp/routes.js';
 import { boardRoutes } from './routes/board.js';
 import { emailSyncRoutes } from './routes/email-sync.js';
+import { mailboxRoutes } from './routes/mailbox.js';
 import { peopleRoutes } from './routes/people.js';
 import { tagRoutes } from './routes/tags.js';
 import { taskRoutes } from './routes/tasks.js';
 import type { MailboxAuth } from './services/email/graph-auth.js';
+import { MailboxConnectionManager } from './services/email/mailbox-connection.js';
 import type { MailProvider } from './services/email/provider.js';
 import { SyncCoordinator } from './services/email/sync-coordinator.js';
 
@@ -30,6 +32,7 @@ declare module 'fastify' {
     syncCoordinator: SyncCoordinator;
     mailboxAuth?: MailboxAuth;
     mailboxMissingSettings: string[];
+    mailboxConnection?: MailboxConnectionManager;
   }
 }
 
@@ -68,12 +71,14 @@ export function buildApp(options: AppOptions): FastifyInstance {
   app.decorate('syncCoordinator', new SyncCoordinator(options.db));
   app.decorate('mailboxAuth', options.mailboxAuth);
   app.decorate('mailboxMissingSettings', options.mailboxMissingSettings ?? []);
+  app.decorate('mailboxConnection', options.mailboxAuth ? new MailboxConnectionManager(options.mailboxAuth) : undefined);
 
   app.register(boardRoutes);
   app.register(taskRoutes);
   app.register(peopleRoutes);
   app.register(tagRoutes);
   app.register(emailSyncRoutes);
+  app.register(mailboxRoutes);
   app.register(oauthRoutes);
   app.register(mcpRoutes);
 

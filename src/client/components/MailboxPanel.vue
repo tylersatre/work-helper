@@ -1,0 +1,92 @@
+<script setup lang="ts">
+import { NButton } from 'naive-ui';
+import { onMounted, onUnmounted, ref } from 'vue';
+
+type SignInAttempt =
+  | { status: 'pending'; verificationUri: string; userCode: string; expiresAt: number }
+  | { status: 'failed'; error: string };
+
+type MailboxStatus =
+  | { state: 'not-configured'; missing: string[] }
+  | { state: 'not-connected'; reason: 'never-signed-in' | 'expired'; detail?: string; attempt?: SignInAttempt }
+  | { state: 'connected'; account: string };
+
+const POLL_INTERVAL_MS = 3000;
+
+const status = ref<MailboxStatus | null>(null);
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+function isPending(value: MailboxStatus | null): boolean {
+  return value?.state === 'not-connected' && value.attempt?.status === 'pending';
+}
+
+function syncPolling(): void {
+  if (isPending(status.value) && !pollTimer) {
+    pollTimer = setInterval(fetchStatus, POLL_INTERVAL_MS);
+  } else if (!isPending(status.value) && pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+}
+
+async function fetchStatus(): Promise<void> {
+  const response = await fetch('/api/mailbox');
+  status.value = (await response.json()) as MailboxStatus;
+  syncPolling();
+}
+
+onMounted(fetchStatus);
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer);
+});
+
+async function onConnect(): Promise<void> {
+  const response = await fetch('/api/mailbox/connect', { method: 'POST' });
+  status.value = (await response.json()) as MailboxStatus;
+  syncPolling();
+}
+
+async function copyCode(): Promise<void> {
+  if (status.value?.state === 'not-connected' && status.value.attempt?.status === 'pending') {
+    await navigator.clipboard.writeText(status.value.attempt.userCode);
+  }
+}
+</script>
+
+<template>
+  <section v-if="status" class="mailbox-panel">
+    <template v-if="status.state === 'not-connected'">
+      <div v-if="status.attempt?.status === 'pending'" data-testid="mailbox-pending" class="mailbox-pending">
+        <a :href="status.attempt.verificationUri" target="_blank" rel="noreferrer" data-testid="mailbox-verification-link">
+          {{ status.attempt.verificationUri }}
+        </a>
+        <code data-testid="mailbox-code">{{ status.attempt.userCode }}</code>
+        <NButton data-testid="mailbox-copy-code" size="small" @click="copyCode">Copy code</NButton>
+        <span>Waiting for sign-in…</span>
+      </div>
+      <div v-else>
+        <p data-testid="mailbox-not-connected">Not connected</p>
+        <NButton data-testid="mailbox-connect" type="primary" size="small" @click="onConnect">Connect</NButton>
+      </div>
+    </template>
+
+    <div v-else-if="status.state === 'connected'" data-testid="mailbox-connected">Connected as {{ status.account }}</div>
+  </section>
+</template>
+
+<style scoped>
+.mailbox-panel {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  background: #1f1f24;
+}
+
+.mailbox-pending {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+</style>
