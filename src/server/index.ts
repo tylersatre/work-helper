@@ -34,13 +34,15 @@ function resolveDevMailProvider(): MailProvider | undefined {
 const devMailProvider = resolveDevMailProvider();
 
 const msClientId = process.env.MS_CLIENT_ID;
+const msTenantId = process.env.MS_TENANT_ID;
 // Hoisted so the MSAL client and its in-memory token cache are shared across calls —
 // GraphMailProvider.fetchMessages calls getAccessToken() once per Graph page, and
 // re-creating the client each time would re-read/re-deserialize the cache file and
 // lose the in-memory token cache on every page (relevant to SC-006's sync-time budget).
-const graphAuth = !devMailProvider && msClientId
+const graphAuth = !devMailProvider && msClientId && msTenantId
   ? createGraphAuth({
       clientId: msClientId,
+      tenantId: msTenantId,
       tokenCachePath: process.env.MAIL_TOKEN_CACHE_PATH ?? './data/mail-token-cache.json',
     })
   : undefined;

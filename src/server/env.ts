@@ -13,4 +13,7 @@ export function validateEnv(env: NodeJS.ProcessEnv): void {
   if (!env.AUTHENTIK_USERINFO_URL) {
     throw new Error('AUTHENTIK_USERINFO_URL is required in production — create .env from .env.example and set it.');
   }
+  if (env.MS_CLIENT_ID && !env.MS_TENANT_ID) {
+    throw new Error('MS_TENANT_ID is required when MS_CLIENT_ID is set — see .env.example; it is the app registration\'s Directory (tenant) ID.');
+  }
 }
