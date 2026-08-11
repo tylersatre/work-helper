@@ -157,6 +157,46 @@ describe('MailboxPanel', () => {
     expect(screen.getByTestId('mailbox-not-connected')).toBeTruthy();
     expect(screen.queryByTestId('mailbox-connected')).toBeNull();
   });
+
+  it('shows the provider error and offers Connect again given a failed attempt (FR-006)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockFetch(() => ({
+        state: 'not-connected',
+        reason: 'never-signed-in',
+        attempt: { status: 'failed', error: 'AADSTS70016: The user declined the device-code sign-in request.' },
+      })),
+    );
+
+    mount(MailboxPanel, { attachTo: document.body });
+    await flushPromises();
+
+    expect(screen.getByTestId('mailbox-error').textContent).toContain('AADSTS70016');
+    expect(screen.getByTestId('mailbox-connect')).toBeTruthy();
+  });
+
+  it('clicking Disconnect calls POST /api/mailbox/disconnect and renders the returned not-connected status (US3-2)', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+      if (url === '/api/mailbox' && (!options || options.method === undefined)) {
+        return Promise.resolve({ ok: true, json: async () => ({ state: 'connected', account: 'tyler@example.com' }) });
+      }
+      if (url === '/api/mailbox/disconnect' && options?.method === 'POST') {
+        return Promise.resolve({ ok: true, json: async () => ({ state: 'not-connected', reason: 'never-signed-in' }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const wrapper = mount(MailboxPanel, { attachTo: document.body });
+    await flushPromises();
+    expect(screen.getByTestId('mailbox-connected')).toBeTruthy();
+
+    await wrapper.get('[data-testid="mailbox-disconnect"]').trigger('click');
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/mailbox/disconnect', expect.objectContaining({ method: 'POST' }));
+    expect(screen.getByTestId('mailbox-not-connected')).toBeTruthy();
+  });
 });
 
 describe('SyncPage', () => {

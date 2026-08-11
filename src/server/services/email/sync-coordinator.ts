@@ -52,7 +52,7 @@ export class SyncCoordinator {
     const ranAt = Date.now();
     try {
       if (!params.provider) {
-        throw new Error('Mailbox is not connected — run npm run mail:signin');
+        throw new Error('Mailbox is not connected (never signed in) — connect the mailbox on the Sync page.');
       }
       const result = await runSync(this.db, params.provider, params.window);
       const run = this.record(params, ranAt, {

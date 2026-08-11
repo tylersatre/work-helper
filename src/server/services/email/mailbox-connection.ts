@@ -17,6 +17,13 @@ export class MailboxConnectionManager {
     return this.attempt;
   }
 
+  /** Clears a failed attempt (e.g. on disconnect) — leaves a pending attempt untouched. */
+  clearFailedAttempt(): void {
+    if (this.attempt?.status === 'failed') {
+      this.attempt = null;
+    }
+  }
+
   /** Idempotent while pending (FR-004): returns the existing attempt instead of starting a new device-code flow. */
   async connect(): Promise<SignInAttempt> {
     if (this.attempt?.status === 'pending') {

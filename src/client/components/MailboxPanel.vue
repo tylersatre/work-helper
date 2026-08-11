@@ -51,6 +51,12 @@ async function copyCode(): Promise<void> {
     await navigator.clipboard.writeText(status.value.attempt.userCode);
   }
 }
+
+async function onDisconnect(): Promise<void> {
+  const response = await fetch('/api/mailbox/disconnect', { method: 'POST' });
+  status.value = (await response.json()) as MailboxStatus;
+  syncPolling();
+}
 </script>
 
 <template>
@@ -68,6 +74,10 @@ async function copyCode(): Promise<void> {
         <NButton data-testid="mailbox-copy-code" size="small" @click="copyCode">Copy code</NButton>
         <span>Waiting for sign-in…</span>
       </div>
+      <div v-else-if="status.attempt?.status === 'failed'">
+        <p data-testid="mailbox-error">{{ status.attempt.error }}</p>
+        <NButton data-testid="mailbox-connect" type="primary" size="small" @click="onConnect">Connect</NButton>
+      </div>
       <div v-else>
         <p data-testid="mailbox-not-connected">Not connected</p>
         <NButton data-testid="mailbox-connect" type="primary" size="small" @click="onConnect">Connect</NButton>
@@ -76,7 +86,7 @@ async function copyCode(): Promise<void> {
 
     <div v-else-if="status.state === 'connected'">
       <span data-testid="mailbox-connected">Connected as {{ status.account }}</span>
-      <NButton data-testid="mailbox-disconnect" size="small">Disconnect</NButton>
+      <NButton data-testid="mailbox-disconnect" size="small" @click="onDisconnect">Disconnect</NButton>
     </div>
   </section>
 </template>

@@ -24,6 +24,8 @@ export interface FakeMailboxAuthOptions {
   statePath: string;
   /** Dev-only: auto-resolves a begun sign-in after a delay, mirroring MAIL_AUTH=fake/fake-decline (research.md D6). */
   autoOutcome?: FakeMailboxAuthAutoOutcome;
+  /** Test-only: beginSignIn() rejects immediately with this message, never invoking onCode — simulates Microsoft rejecting the device-code request itself (e.g. wrong tenant). */
+  rejectDeviceCodeRequest?: string;
 }
 
 /** Scriptable MailboxAuth stand-in for tests and MAIL_AUTH=fake/fake-decline dev modes — never contacts real Microsoft. */
@@ -67,6 +69,9 @@ export class FakeMailboxAuth implements MailboxAuth {
   }
 
   async beginSignIn(onCode: (verificationUri: string, userCode: string, expiresAt: number) => void): Promise<{ account: string }> {
+    if (this.options.rejectDeviceCodeRequest) {
+      throw new Error(this.options.rejectDeviceCodeRequest);
+    }
     onCode('https://microsoft.com/devicelogin', 'FAKE-CODE', Date.now() + DEVICE_CODE_EXPIRY_MS);
 
     return new Promise((resolve, reject) => {

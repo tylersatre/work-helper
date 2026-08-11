@@ -62,4 +62,16 @@ export async function mailboxRoutes(app: FastifyInstance): Promise<void> {
 
     return buildStatus(app);
   });
+
+  app.post('/api/mailbox/disconnect', async (_request, reply) => {
+    if (!app.mailboxAuth || !app.mailboxConnection) {
+      reply.status(409);
+      return { error: { message: NOT_CONFIGURED_MESSAGE } };
+    }
+
+    await app.mailboxAuth.signOut();
+    app.mailboxConnection.clearFailedAttempt();
+
+    return buildStatus(app);
+  });
 }
