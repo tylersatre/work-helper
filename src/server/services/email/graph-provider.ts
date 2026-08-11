@@ -62,6 +62,7 @@ interface GraphAttachment {
   name: string;
   contentType: string | null;
   size: number;
+  isInline?: boolean;
 }
 
 interface GraphAttachmentsResponse {
@@ -157,13 +158,18 @@ export class GraphMailProvider implements MailProvider {
     }
   }
 
-  async fetchAttachmentMetadata(messageId: string): Promise<MailAttachmentMeta[]> {
+  async fetchAttachmentMetadata(messageId: string, options?: { allowNotFound?: boolean }): Promise<MailAttachmentMeta[] | null> {
     const url = new URL(`${GRAPH_BASE}/me/messages/${messageId}/attachments`);
-    url.searchParams.set('$select', 'name,contentType,size');
+    url.searchParams.set('$select', 'name,contentType,size,isInline');
 
-    const response = await this.authorizedFetch(url.toString());
+    const response = options?.allowNotFound
+      ? await this.authorizedFetch(url.toString(), { allowNotFound: true })
+      : await this.authorizedFetch(url.toString());
+    if (response == null) {
+      return null;
+    }
     const body = (await response.json()) as GraphAttachmentsResponse;
-    return body.value.map((a) => ({ name: a.name, contentType: a.contentType ?? null, sizeBytes: a.size }));
+    return body.value.map((a) => ({ name: a.name, contentType: a.contentType ?? null, sizeBytes: a.size, isInline: a.isInline === true }));
   }
 
   async listFolders(): Promise<MailFolderNode[]> {

@@ -108,9 +108,15 @@ export const emailAttachments = sqliteTable(
     name: text('name').notNull(),
     contentType: text('content_type'),
     sizeBytes: integer('size_bytes').notNull(),
+    isInline: integer('is_inline', { mode: 'boolean' }).notNull().default(false),
   },
   (t) => [index('email_attachments_message_id').on(t.messageId)],
 );
+
+export const appState = sqliteTable('app_state', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+});
 
 export const syncRuns = sqliteTable(
   'sync_runs',

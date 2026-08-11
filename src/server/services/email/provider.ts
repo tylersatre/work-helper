@@ -49,6 +49,7 @@ export interface MailAttachmentMeta {
   name: string;
   contentType: string | null;
   sizeBytes: number;
+  isInline: boolean;
 }
 
 export interface MailFolderRef {
@@ -61,6 +62,11 @@ export interface MailProvider {
   listFolders(): Promise<MailFolderNode[]>;
   /** Sent Items filters/orders by sentDateTime; every other folder uses receivedDateTime (R6). */
   fetchMessages(folder: MailFolderRef, window: MailWindow): AsyncIterable<MailMessage[]>;
-  /** Metadata only — never file contents. Called only for messages with hasAttachments = true. */
-  fetchAttachmentMetadata(messageId: string): Promise<MailAttachmentMeta[]>;
+  /**
+   * Metadata only — never file contents. Called only for messages with hasAttachments = true,
+   * except the backfill, which passes allowNotFound for historical messages that may no longer
+   * exist. `null` if and only if allowNotFound is set and the message is gone (Graph 404);
+   * without options, 404 throws a connection error exactly like today.
+   */
+  fetchAttachmentMetadata(messageId: string, options?: { allowNotFound?: boolean }): Promise<MailAttachmentMeta[] | null>;
 }

@@ -66,7 +66,7 @@ describe('refresh-on-resync field rules (R7)', () => {
     const window = computeSyncWindow('2026-08-01', '2026-08-08');
 
     const provider = new StubProvider(baseMessage());
-    provider.attachments = [{ name: 'a.pdf', contentType: 'application/pdf', sizeBytes: 100 }];
+    provider.attachments = [{ name: 'a.pdf', contentType: 'application/pdf', sizeBytes: 100, isInline: false }];
 
     const first = await runSync(db, provider, window);
     expect(first).toEqual({ status: 'complete', newCount: 1, updatedCount: 0 });
@@ -89,7 +89,7 @@ describe('refresh-on-resync field rules (R7)', () => {
       webLink: 'https://outlook.office.com/mail/msg-1',
       internetMessageId: 'id-1-changed',
     };
-    provider.attachments = [{ name: 'b.pdf', contentType: 'application/pdf', sizeBytes: 200 }];
+    provider.attachments = [{ name: 'b.pdf', contentType: 'application/pdf', sizeBytes: 200, isInline: false }];
 
     const second = await runSync(db, provider, window);
     expect(second).toEqual({ status: 'complete', newCount: 0, updatedCount: 1 });

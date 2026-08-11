@@ -8,6 +8,13 @@
       "when": 1786391525922,
       "tag": "0000_futuristic_sunspot",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1786473062079,
+      "tag": "0001_silly_sauron",
+      "breakpoints": true
     }
   ]
 }
