@@ -4,11 +4,10 @@ Captured by the `browser-tester` agent against the running dev server, in three 
 
 ## US2 — See true connection state at a glance
 
-`MAIL_AUTH=fake MAIL_PROVIDER=fake npm run dev`.
-
 | Scenario | Result | Screenshot(s) |
 |---|---|---|
-| US2-2: connected panel + Disconnect works | PASS — Disconnect fired a real `POST /api/mailbox/disconnect` (200), panel updated to "Not connected" without reload | `us2-2-connected.png`, `us2-2-connected-disconnect.png` |
+| US2-1: not configured → names missing settings, no Connect | PASS — server started with no `MS_CLIENT_ID`/`MS_TENANT_ID`/`MAIL_AUTH` set; panel showed `data-testid="mailbox-not-configured"` with text "Mail is not configured — set MS_CLIENT_ID and MS_TENANT_ID (see .env.example)."; no `data-testid="mailbox-connect"` element exists on the page (confirmed via DOM query) | `us2-1-not-configured.png` |
+| US2-2: connected panel + Disconnect works | PASS — Disconnect fired a real `POST /api/mailbox/disconnect` (200), panel updated to "Not connected" without reload (`MAIL_AUTH=fake MAIL_PROVIDER=fake npm run dev`) | `us2-2-connected.png`, `us2-2-connected-disconnect.png` |
 | US2-3: dead/expired sign-in reads as not-connected | Not UI/API-reachable — the `expired` state only arises from a stale on-disk token cache, which cannot be seeded through the running app's UI or API. Covered instead by the automated integration suite (`tests/integration/mailbox-api.test.ts`, "a fake seeded with a dead/expired sign-in reports not-connected/expired") — recorded automated-check output is the surface-appropriate evidence here per the constitution. | — |
 
 ## US3 — Recover from failure and disconnect

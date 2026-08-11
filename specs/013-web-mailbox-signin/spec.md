@@ -71,7 +71,7 @@ When a sign-in attempt is declined or its code expires, the panel says so with M
 
 ### Functional Requirements
 
-- **FR-001**: The Email Sync page MUST include a mailbox panel that always shows exactly one of three states: not configured, not connected, or connected as a named account.
+- **FR-001**: The Email Sync page MUST include a mailbox panel that always shows exactly one of three states: not configured, not connected, or connected as a named account. Sign-in attempt progress (pending code, failed attempt) renders within the not-connected state — it is attempt detail, not a fourth connection state.
 - **FR-002**: In the not-configured state the panel MUST name the settings required to configure mail and MUST NOT offer a Connect action.
 - **FR-003**: Connect MUST start a sign-in attempt and present the verification link (opening in a new tab), the user code with a copy control, and a waiting indicator, all without leaving or reloading the page.
 - **FR-004**: At most one sign-in attempt MUST be pending at a time; requesting Connect while one is pending (including after a page reload) MUST resume that same attempt and code.
