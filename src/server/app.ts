@@ -9,13 +9,16 @@ import { oauthRoutes } from './mcp/auth/oauth-routes.js';
 import { deriveKey } from './mcp/auth/tokens.js';
 import { mcpRoutes } from './mcp/routes.js';
 import { boardRoutes } from './routes/board.js';
+import { calendarSyncRoutes } from './routes/calendar-sync.js';
 import { companyRoutes } from './routes/companies.js';
 import { emailSyncRoutes } from './routes/email-sync.js';
 import { emailRoutes } from './routes/emails.js';
 import { mailboxRoutes } from './routes/mailbox.js';
 import { peopleRoutes } from './routes/people.js';
+import { syncStatusRoutes } from './routes/sync-status.js';
 import { tagRoutes } from './routes/tags.js';
 import { taskRoutes } from './routes/tasks.js';
+import type { CalendarProvider } from './services/calendar/provider.js';
 import { AttachmentBackfillService } from './services/email/attachment-backfill.js';
 import type { MailboxAuth } from './services/email/graph-auth.js';
 import { MailboxConnectionManager } from './services/email/mailbox-connection.js';
@@ -32,6 +35,7 @@ declare module 'fastify' {
     mcpKey?: Buffer;
     identityVerifier?: IdentityVerifier;
     mailProvider?: MailProvider;
+    calendarProvider?: CalendarProvider;
     attachmentBackfill?: AttachmentBackfillService;
     syncCoordinator: SyncCoordinator;
     mailboxAuth?: MailboxAuth;
@@ -50,6 +54,7 @@ export interface AppOptions {
   mcpTokenSecret?: string;
   identityVerifier?: IdentityVerifier;
   mailProvider?: MailProvider;
+  calendarProvider?: CalendarProvider;
   /** Real (createGraphAuth) or injected fake mailbox auth — undefined means mail sign-in is not configured. */
   mailboxAuth?: MailboxAuth;
   /** Concrete env setting names still unset, e.g. ['MS_CLIENT_ID', 'MS_TENANT_ID'] — empty when configured (dev fakes count as configured). */
@@ -72,6 +77,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
   app.decorate('mcpKey', options.mcpTokenSecret ? deriveKey(options.mcpTokenSecret) : undefined);
   app.decorate('identityVerifier', options.identityVerifier);
   app.decorate('mailProvider', options.mailProvider);
+  app.decorate('calendarProvider', options.calendarProvider);
   const attachmentBackfill = options.mailProvider ? new AttachmentBackfillService(options.db, options.mailProvider, app.log) : undefined;
   app.decorate('attachmentBackfill', attachmentBackfill);
   app.decorate('syncCoordinator', new SyncCoordinator(options.db, attachmentBackfill));
@@ -85,6 +91,8 @@ export function buildApp(options: AppOptions): FastifyInstance {
   app.register(tagRoutes);
   app.register(companyRoutes);
   app.register(emailSyncRoutes);
+  app.register(calendarSyncRoutes);
+  app.register(syncStatusRoutes);
   app.register(emailRoutes);
   app.register(mailboxRoutes);
   app.register(oauthRoutes);

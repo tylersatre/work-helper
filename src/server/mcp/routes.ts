@@ -24,6 +24,7 @@ export async function mcpRoutes(app: FastifyInstance): Promise<void> {
       lanes: app.lanes,
       personFields: app.personFields,
       mailProvider: app.mailProvider,
+      calendarProvider: app.calendarProvider,
       syncCoordinator: app.syncCoordinator,
     });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });

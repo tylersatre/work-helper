@@ -16,6 +16,8 @@ import { createPerson, getPerson, listPeople, updatePerson as updatePersonServic
 import { addNote, createTask, getTaskDetail, listTasksByLane } from '../services/tasks.js';
 import { emailAddresses, personPhones } from '../db/schema.js';
 import type * as schema from '../db/schema.js';
+import type { CalendarProvider } from '../services/calendar/provider.js';
+import { eventsForPerson, getEvent, listEvents } from '../services/calendar/queries.js';
 import type { MailProvider } from '../services/email/provider.js';
 import { computeSyncWindow } from '../services/email/sync.js';
 import type { SyncCoordinator } from '../services/email/sync-coordinator.js';
@@ -28,6 +30,7 @@ export interface McpToolsContext {
   lanes: string[];
   personFields: string[];
   mailProvider?: MailProvider;
+  calendarProvider?: CalendarProvider;
   syncCoordinator: SyncCoordinator;
 }
 
@@ -473,6 +476,51 @@ export function createMcpServer(context: McpToolsContext): McpServer {
     },
   );
 
+  server.registerTool(
+    'sync-calendar',
+    {
+      description:
+        'Pulls calendar events for a date range (inclusive, server-local timezone) into the store, refreshing already-stored events it re-encounters and marking disappeared or cancelled in-range events cancelled.',
+      inputSchema: { startDate: z.string().optional(), endDate: z.string().optional() },
+      outputSchema: {
+        status: z.enum(['complete', 'interrupted']),
+        newCount: z.number(),
+        updatedCount: z.number(),
+        error: z.string().optional(),
+      },
+    },
+    async ({ startDate, endDate }) => {
+      if (!startDate || !endDate) {
+        return toolError('A start date and end date are required');
+      }
+
+      let window;
+      try {
+        window = computeSyncWindow(startDate, endDate);
+      } catch {
+        return toolError('startDate and endDate must be valid YYYY-MM-DD dates, with endDate not before startDate');
+      }
+
+      const outcome = await context.syncCoordinator.triggerCalendar({ startDate, endDate, window, source: 'mcp', provider: context.calendarProvider });
+      if (outcome.kind === 'already-running') {
+        return toolError('A sync is already running');
+      }
+
+      const { run } = outcome;
+      if (run.status === 'failure' && run.newCount === 0 && run.updatedCount === 0) {
+        return toolError(`Could not reach the calendar (${run.error}) — connect the mailbox on the Sync page.`);
+      }
+
+      const status = run.status === 'success' ? 'complete' : 'interrupted';
+      const text =
+        status === 'complete'
+          ? `Synced ${run.newCount} new event(s), ${run.updatedCount} updated.`
+          : `Sync interrupted after storing ${run.newCount} new event(s), ${run.updatedCount} updated: ${run.error}`;
+      const structuredContent = { status, newCount: run.newCount, updatedCount: run.updatedCount, error: run.error ?? undefined };
+      return { content: [{ type: 'text', text }], structuredContent };
+    },
+  );
+
   const personRefSchema = z.object({ id: z.number(), name: z.string() }).nullable();
 
   const conversationParticipantSummarySchema = z.object({
@@ -636,14 +684,15 @@ export function createMcpServer(context: McpToolsContext): McpServer {
     'list-unlinked-addresses',
     {
       description:
-        'Lists every synced-mail address linked to no person — complete, unsuppressed, and computed live — with its message count, most recently seen display name, and most recent message date, ordered by message count descending.',
+        'Lists every address linked to no person — seen in synced mail, as a calendar event participant (excluding resource attendees like rooms and equipment), or both — complete, unsuppressed, and computed live — with its message count, event count, most recently seen display name, and most recent message date (null when the address has never appeared in mail), ordered by message count descending.',
       outputSchema: {
         addresses: z.array(
           z.object({
             address: z.string(),
             messageCount: z.number(),
+            eventCount: z.number(),
             displayName: z.string(),
-            lastMessageAt: z.number(),
+            lastMessageAt: z.number().nullable(),
           }),
         ),
       },
@@ -656,6 +705,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
       };
     },
   );
+
 
   const companyPersonSchema = { id: z.number(), firstName: z.string(), lastName: z.string() };
   const companyCardSchema = { id: z.number(), title: z.string(), lane: z.string() };
@@ -836,6 +886,149 @@ export function createMcpServer(context: McpToolsContext): McpServer {
       const structuredContent = taskDetailContent(task);
       const label = companyDetail?.name ?? `Company ${companyId}`;
       return { content: [{ type: 'text', text: `Removed "${label}" from task "${task.title}".` }], structuredContent };
+    },
+  );
+
+  const eventSummarySchema = {
+    id: z.number(),
+    subject: z.string(),
+    startAt: z.number(),
+    endAt: z.number(),
+    isAllDay: z.boolean(),
+    isCancelled: z.boolean(),
+    location: z.string(),
+    seriesId: z.string().nullable(),
+  };
+
+  server.registerTool(
+    'list-events',
+    {
+      description:
+        'Lists stored calendar events overlapping an inclusive date range (server-local days), ascending by start time; cancelled events are included and flagged.',
+      inputSchema: { startDate: z.string().optional(), endDate: z.string().optional() },
+      outputSchema: { events: z.array(z.object(eventSummarySchema)) },
+    },
+    async ({ startDate, endDate }) => {
+      if (!startDate || !endDate) {
+        return toolError('A start date and end date are required');
+      }
+
+      let window;
+      try {
+        window = computeSyncWindow(startDate, endDate);
+      } catch {
+        return toolError('startDate and endDate must be valid YYYY-MM-DD dates, with endDate not before startDate');
+      }
+
+      const events = listEvents(context.db, window);
+      return { content: [{ type: 'text', text: `Found ${events.length} event(s).` }], structuredContent: { events } };
+    },
+  );
+
+  const eventParticipantSchema = z.object({
+    address: z.string(),
+    displayName: z.string(),
+    role: z.enum(['organizer', 'required', 'optional', 'resource']),
+    responseStatus: z.enum(['none', 'accepted', 'declined', 'tentative']),
+    person: personRefSchema,
+  });
+
+  server.registerTool(
+    'get-event',
+    {
+      description:
+        'Fetches a single stored calendar event with its full detail set — subject, times, all-day/cancelled flags, location, body text, online-meeting link, category, Outlook link, and organizer-first participants each showing their linked person when one exists.',
+      inputSchema: { eventId: z.number().int().positive() },
+      outputSchema: {
+        id: z.number(),
+        subject: z.string(),
+        startAt: z.number(),
+        endAt: z.number(),
+        isAllDay: z.boolean(),
+        isCancelled: z.boolean(),
+        location: z.string(),
+        bodyText: z.string(),
+        categories: z.array(z.string()),
+        onlineMeetingUrl: z.string(),
+        webLink: z.string(),
+        seriesId: z.string().nullable(),
+        participants: z.array(eventParticipantSchema),
+      },
+    },
+    async ({ eventId }) => {
+      const event = getEvent(context.db, eventId);
+      if (!event) {
+        return toolError(`Event ${eventId} not found`);
+      }
+      const structuredContent = {
+        id: event.id,
+        subject: event.subject,
+        startAt: event.startAt,
+        endAt: event.endAt,
+        isAllDay: event.isAllDay,
+        isCancelled: event.isCancelled,
+        location: event.location,
+        bodyText: event.bodyText,
+        categories: event.categories,
+        onlineMeetingUrl: event.onlineMeetingUrl,
+        webLink: event.webLink,
+        seriesId: event.seriesId,
+        participants: event.participants,
+      };
+      return { content: [{ type: 'text', text: `Event "${event.subject}".` }], structuredContent };
+    },
+  );
+
+  server.registerTool(
+    'events-for-person',
+    {
+      description:
+        "Every stored calendar event involving any of a person's addresses as organizer or attendee, newest-first, keyset-paged; cancelled events are included and flagged, each event identifying that person's matching addresses and roles.",
+      inputSchema: {
+        personId: z.number().int().positive(),
+        limit: z.number().int().min(1).max(200).default(50),
+        cursor: z.string().optional(),
+      },
+      outputSchema: {
+        person: z.object({ id: z.number(), name: z.string() }),
+        events: z.array(
+          z.object({
+            ...eventSummarySchema,
+            addresses: z.array(
+              z.object({
+                address: z.string(),
+                role: z.enum(['organizer', 'required', 'optional', 'resource']),
+                displayName: z.string(),
+                responseStatus: z.enum(['none', 'accepted', 'declined', 'tentative']),
+              }),
+            ),
+          }),
+        ),
+        nextCursor: z.string().nullable(),
+      },
+    },
+    async ({ personId, limit, cursor }) => {
+      const person = getPerson(context.db, context.personFields, personId);
+      if (!person) {
+        return toolError(`Person ${personId} not found`);
+      }
+
+      let page;
+      try {
+        page = eventsForPerson(context.db, personId, { limit, cursor });
+      } catch {
+        return toolError('Invalid cursor');
+      }
+
+      const structuredContent = {
+        person: { id: person.id, name: personName(person) },
+        events: page.events,
+        nextCursor: page.nextCursor,
+      };
+      return {
+        content: [{ type: 'text', text: `Found ${page.events.length} event(s) for ${personName(person)}.` }],
+        structuredContent,
+      };
     },
   );
 

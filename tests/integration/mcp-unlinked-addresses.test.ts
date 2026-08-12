@@ -7,6 +7,8 @@ import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
 import type * as schema from '../../src/server/db/schema.js';
 import { createIdentityVerifier } from '../../src/server/mcp/auth/identity.js';
+import type { CalendarProvider } from '../../src/server/services/calendar/provider.js';
+import { FakeCalendarProvider, type SeedEvent } from '../../src/server/services/calendar/fake-provider.js';
 import { connectThroughApproval } from './helpers/oauth-client.js';
 import { FakeMailProvider, type SeedMessage } from './helpers/fake-mail-provider.js';
 import { startStubIdentityProvider, type StubIdentityProvider } from './helpers/stub-identity-provider.js';
@@ -20,7 +22,7 @@ let client: Client;
 let serverUrl: string;
 let stub: StubIdentityProvider;
 
-function buildTestApp(mailProvider: FakeMailProvider) {
+function buildTestApp(mailProvider: FakeMailProvider, calendarProvider?: CalendarProvider) {
   const created = createDb(':memory:');
   db = created.db;
   app = buildApp({
@@ -30,7 +32,12 @@ function buildTestApp(mailProvider: FakeMailProvider) {
     mcpTokenSecret: MCP_TOKEN_SECRET,
     identityVerifier: createIdentityVerifier(stub.url),
     mailProvider,
+    calendarProvider,
   });
+}
+
+async function postCalendarSync(body: Record<string, unknown>) {
+  return app.inject({ method: 'POST', url: '/api/calendar-sync/runs', payload: body });
 }
 
 async function startAndConnect(): Promise<void> {
@@ -116,6 +123,7 @@ describe('US2: list-unlinked-addresses', () => {
     expect(addresses[0]).toEqual({
       address: 'jordan.smith@example.com',
       messageCount: 3,
+      eventCount: 0,
       displayName: 'Jordan Smith',
       lastMessageAt: Date.parse('2026-08-05T09:00:00Z'),
     });
@@ -268,5 +276,139 @@ describe('US2: list-unlinked-addresses', () => {
     });
 
     expect(response.status).toBe(401);
+  });
+});
+
+describe('US7: list-unlinked-addresses spans mail and calendar', () => {
+  it('lists jordan (2 msg/3 evt), news (1/0), morgan (0/1) in that order, excludes the linked and resource-only addresses (spec.md AS1, research R11)', async () => {
+    const jordanMessages = [
+      msg({ from: { address: 'jordan.smith@example.com', name: 'Jordan Smith' }, receivedDateTime: '2026-08-01T09:00:00Z', sentDateTime: '2026-08-01T09:00:00Z' }),
+      msg({ from: { address: 'jordan.smith@example.com', name: 'Jordan Smith' }, receivedDateTime: '2026-08-03T09:00:00Z', sentDateTime: '2026-08-03T09:00:00Z' }),
+    ];
+    const newsMessage = msg({ from: { address: 'news@example.com', name: 'Newsletter' }, receivedDateTime: '2026-08-02T09:00:00Z', sentDateTime: '2026-08-02T09:00:00Z' });
+
+    const events: SeedEvent[] = [
+      {
+        id: 'evt-us7-standup-1',
+        subject: 'Standup 1',
+        start: '2026-08-10T16:00:00.000Z',
+        end: '2026-08-10T16:15:00.000Z',
+        organizer: { address: 'sam.rivera@example.com', name: 'Sam Rivera' },
+        attendees: [{ address: 'jordan.smith@example.com', name: 'Jordan Smith', type: 'required' }],
+      },
+      {
+        id: 'evt-us7-standup-2',
+        subject: 'Standup 2',
+        start: '2026-08-11T16:00:00.000Z',
+        end: '2026-08-11T16:15:00.000Z',
+        organizer: { address: 'sam.rivera@example.com', name: 'Sam Rivera' },
+        attendees: [{ address: 'jordan.smith@example.com', name: 'Jordan Smith', type: 'required' }],
+      },
+      {
+        id: 'evt-us7-standup-3',
+        subject: 'Standup 3',
+        start: '2026-08-12T16:00:00.000Z',
+        end: '2026-08-12T16:15:00.000Z',
+        organizer: { address: 'sam.rivera@example.com', name: 'Sam Rivera' },
+        attendees: [
+          { address: 'jordan.smith@example.com', name: 'Jordan Smith', type: 'optional' },
+          // Room 101 appears only in the resource role, here and everywhere else — must never appear in discovery.
+          { address: 'room101@example.com', name: 'Room 101', type: 'resource' },
+        ],
+      },
+      {
+        id: 'evt-us7-planning',
+        subject: 'Planning',
+        start: '2026-08-13T16:00:00.000Z',
+        end: '2026-08-13T16:30:00.000Z',
+        organizer: { address: 'sam.rivera@example.com', name: 'Sam Rivera' },
+        attendees: [{ address: 'morgan.lee@example.com', name: 'Morgan Lee', type: 'required' }],
+      },
+    ];
+
+    buildTestApp(new FakeMailProvider([...jordanMessages, newsMessage]), new FakeCalendarProvider(events));
+    await createPersonViaApi({ firstName: 'Sam', lastName: 'Rivera', email: 'sam.rivera@example.com' });
+    await createPersonViaApi({ firstName: 'Tyler', lastName: 'Satre', email: 'tyler@example.com' });
+    await startAndConnect();
+    await sync();
+    const calendarSyncResponse = await postCalendarSync({ startDate: '2026-08-01', endDate: '2026-08-31' });
+    expect(calendarSyncResponse.statusCode).toBe(201);
+
+    const result = await listUnlinked();
+    expect(result.isError).toBeFalsy();
+    const { addresses } = result.structuredContent as {
+      addresses: { address: string; messageCount: number; eventCount: number; displayName: string; lastMessageAt: number | null }[];
+    };
+
+    expect(addresses.map((a) => a.address)).toEqual(['jordan.smith@example.com', 'news@example.com', 'morgan.lee@example.com']);
+
+    expect(addresses[0]).toEqual({
+      address: 'jordan.smith@example.com',
+      messageCount: 2,
+      eventCount: 3,
+      displayName: 'Jordan Smith',
+      lastMessageAt: Date.parse('2026-08-03T09:00:00Z'),
+    });
+    expect(addresses[1]).toEqual({
+      address: 'news@example.com',
+      messageCount: 1,
+      eventCount: 0,
+      displayName: 'Newsletter',
+      lastMessageAt: Date.parse('2026-08-02T09:00:00Z'),
+    });
+    expect(addresses[2]).toEqual({
+      address: 'morgan.lee@example.com',
+      messageCount: 0,
+      eventCount: 1,
+      displayName: 'Morgan Lee',
+      lastMessageAt: null,
+    });
+
+    // sam.rivera is linked to a person and attends every event, so it must be absent.
+    expect(addresses.map((a) => a.address)).not.toContain('sam.rivera@example.com');
+    // room101 is seen only in the resource role, so it must be absent.
+    expect(addresses.map((a) => a.address)).not.toContain('room101@example.com');
+  });
+
+  it('lists an address seen as resource on one event but required on another normally, counting only its non-resource event (research R11)', async () => {
+    const events: SeedEvent[] = [
+      {
+        id: 'evt-us7-mixed-resource',
+        subject: 'Booking',
+        start: '2026-08-05T16:00:00.000Z',
+        end: '2026-08-05T16:30:00.000Z',
+        organizer: { address: 'organizer@example.com', name: 'Organizer' },
+        // No display name here so it can never win the display-name pick over the required row's name below.
+        attendees: [{ address: 'facilitator@example.com', type: 'resource' }],
+      },
+      {
+        id: 'evt-us7-mixed-required',
+        subject: 'Facilitated session',
+        start: '2026-08-06T16:00:00.000Z',
+        end: '2026-08-06T16:30:00.000Z',
+        organizer: { address: 'organizer@example.com', name: 'Organizer' },
+        attendees: [{ address: 'facilitator@example.com', name: 'Fac Ilitator', type: 'required' }],
+      },
+    ];
+
+    buildTestApp(new FakeMailProvider([]), new FakeCalendarProvider(events));
+    await startAndConnect();
+    const calendarSyncResponse = await postCalendarSync({ startDate: '2026-08-01', endDate: '2026-08-31' });
+    expect(calendarSyncResponse.statusCode).toBe(201);
+
+    const result = await listUnlinked();
+    expect(result.isError).toBeFalsy();
+    const { addresses } = result.structuredContent as {
+      addresses: { address: string; messageCount: number; eventCount: number; displayName: string; lastMessageAt: number | null }[];
+    };
+
+    const facilitator = addresses.find((a) => a.address === 'facilitator@example.com');
+    expect(facilitator).toEqual({
+      address: 'facilitator@example.com',
+      messageCount: 0,
+      eventCount: 1,
+      displayName: 'Fac Ilitator',
+      lastMessageAt: null,
+    });
   });
 });

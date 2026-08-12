@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'n
 import { dirname } from 'node:path';
 import { PublicClientApplication, type AccountInfo, type ICachePlugin } from '@azure/msal-node';
 
-const SCOPES = ['Mail.Read', 'offline_access'];
+const SCOPES = ['Mail.Read', 'Calendars.Read', 'offline_access'];
 const DEVICE_CODE_REJECTED =
   'Microsoft rejected the device-code request before issuing a sign-in code. Check that MS_TENANT_ID matches the app registration\'s Directory (tenant) ID, MS_CLIENT_ID matches its Application (client) ID, and "Allow public client flows" is enabled under Authentication.';
 
