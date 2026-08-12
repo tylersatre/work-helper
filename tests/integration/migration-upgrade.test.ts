@@ -84,4 +84,39 @@ describe('migration upgrade path (drizzle/0001_silly_sauron.sql, production data
     upgradedSqlite.close();
     freshSqlite.close();
   });
+
+  it('applies 0002 (calendar sync tables) to a pre-existing baseline-only database without losing data, and converges with a fresh-DB schema', () => {
+    dir = mkdtempSync(join(tmpdir(), 'work-helper-upgrade-'));
+    const dbPath = join(dir, 'work-helper.db');
+    baselineMigrationsDir = buildBaselineOnlyMigrationsFolder();
+
+    // Stand up the database exactly as it looked pre-019-calendar-sync, and store data through it.
+    const baselineSqlite = new Database(dbPath);
+    baselineSqlite.pragma('foreign_keys = ON');
+    const baselineDb = drizzle(baselineSqlite, {});
+    migrate(baselineDb, { migrationsFolder: baselineMigrationsDir });
+
+    baselineSqlite.prepare('INSERT INTO people (first_name, last_name, extra_fields, created_at) VALUES (?, ?, ?, ?)').run('Sam', 'Rivera', '{}', 1);
+    baselineSqlite.close();
+
+    // Upgrade in place through the app's real migration runner (drizzle/, which now includes 0002).
+    const { db: upgradedDb, sqlite: upgradedSqlite } = createDb(dbPath);
+
+    const people = upgradedDb.all<{ first_name: string }>('SELECT first_name FROM people' as never);
+    expect(people).toHaveLength(1);
+
+    // The three new calendar tables exist and are empty (no lossy/backfill surprises on upgrade).
+    for (const table of ['calendar_events', 'calendar_event_participants', 'calendar_sync_runs']) {
+      expect(upgradedSqlite.prepare(`SELECT * FROM ${table}`).all()).toEqual([]);
+    }
+
+    // Converges with a fresh :memory: DB's schema — the upgrade path and a brand-new install end up identical.
+    const { sqlite: freshSqlite } = createDb(':memory:');
+    for (const table of ['calendar_events', 'calendar_event_participants', 'calendar_sync_runs']) {
+      expect(tableInfo(upgradedSqlite, table)).toEqual(tableInfo(freshSqlite, table));
+    }
+
+    upgradedSqlite.close();
+    freshSqlite.close();
+  });
 });

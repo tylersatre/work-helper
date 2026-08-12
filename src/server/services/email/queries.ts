@@ -303,38 +303,84 @@ function participantsForMessage(db: AppDb, messageId: number): ConversationParti
 export interface UnlinkedAddressSummary {
   address: string;
   messageCount: number;
+  eventCount: number;
   displayName: string;
-  lastMessageAt: number;
+  lastMessageAt: number | null;
 }
 
-/** Every synced-mail address linked to no person, complete and computed live per call (FR-015–FR-017). */
+/**
+ * Every unlinked address seen in mail or as a non-`resource` calendar event participant, complete
+ * and computed live per call (FR-015–FR-017, FR-022, research R11). An address qualifies via mail
+ * OR non-resource event participation — addresses seen only in the `resource` role (rooms,
+ * equipment) never qualify. `messageCount`/`lastMessageAt` are 0/null for calendar-only addresses;
+ * `eventCount` counts only non-resource event rows even for an address that also appears as a
+ * resource elsewhere. The display name is the most recent non-empty name across both mail
+ * (`sent_at`) and every event appearance regardless of role (`start_at`).
+ */
 export function listUnlinkedAddresses(db: AppDb): UnlinkedAddressSummary[] {
-  const rows = db.all<{ address: string; messageCount: number; lastMessageAt: number; displayName: string }>(sql`
-    WITH agg AS (
-      SELECT ea.id AS addressId, ea.value AS address, COUNT(DISTINCT ep.message_id) AS messageCount, MAX(m.sent_at) AS lastMessageAt
+  const rows = db.all<{
+    address: string;
+    messageCount: number;
+    eventCount: number;
+    lastMessageAt: number | null;
+    displayName: string;
+  }>(sql`
+    WITH mail_agg AS (
+      SELECT ea.id AS addressId, COUNT(DISTINCT ep.message_id) AS messageCount, MAX(m.sent_at) AS lastMessageAt
       FROM email_addresses ea
       JOIN email_participants ep ON ep.address_id = ea.id
       JOIN email_messages m ON m.id = ep.message_id
       WHERE ea.person_id IS NULL
       GROUP BY ea.id
     ),
-    ranked_names AS (
-      SELECT ea.id AS addressId, ep.display_name AS displayName,
-             ROW_NUMBER() OVER (PARTITION BY ea.id ORDER BY (ep.display_name = '') ASC, m.sent_at DESC, ep.id DESC) AS rn
+    event_agg AS (
+      SELECT ea.id AS addressId, COUNT(DISTINCT cep.event_id) AS eventCount
+      FROM email_addresses ea
+      JOIN calendar_event_participants cep ON cep.address_id = ea.id AND cep.role != 'resource'
+      WHERE ea.person_id IS NULL
+      GROUP BY ea.id
+    ),
+    qualifying AS (
+      SELECT addressId FROM mail_agg
+      UNION
+      SELECT addressId FROM event_agg
+    ),
+    name_candidates AS (
+      SELECT ea.id AS addressId, ep.display_name AS displayName, m.sent_at AS ts, ep.id AS tieId
       FROM email_addresses ea
       JOIN email_participants ep ON ep.address_id = ea.id
       JOIN email_messages m ON m.id = ep.message_id
       WHERE ea.person_id IS NULL
+      UNION ALL
+      SELECT ea.id AS addressId, cep.display_name AS displayName, ce.start_at AS ts, cep.id AS tieId
+      FROM email_addresses ea
+      JOIN calendar_event_participants cep ON cep.address_id = ea.id
+      JOIN calendar_events ce ON ce.id = cep.event_id
+      WHERE ea.person_id IS NULL
+    ),
+    ranked_names AS (
+      SELECT addressId, displayName,
+             ROW_NUMBER() OVER (PARTITION BY addressId ORDER BY (displayName = '') ASC, ts DESC, tieId DESC) AS rn
+      FROM name_candidates
     )
-    SELECT agg.address AS address, agg.messageCount AS messageCount, agg.lastMessageAt AS lastMessageAt, ranked_names.displayName AS displayName
-    FROM agg
-    JOIN ranked_names ON ranked_names.addressId = agg.addressId AND ranked_names.rn = 1
-    ORDER BY agg.messageCount DESC, agg.lastMessageAt DESC, agg.address ASC
+    SELECT
+      ea.value AS address,
+      COALESCE(mail_agg.messageCount, 0) AS messageCount,
+      COALESCE(event_agg.eventCount, 0) AS eventCount,
+      mail_agg.lastMessageAt AS lastMessageAt,
+      ranked_names.displayName AS displayName
+    FROM qualifying q
+    JOIN email_addresses ea ON ea.id = q.addressId
+    LEFT JOIN mail_agg ON mail_agg.addressId = q.addressId
+    LEFT JOIN event_agg ON event_agg.addressId = q.addressId
+    LEFT JOIN ranked_names ON ranked_names.addressId = q.addressId AND ranked_names.rn = 1
+    ORDER BY messageCount DESC, lastMessageAt DESC, address ASC
   `);
 
   return rows.map((row) => ({
     address: row.address,
     messageCount: row.messageCount,
+    eventCount: row.eventCount,
     displayName: row.displayName === '' ? row.address : row.displayName,
     lastMessageAt: row.lastMessageAt,
   }));

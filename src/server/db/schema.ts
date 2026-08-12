@@ -217,3 +217,68 @@ export const oauthClients = sqliteTable('oauth_clients', {
   redirectUris: text('redirect_uris', { mode: 'json' }).$type<string[]>().notNull(),
   createdAt: integer('created_at').notNull(),
 });
+
+export const calendarEvents = sqliteTable(
+  'calendar_events',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    graphEventId: text('graph_event_id').notNull(),
+    seriesMasterId: text('series_master_id'),
+    subject: text('subject').notNull().default(''),
+    bodyOriginal: text('body_original').notNull().default(''),
+    bodyContentType: text('body_content_type', { enum: ['html', 'text'] }).notNull().default('text'),
+    bodyText: text('body_text').notNull().default(''),
+    startAt: integer('start_at').notNull(),
+    endAt: integer('end_at').notNull(),
+    isAllDay: integer('is_all_day', { mode: 'boolean' }).notNull().default(false),
+    isCancelled: integer('is_cancelled', { mode: 'boolean' }).notNull().default(false),
+    location: text('location').notNull().default(''),
+    onlineMeetingUrl: text('online_meeting_url').notNull().default(''),
+    categories: text('categories', { mode: 'json' }).$type<string[]>().notNull().default([]),
+    webLink: text('web_link').notNull().default(''),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('calendar_events_graph_id_unique').on(t.graphEventId),
+    index('calendar_events_start_at').on(t.startAt),
+    index('calendar_events_series_master_id').on(t.seriesMasterId),
+  ],
+);
+
+export const calendarEventParticipants = sqliteTable(
+  'calendar_event_participants',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    eventId: integer('event_id')
+      .notNull()
+      .references(() => calendarEvents.id, { onDelete: 'cascade' }),
+    addressId: integer('address_id')
+      .notNull()
+      .references(() => emailAddresses.id),
+    role: text('role', { enum: ['organizer', 'required', 'optional', 'resource'] }).notNull(),
+    responseStatus: text('response_status', { enum: ['none', 'accepted', 'declined', 'tentative'] })
+      .notNull()
+      .default('none'),
+    displayName: text('display_name').notNull().default(''),
+  },
+  (t) => [
+    uniqueIndex('calendar_event_participants_event_address_role_unique').on(t.eventId, t.addressId, t.role),
+    index('calendar_event_participants_address_id').on(t.addressId),
+  ],
+);
+
+export const calendarSyncRuns = sqliteTable(
+  'calendar_sync_runs',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    ranAt: integer('ran_at').notNull(),
+    startDate: text('start_date').notNull(),
+    endDate: text('end_date').notNull(),
+    source: text('source', { enum: ['web', 'mcp'] }).notNull(),
+    status: text('status', { enum: ['success', 'failure'] }).notNull(),
+    newCount: integer('new_count').notNull(),
+    updatedCount: integer('updated_count').notNull(),
+    error: text('error'),
+  },
+  (t) => [index('calendar_sync_runs_ran_at').on(t.ranAt)],
+);

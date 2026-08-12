@@ -15,6 +15,13 @@
       "when": 1786473062079,
       "tag": "0001_silly_sauron",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786513070695,
+      "tag": "0002_plain_korvac",
+      "breakpoints": true
     }
   ]
 }

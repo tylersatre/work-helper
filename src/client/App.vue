@@ -32,7 +32,7 @@ const activeSection = computed<'board' | 'people' | 'tags' | 'sync' | 'emails'>(
             <a :href="href" :aria-current="activeSection === 'tags' ? 'page' : undefined" @click="navigate">Tags</a>
           </RouterLink>
           <RouterLink v-slot="{ href, navigate }" to="/sync" custom>
-            <a :href="href" :aria-current="activeSection === 'sync' ? 'page' : undefined" @click="navigate">Email Sync</a>
+            <a :href="href" :aria-current="activeSection === 'sync' ? 'page' : undefined" @click="navigate">Sync</a>
           </RouterLink>
           <RouterLink v-slot="{ href, navigate }" to="/emails" custom>
             <a :href="href" :aria-current="activeSection === 'emails' ? 'page' : undefined" @click="navigate">Emails</a>
