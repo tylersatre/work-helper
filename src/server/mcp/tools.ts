@@ -13,7 +13,7 @@ import {
   unlinkCompanyFromTask,
 } from '../services/companies.js';
 import { createPerson, getPerson, listPeople, updatePerson as updatePersonService, type PersonRecord } from '../services/people.js';
-import { addNote, createTask, getTaskDetail, listTasksByLane, moveTask } from '../services/tasks.js';
+import { addNote, createTask, getTaskDetail, InvalidLaneError, listTasksByLane, moveTask } from '../services/tasks.js';
 import { emailAddresses, personPhones } from '../db/schema.js';
 import type * as schema from '../db/schema.js';
 import type { CalendarProvider } from '../services/calendar/provider.js';
@@ -389,19 +389,23 @@ export function createMcpServer(context: McpToolsContext): McpServer {
   server.registerTool(
     'create-task',
     {
-      description: 'Creates a task in the first configured lane, optionally with an initial note.',
-      inputSchema: { title: z.string(), note: z.string().optional() },
+      description:
+        'Creates a task at the bottom of the given lane (or the first configured lane when no lane is given), optionally with an initial note.',
+      inputSchema: { title: z.string(), note: z.string().optional(), lane: z.string().optional() },
       outputSchema: taskSummarySchema,
     },
-    async ({ title, note }) => {
+    async ({ title, note, lane }) => {
       try {
-        const created = createTask(context.db, context.lanes, title, note, 'mcp');
+        const created = createTask(context.db, context.lanes, title, note, 'mcp', lane);
         const structuredContent = { id: created.id, title: created.title, lane: created.lane, position: created.position, createdAt: created.createdAt };
         return {
           content: [{ type: 'text', text: `Created task "${created.title}" in lane "${created.lane}".` }],
           structuredContent,
         };
       } catch (error) {
+        if (error instanceof InvalidLaneError) {
+          return toolError(`Unknown lane "${error.lane}". Valid lanes: ${context.lanes.join(', ')}`);
+        }
         if (error instanceof ZodError) {
           return toolError(error.issues[0]?.message ?? 'Title is required');
         }
