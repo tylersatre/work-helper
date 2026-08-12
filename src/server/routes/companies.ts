@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
-import { attachTagToCompany, createCompany, detachTagFromCompany, getCompanyDetail, listCompanies, renameCompany } from '../services/companies.js';
+import { attachTagToCompany, createCompany, deleteCompany, detachTagFromCompany, getCompanyDetail, listCompanies, renameCompany } from '../services/companies.js';
 import type { AttachInput } from '../services/tags.js';
 
 export async function companyRoutes(app: FastifyInstance): Promise<void> {
@@ -58,6 +58,19 @@ export async function companyRoutes(app: FastifyInstance): Promise<void> {
     }
 
     return result.company;
+  });
+
+  app.delete('/api/companies/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    const result = deleteCompany(app.db, Number(id));
+    if (!result.ok) {
+      reply.status(404);
+      return { error: { message: 'Company not found' } };
+    }
+
+    reply.status(204);
+    return null;
   });
 
   app.post('/api/companies/:id/tags', async (request, reply) => {

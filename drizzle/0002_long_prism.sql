@@ -21,4 +21,4 @@ CREATE TABLE `task_companies` (
 	FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-ALTER TABLE `people` ADD `company_id` integer REFERENCES companies(id);
+ALTER TABLE `people` ADD `company_id` integer REFERENCES companies(id) ON DELETE SET NULL;

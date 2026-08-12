@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { NButton, NEmpty, NInput } from 'naive-ui';
+import { NButton, NEmpty, NInput, NModal } from 'naive-ui';
 import { computed, onMounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import type { CompanyDetail, Tag } from '../../shared/types.js';
 import TagChip from '../components/TagChip.vue';
 import TagInput from '../components/TagInput.vue';
 
 const route = useRoute();
+const router = useRouter();
 const company = ref<CompanyDetail | null>(null);
 const isRenaming = ref(false);
 const renameValue = ref('');
@@ -14,6 +15,7 @@ const renameError = ref('');
 const showAllPeople = ref(false);
 const showAllCards = ref(false);
 const tagError = ref('');
+const isConfirmingDelete = ref(false);
 
 async function fetchCompany(): Promise<void> {
   const response = await fetch(`/api/companies/${route.params.id}`);
@@ -104,6 +106,40 @@ async function saveRename(): Promise<void> {
   isRenaming.value = false;
   renameError.value = '';
 }
+
+function requestDelete(): void {
+  isConfirmingDelete.value = true;
+}
+
+function cancelDelete(): void {
+  isConfirmingDelete.value = false;
+}
+
+async function confirmDelete(): Promise<void> {
+  if (!company.value) return;
+  await fetch(`/api/companies/${company.value.id}`, { method: 'DELETE' });
+  isConfirmingDelete.value = false;
+  await router.push('/companies');
+}
+
+function onDialogShowChange(show: boolean): void {
+  if (!show) {
+    cancelDelete();
+  }
+}
+
+function peoplePhrase(count: number): string {
+  return count === 1 ? '1 person' : `${count} people`;
+}
+
+function cardsPhrase(count: number): string {
+  return count === 1 ? '1 card' : `${count} cards`;
+}
+
+const deleteMessage = computed(() => {
+  if (!company.value) return '';
+  return `"${company.value.name}" is linked to ${peoplePhrase(company.value.people.length)} and ${cardsPhrase(company.value.cards.length)}.`;
+});
 </script>
 
 <template>
@@ -117,6 +153,7 @@ async function saveRename(): Promise<void> {
     <template v-else>
       <h2 class="company-name">{{ company.name }}</h2>
       <NButton size="small" @click="startRename">Rename</NButton>
+      <NButton size="small" @click="requestDelete">Delete</NButton>
     </template>
 
     <div class="company-detail-section">
@@ -154,6 +191,20 @@ async function saveRename(): Promise<void> {
       <p v-if="tagError" role="alert" class="company-detail-error">{{ tagError }}</p>
       <TagInput :attached-tags="company.tags" @attach="attachTag" @create="createAndAttachTag" />
     </div>
+
+    <NModal
+      data-testid="delete-company-dialog"
+      :show="isConfirmingDelete"
+      display-directive="if"
+      preset="dialog"
+      title="Delete this company?"
+      :content="deleteMessage"
+      positive-text="Delete"
+      negative-text="Cancel"
+      @positive-click="confirmDelete"
+      @negative-click="cancelDelete"
+      @update:show="onDialogShowChange"
+    />
   </section>
 </template>
 

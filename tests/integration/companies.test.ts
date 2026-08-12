@@ -14,6 +14,16 @@ async function createCompany(app: ReturnType<typeof buildTestApp>, name: string)
   return response.json();
 }
 
+async function createPerson(app: ReturnType<typeof buildTestApp>, firstName: string, lastName: string) {
+  const response = await app.inject({ method: 'POST', url: '/api/people', payload: { firstName, lastName } });
+  return response.json();
+}
+
+async function createTask(app: ReturnType<typeof buildTestApp>, title: string) {
+  const response = await app.inject({ method: 'POST', url: '/api/tasks', payload: { title } });
+  return response.json();
+}
+
 describe('POST /api/companies', () => {
   it('creates a company, trimming the name before saving and checking uniqueness', async () => {
     const app = buildTestApp();
@@ -153,5 +163,55 @@ describe('PATCH /api/companies/:id', () => {
 
     expect(response.statusCode).toBe(404);
     expect(response.json()).toEqual({ error: { message: 'Company not found' } });
+  });
+});
+
+describe('DELETE /api/companies/:id', () => {
+  it('returns 204 and removes the company from the list', async () => {
+    const app = buildTestApp();
+    const acme = await createCompany(app, 'Acme Corp');
+
+    const response = await app.inject({ method: 'DELETE', url: `/api/companies/${acme.id}` });
+
+    expect(response.statusCode).toBe(204);
+
+    const list = await app.inject({ method: 'GET', url: '/api/companies' });
+    expect(list.json()).toEqual([]);
+  });
+
+  it('returns 404 "Company not found" for a missing id', async () => {
+    const app = buildTestApp();
+
+    const response = await app.inject({ method: 'DELETE', url: '/api/companies/999' });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({ error: { message: 'Company not found' } });
+  });
+
+  it('clears the assignment, removes the card link, and detaches the tag — while the person, card, and tag survive', async () => {
+    const app = buildTestApp();
+    const acme = await createCompany(app, 'Acme Corp');
+    const sam = await createPerson(app, 'Sam', 'Rivera');
+    const task = await createTask(app, 'Follow up with Sam');
+    await app.inject({ method: 'PUT', url: `/api/people/${sam.id}`, payload: { firstName: 'Sam', lastName: 'Rivera', companyId: acme.id } });
+    await app.inject({ method: 'POST', url: `/api/tasks/${task.id}/companies`, payload: { companyId: acme.id } });
+    const tagged = await app.inject({ method: 'POST', url: `/api/companies/${acme.id}/tags`, payload: { name: 'VIP' } });
+    const tagId = tagged.json().tags[0].id;
+
+    const response = await app.inject({ method: 'DELETE', url: `/api/companies/${acme.id}` });
+    expect(response.statusCode).toBe(204);
+
+    const person = await app.inject({ method: 'GET', url: `/api/people/${sam.id}` });
+    expect(person.json().company).toBeNull();
+
+    const taskDetail = await app.inject({ method: 'GET', url: `/api/tasks/${task.id}` });
+    expect(taskDetail.json().companies).toEqual([]);
+
+    const tags = await app.inject({ method: 'GET', url: '/api/tags' });
+    expect(tags.json()).toHaveLength(1);
+    expect(tags.json()[0]).toMatchObject({ id: tagId, name: 'VIP' });
+
+    const list = await app.inject({ method: 'GET', url: '/api/companies' });
+    expect(list.json()).toEqual([]);
   });
 });

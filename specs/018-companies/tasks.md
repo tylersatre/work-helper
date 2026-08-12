@@ -158,12 +158,14 @@ Single TypeScript web app at repository root: Vue SPA in `src/client/`, Fastify 
 
 ### Tests for User Story 6 (write first, must fail) ⚠️
 
-- [ ] T033 [P] [US6] Write failing integration tests (delete block) in tests/integration/companies.test.ts: DELETE /api/companies/:id returns 204 and 404s on a missing id; after deleting a company linked to a person, a card, and a tag, the person still exists with `company: null`, the task still exists with the company absent from `companies`, the tag still exists on GET /api/tags, and the company is gone from GET /api/companies
-- [ ] T034 [P] [US6] Extend tests/component/company-detail.test.ts with failing assertions: the delete control opens a confirmation naming the linked people and card counts derived from the loaded detail (including "0 people and 0 cards"); cancelling closes the modal with no request made; confirming issues the DELETE and navigates back to /companies
+- [X] T033 [P] [US6] Write failing integration tests (delete block) in tests/integration/companies.test.ts: DELETE /api/companies/:id returns 204 and 404s on a missing id; after deleting a company linked to a person, a card, and a tag, the person still exists with `company: null`, the task still exists with the company absent from `companies`, the tag still exists on GET /api/tags, and the company is gone from GET /api/companies
+- [X] T034 [P] [US6] Extend tests/component/company-detail.test.ts with failing assertions: the delete control opens a confirmation naming the linked people and card counts derived from the loaded detail (including "0 people and 0 cards"); cancelling closes the modal with no request made; confirming issues the DELETE and navigates back to /companies
 
 ### Implementation for User Story 6
 
-- [ ] T035 [US6] Implement `deleteCompany` in src/server/services/companies.ts (FK actions clear assignments and cascade join rows per data-model.md), add DELETE /api/companies/:id to src/server/routes/companies.ts (204/404), and add the TagsPage-pattern confirm modal with counts, cancel, and confirm-then-navigate to src/client/pages/CompanyDetailPage.vue — T033 and T034 go green
+- [X] T035 [US6] Implement `deleteCompany` in src/server/services/companies.ts (FK actions clear assignments and cascade join rows per data-model.md), add DELETE /api/companies/:id to src/server/routes/companies.ts (204/404), and add the TagsPage-pattern confirm modal with counts, cancel, and confirm-then-navigate to src/client/pages/CompanyDetailPage.vue — T033 and T034 go green
+
+  **Note**: drizzle-kit's generated `ALTER TABLE people ADD company_id ...` (migration `0002_long_prism.sql`, landed in Phase 2) omitted the `ON DELETE SET NULL` clause despite the schema specifying `onDelete: 'set null'`, causing `DELETE /api/companies/:id` to fail with a foreign key constraint error whenever a person was assigned. Hand-adjusted the migration to `REFERENCES companies(id) ON DELETE SET NULL` — migration 0002 had not landed on `main`, so this is a same-branch fix, not an edit to an already-shipped migration.
 
 **Checkpoint**: US6 complete — full company lifecycle in the web app.
 

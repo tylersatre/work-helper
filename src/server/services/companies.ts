@@ -165,6 +165,18 @@ export function attachTagToCompany(db: AppDb, companyId: number, input: AttachIn
   return { ok: true, tags: getTagsForCompany(db, companyId) };
 }
 
+export type DeleteCompanyResult = { ok: true } | { ok: false; error: 'not-found' };
+
+export function deleteCompany(db: AppDb, id: number): DeleteCompanyResult {
+  if (!companyExists(db, id)) {
+    return { ok: false, error: 'not-found' };
+  }
+
+  db.delete(companies).where(eq(companies.id, id)).run();
+
+  return { ok: true };
+}
+
 export type DetachTagFromCompanyResult = { ok: true; tags: TagRecord[] } | { ok: false; error: 'record-not-found' };
 
 export function detachTagFromCompany(db: AppDb, companyId: number, tagId: number): DetachTagFromCompanyResult {

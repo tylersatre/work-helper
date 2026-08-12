@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/vue';
+import { fireEvent, render, screen, within } from '@testing-library/vue';
 import { flushPromises } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
@@ -176,6 +176,67 @@ describe('CompanyDetailPage', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('/api/companies/1/tags/1', expect.objectContaining({ method: 'DELETE' }));
     expect(screen.queryAllByTestId('tag-chip')).toHaveLength(0);
+  });
+
+  describe('delete (018-companies US6)', () => {
+    it('names the linked people and card counts (including 0/0); cancel changes nothing; confirm deletes and navigates to /companies', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/companies/1' && !options) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              id: 1,
+              name: 'Acme Inc',
+              people: [{ id: 1, firstName: 'Sam', lastName: 'Rivera' }],
+              cards: [{ id: 1, title: 'Follow up with Sam', lane: 'To Do' }],
+              tags: [],
+            }),
+          });
+        }
+        if (url === '/api/companies/1' && options?.method === 'DELETE') {
+          return Promise.resolve({ ok: true, status: 204 });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const router = await renderAt('/companies/1');
+      expect(await screen.findByText('Acme Inc')).toBeTruthy();
+
+      await fireEvent.click(screen.getByRole('button', { name: /delete/i }));
+      await flushPromises();
+
+      const dialog = screen.getByTestId('delete-company-dialog');
+      expect(dialog.textContent).toContain('1 person and 1 card');
+
+      await fireEvent.click(within(dialog).getByRole('button', { name: /^cancel$/i }));
+      await flushPromises();
+      expect(fetchMock).not.toHaveBeenCalledWith('/api/companies/1', expect.objectContaining({ method: 'DELETE' }));
+      expect(await screen.findByText('Acme Inc')).toBeTruthy();
+
+      await fireEvent.click(screen.getByRole('button', { name: /delete/i }));
+      await flushPromises();
+      await fireEvent.click(within(screen.getByTestId('delete-company-dialog')).getByRole('button', { name: /^delete$/i }));
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/companies/1', expect.objectContaining({ method: 'DELETE' }));
+      expect(router.currentRoute.value.fullPath).toBe('/companies');
+    });
+
+    it('states 0-count pluralization for a company with no links', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 1, name: 'Acme Inc', people: [], cards: [], tags: [] }) }),
+      );
+
+      await renderAt('/companies/1');
+      expect(await screen.findByText('Acme Inc')).toBeTruthy();
+
+      await fireEvent.click(screen.getByRole('button', { name: /delete/i }));
+      await flushPromises();
+
+      expect(screen.getByTestId('delete-company-dialog').textContent).toContain('0 people and 0 cards');
+    });
   });
 
   describe('load-more pagination (018-companies US4)', () => {
