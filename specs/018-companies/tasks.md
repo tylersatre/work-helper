@@ -76,15 +76,15 @@ Single TypeScript web app at repository root: Vue SPA in `src/client/`, Fastify 
 
 ### Tests for User Story 2 (write first, must fail) ⚠️
 
-- [ ] T015 [P] [US2] Write failing integration tests (person-assignment block) in tests/integration/company-links.test.ts: PUT /api/people/:id with `companyId: number` sets and switches the assignment, `companyId: null` clears it, omitted `companyId` leaves it unchanged, a missing company id → 400 `{ error: { message: "Company not found" } }` with the person unchanged; GET /api/people/:id includes `company: Company | null`; GET /api/companies/:id people section lists exactly the currently assigned people ordered lastName/firstName NOCASE
-- [ ] T016 [P] [US2] Extend tests/component/person-form.test.ts with failing assertions: the form offers a company field that searches companies by substring (no create option offered), selecting sets the company, and the field supports switching to another company and clearing to none
-- [ ] T017 [P] [US2] Extend tests/component/company-detail.test.ts with failing assertions: a populated people section renders the assigned people ordered by last name, replacing the empty state
+- [X] T015 [P] [US2] Write failing integration tests (person-assignment block) in tests/integration/company-links.test.ts: PUT /api/people/:id with `companyId: number` sets and switches the assignment, `companyId: null` clears it, omitted `companyId` leaves it unchanged, a missing company id → 400 `{ error: { message: "Company not found" } }` with the person unchanged; GET /api/people/:id includes `company: Company | null`; GET /api/companies/:id people section lists exactly the currently assigned people ordered lastName/firstName NOCASE
+- [X] T016 [P] [US2] Extend tests/component/person-form.test.ts with failing assertions: the form offers a company field that searches companies by substring (no create option offered), selecting sets the company, and the field supports switching to another company and clearing to none
+- [X] T017 [P] [US2] Extend tests/component/company-detail.test.ts with failing assertions: a populated people section renders the assigned people ordered by last name, replacing the empty state
 
 ### Implementation for User Story 2
 
-- [ ] T018 [US2] Add `company: Company | null` to the Person type in src/shared/types.ts, populate company on the person detail and implement set/clear assignment (validating the company exists) in src/server/services/people.ts, and accept the optional `companyId: number | null` field on PUT in src/server/routes/people.ts — T015 goes green
-- [ ] T019 [US2] Implement src/client/components/CompanyPicker.vue: debounced (300ms) search-select against GET /api/companies?q= supporting set, switch, and clear, offering existing companies only
-- [ ] T020 [US2] Wire CompanyPicker into src/client/components/PersonForm.vue, show the current company on src/client/pages/PersonDetailPage.vue, and render populated people entries in the CompanyDetailPage.vue people section — T016 and T017 go green
+- [X] T018 [US2] Add `company: Company | null` to the Person type in src/shared/types.ts, populate company on the person detail and implement set/clear assignment (validating the company exists) in src/server/services/people.ts, and accept the optional `companyId: number | null` field on PUT in src/server/routes/people.ts — T015 goes green
+- [X] T019 [US2] Implement src/client/components/CompanyPicker.vue: debounced (300ms) search-select against GET /api/companies?q= supporting set, switch, and clear, offering existing companies only
+- [X] T020 [US2] Wire CompanyPicker into src/client/components/PersonForm.vue, show the current company on src/client/pages/PersonDetailPage.vue, and render populated people entries in the CompanyDetailPage.vue people section — T016 and T017 go green
 
 **Checkpoint**: US1 and US2 work independently — person assignment round-trips between person records and company detail pages.
 

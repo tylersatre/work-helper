@@ -90,4 +90,29 @@ describe('CompanyDetailPage', () => {
     await flushPromises();
     expect(await screen.findByText('Acme Corp')).toBeTruthy();
   });
+
+  it('a populated people section renders the assigned people ordered by last name, replacing the empty state (018-companies US2)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          id: 1,
+          name: 'Acme Inc',
+          people: [
+            { id: 1, firstName: 'ana', lastName: 'alvarez' },
+            { id: 2, firstName: 'Sam', lastName: 'Rivera' },
+          ],
+          cards: [],
+          tags: [],
+        }),
+      }),
+    );
+
+    await renderAt('/companies/1');
+
+    expect(screen.queryByTestId('company-people-empty')).toBeNull();
+    const rows = await screen.findAllByTestId('company-person-row');
+    expect(rows.map((row) => row.textContent?.trim())).toEqual(['ana alvarez', 'Sam Rivera']);
+  });
 });

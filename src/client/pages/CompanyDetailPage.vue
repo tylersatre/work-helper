@@ -63,6 +63,11 @@ async function saveRename(): Promise<void> {
     <div class="company-detail-section">
       <h3>People</h3>
       <NEmpty v-if="company.people.length === 0" data-testid="company-people-empty" description="No people yet" />
+      <ul v-else class="company-detail-list">
+        <li v-for="person in company.people" :key="person.id" class="company-detail-row" data-testid="company-person-row">
+          <RouterLink :to="`/people/${person.id}`">{{ person.firstName }} {{ person.lastName }}</RouterLink>
+        </li>
+      </ul>
     </div>
 
     <div class="company-detail-section">
@@ -105,5 +110,25 @@ async function saveRename(): Promise<void> {
   letter-spacing: 0.04em;
   color: rgba(255, 255, 255, 0.5);
   margin-bottom: 0.5rem;
+}
+
+.company-detail-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.company-detail-row {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  margin-bottom: 0.4rem;
+  background: #1f1f24;
+  font-size: 0.85rem;
+}
+
+.company-detail-row a {
+  color: inherit;
+  text-decoration: none;
 }
 </style>

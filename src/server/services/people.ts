@@ -1,8 +1,9 @@
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { createPersonInputSchema, updatePersonInputSchema } from '../../shared/validation.js';
-import { emailAddresses, people, personPhones } from '../db/schema.js';
+import { companies, emailAddresses, people, personPhones } from '../db/schema.js';
 import { findEmailAddressByValue, isEmailAddressReferenced } from './contact-entries.js';
+import type { CompanyRecord } from './companies.js';
 import { getTagsForPerson, type TagRecord } from './tags.js';
 import type * as schema from '../db/schema.js';
 
@@ -26,6 +27,7 @@ export interface PersonRecord {
   extraFields: Record<string, string>;
   createdAt: number;
   tags: TagRecord[];
+  company: CompanyRecord | null;
 }
 
 export type CreatePersonResult =
@@ -72,6 +74,12 @@ function loadEntries(db: AppDb, table: EntryTable, personId: number): ContactEnt
     .all();
 }
 
+function getCompanySummary(db: AppDb, companyId: number | null): CompanyRecord | null {
+  if (companyId === null) return null;
+  const [row] = db.select({ id: companies.id, name: companies.name }).from(companies).where(eq(companies.id, companyId)).limit(1).all();
+  return row ?? null;
+}
+
 function toPersonRecord(db: AppDb, row: PersonRow, personFields: string[]): PersonRecord {
   const allowed = new Set(personFields);
   const extraFields: Record<string, string> = {};
@@ -89,6 +97,7 @@ function toPersonRecord(db: AppDb, row: PersonRow, personFields: string[]): Pers
     extraFields,
     createdAt: row.createdAt,
     tags: getTagsForPerson(db, row.id),
+    company: getCompanySummary(db, row.companyId),
   };
 }
 
@@ -173,7 +182,7 @@ function personExists(db: AppDb, id: number): boolean {
   return row !== undefined;
 }
 
-export type UpdatePersonResult = { ok: true; person: PersonRecord } | { ok: false; error: 'not-found' };
+export type UpdatePersonResult = { ok: true; person: PersonRecord } | { ok: false; error: 'not-found' | 'company-not-found' };
 
 export function updatePerson(db: AppDb, personFields: string[], id: number, rawInput: unknown): UpdatePersonResult {
   const input = updatePersonInputSchema.parse(rawInput);
@@ -182,11 +191,19 @@ export function updatePerson(db: AppDb, personFields: string[], id: number, rawI
     return { ok: false, error: 'not-found' };
   }
 
+  if (input.companyId !== undefined && input.companyId !== null) {
+    const [company] = db.select({ id: companies.id }).from(companies).where(eq(companies.id, input.companyId)).limit(1).all();
+    if (!company) {
+      return { ok: false, error: 'company-not-found' };
+    }
+  }
+
   db.update(people)
     .set({
       firstName: input.firstName,
       lastName: input.lastName,
       extraFields: normalizeExtraFields(input.extraFields, personFields),
+      ...(input.companyId !== undefined ? { companyId: input.companyId } : {}),
     })
     .where(eq(people.id, id))
     .run();

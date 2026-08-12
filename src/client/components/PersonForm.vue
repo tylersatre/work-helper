@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { NButton, NInput } from 'naive-ui';
 import { onMounted, reactive, ref, watch } from 'vue';
+import type { Company } from '../../shared/types.js';
+import CompanyPicker from './CompanyPicker.vue';
 
 interface CreatePersonFormValues {
   firstName: string;
@@ -14,6 +16,7 @@ interface EditPersonFormValues {
   firstName: string;
   lastName: string;
   extraFields?: Record<string, string>;
+  companyId?: number | null;
 }
 
 const props = withDefaults(
@@ -25,6 +28,7 @@ const props = withDefaults(
       email?: string | null;
       phone?: string | null;
       extraFields?: Record<string, string>;
+      company?: Company | null;
     };
     errorMessage?: string;
     submitLabel?: string;
@@ -49,6 +53,9 @@ const form = reactive({
   extraFields: { ...(props.initialValues?.extraFields ?? {}) } as Record<string, string>,
 });
 
+const currentCompany = ref<Company | null>(props.initialValues?.company ?? null);
+const companyTouched = ref(false);
+
 watch(
   () => props.initialValues,
   (values) => {
@@ -58,8 +65,15 @@ watch(
     form.email = values.email ?? '';
     form.phone = values.phone ?? '';
     form.extraFields = { ...(values.extraFields ?? {}) };
+    currentCompany.value = values.company ?? null;
+    companyTouched.value = false;
   },
 );
+
+function onCompanyChange(company: Company | null): void {
+  currentCompany.value = company;
+  companyTouched.value = true;
+}
 
 async function fetchFieldLabels(): Promise<void> {
   const response = await fetch('/api/person-fields');
@@ -88,6 +102,7 @@ function onSubmit(): void {
   if (props.mode === 'edit') {
     const values: EditPersonFormValues = { firstName: form.firstName, lastName: form.lastName };
     if (extraFields) values.extraFields = extraFields;
+    if (companyTouched.value) values.companyId = currentCompany.value ? currentCompany.value.id : null;
     emit('submit', values);
     return;
   }
@@ -125,6 +140,10 @@ function onSubmit(): void {
     <div v-for="label in fieldLabels" :key="label" class="person-form-field">
       <label :for="extraFieldId(label)">{{ label }}</label>
       <NInput v-model:value="form.extraFields[label]" size="small" :input-props="{ id: extraFieldId(label), name: label }" />
+    </div>
+
+    <div v-if="mode === 'edit'" class="person-form-field">
+      <CompanyPicker :company="currentCompany" @update:company="onCompanyChange" />
     </div>
 
     <div class="person-form-actions">

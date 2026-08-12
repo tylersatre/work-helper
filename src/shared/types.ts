@@ -31,6 +31,7 @@ export interface Person {
   extraFields: Record<string, string>;
   createdAt: number;
   tags: Tag[];
+  company: Company | null;
 }
 
 export interface PersonInput {
