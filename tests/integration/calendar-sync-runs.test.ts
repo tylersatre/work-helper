@@ -61,7 +61,6 @@ class GatedCalendarProvider implements CalendarProvider {
 class DisconnectedCalendarProvider implements CalendarProvider {
   async *fetchEvents(): AsyncIterable<ProviderCalendarEvent[]> {
     throw new Error('Mailbox is not connected (never signed in) — connect the mailbox on the Sync page.');
-    // eslint-disable-next-line no-unreachable
     yield [];
   }
 }

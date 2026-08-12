@@ -226,35 +226,37 @@ function formatWhen(ms: number): string {
 
     <MailboxPanel />
 
-    <h3>Email</h3>
+    <section class="email-sync-section" data-testid="email-sync-section">
+      <h3>Email</h3>
 
-    <form class="sync-form" @submit.prevent="onSync">
-      <NDatePicker v-model:value="startValue" type="date" clearable size="small" />
-      <span>to</span>
-      <NDatePicker v-model:value="endValue" type="date" clearable size="small" />
-      <NButton attr-type="submit" size="small" type="primary" :loading="syncing" :disabled="anySyncing">Sync</NButton>
-      <span v-if="syncing" data-testid="sync-in-progress">Syncing…</span>
-    </form>
+      <form class="sync-form" @submit.prevent="onSync">
+        <NDatePicker v-model:value="startValue" type="date" clearable size="small" />
+        <span>to</span>
+        <NDatePicker v-model:value="endValue" type="date" clearable size="small" />
+        <NButton attr-type="submit" size="small" type="primary" :loading="syncing" :disabled="anySyncing">Sync</NButton>
+        <span v-if="syncing" data-testid="sync-in-progress">Syncing…</span>
+      </form>
 
-    <p v-if="validationError" data-testid="sync-validation-error" role="alert" class="sync-page-error">{{ validationError }}</p>
+      <p v-if="validationError" data-testid="sync-validation-error" role="alert" class="sync-page-error">{{ validationError }}</p>
 
-    <div v-if="result" data-testid="sync-result" class="sync-result">
-      <template v-if="result.status === 'success'">{{ result.newCount }} new, {{ result.updatedCount }} updated</template>
-      <template v-else>Sync failed: {{ result.error }}</template>
-    </div>
+      <div v-if="result" data-testid="sync-result" class="sync-result">
+        <template v-if="result.status === 'success'">{{ result.newCount }} new, {{ result.updatedCount }} updated</template>
+        <template v-else>Sync failed: {{ result.error }}</template>
+      </div>
 
-    <NEmpty v-if="runs.length === 0" data-testid="sync-history-empty" description="No syncs yet" class="sync-history-empty" />
+      <NEmpty v-if="runs.length === 0" data-testid="sync-history-empty" description="No syncs yet" class="sync-history-empty" />
 
-    <ul v-else class="sync-history-list">
-      <li v-for="historyRun in runs" :key="historyRun.id" data-testid="sync-history-row" class="sync-history-row">
-        <span>{{ formatWhen(historyRun.ranAt) }}</span>
-        <span>{{ historyRun.startDate }} – {{ historyRun.endDate }}</span>
-        <span>{{ historyRun.source }}</span>
-        <span>{{ historyRun.status }}</span>
-        <span>{{ historyRun.newCount }} new / {{ historyRun.updatedCount }} updated</span>
-        <span v-if="historyRun.error">{{ historyRun.error }}</span>
-      </li>
-    </ul>
+      <ul v-else class="sync-history-list">
+        <li v-for="historyRun in runs" :key="historyRun.id" data-testid="sync-history-row" class="sync-history-row">
+          <span>{{ formatWhen(historyRun.ranAt) }}</span>
+          <span>{{ historyRun.startDate }} – {{ historyRun.endDate }}</span>
+          <span>{{ historyRun.source }}</span>
+          <span>{{ historyRun.status }}</span>
+          <span>{{ historyRun.newCount }} new / {{ historyRun.updatedCount }} updated</span>
+          <span v-if="historyRun.error">{{ historyRun.error }}</span>
+        </li>
+      </ul>
+    </section>
 
     <section class="calendar-sync-section" data-testid="calendar-sync-section">
       <h3>Calendar</h3>
@@ -271,7 +273,7 @@ function formatWhen(ms: number): string {
           :loading="calendarSyncing"
           :disabled="anySyncing"
         >
-          Refresh
+          Sync
         </NButton>
         <span v-if="calendarSyncing" data-testid="calendar-sync-in-progress">Syncing…</span>
       </form>
@@ -285,7 +287,7 @@ function formatWhen(ms: number): string {
         <template v-else>Sync failed: {{ calendarResult.error }}</template>
       </div>
 
-      <NEmpty v-if="calendarRuns.length === 0" data-testid="calendar-sync-history-empty" description="No calendar syncs yet" class="sync-history-empty" />
+      <NEmpty v-if="calendarRuns.length === 0" data-testid="calendar-sync-history-empty" description="No syncs yet" class="sync-history-empty" />
 
       <ul v-else class="sync-history-list">
         <li v-for="historyRun in calendarRuns" :key="historyRun.id" data-testid="calendar-sync-history-row" class="sync-history-row">

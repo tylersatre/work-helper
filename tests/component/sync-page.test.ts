@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, screen } from '@testing-library/vue';
+import { fireEvent, screen, within } from '@testing-library/vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { NDatePicker } from 'naive-ui';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -90,7 +90,7 @@ describe('SyncPage', () => {
     expect(end!.props('value')).toBe(Date.parse(`${todayIso()}T00:00:00`));
 
     expect(screen.getByTestId('sync-history-empty')).toBeTruthy();
-    expect(screen.getByText(/no syncs yet/i)).toBeTruthy();
+    expect(within(screen.getByTestId('email-sync-section')).getByText(/no syncs yet/i)).toBeTruthy();
   });
 
   it('prefills start from the newest successful run\'s endDate when history exists', async () => {
@@ -118,7 +118,7 @@ describe('SyncPage', () => {
     end!.vm.$emit('update:value', null);
     await flushPromises();
 
-    await fireEvent.click(screen.getByRole('button', { name: /sync/i }));
+    await fireEvent.click(within(screen.getByTestId('email-sync-section')).getByRole('button', { name: /sync/i }));
     await flushPromises();
     expect(screen.getByTestId('sync-validation-error').textContent).toMatch(/required/i);
     expect(fetchMock).not.toHaveBeenCalledWith('/api/email-sync/runs', expect.objectContaining({ method: 'POST' }));
@@ -127,7 +127,7 @@ describe('SyncPage', () => {
     end!.vm.$emit('update:value', Date.parse('2026-08-02T00:00:00'));
     await flushPromises();
 
-    await fireEvent.click(screen.getByRole('button', { name: /sync/i }));
+    await fireEvent.click(within(screen.getByTestId('email-sync-section')).getByRole('button', { name: /sync/i }));
     await flushPromises();
     expect(screen.getByTestId('sync-validation-error').textContent).toMatch(/start date must not be after end date/i);
     expect(fetchMock).not.toHaveBeenCalledWith('/api/email-sync/runs', expect.objectContaining({ method: 'POST' }));
@@ -146,7 +146,7 @@ describe('SyncPage', () => {
     mountPage();
     await flushPromises();
 
-    const button = screen.getByRole('button', { name: /sync/i }) as HTMLButtonElement;
+    const button = within(screen.getByTestId('email-sync-section')).getByRole('button', { name: /sync/i }) as HTMLButtonElement;
     await fireEvent.click(button);
     await flushPromises();
 
@@ -169,7 +169,7 @@ describe('SyncPage', () => {
 
     mountPage();
     await flushPromises();
-    await fireEvent.click(screen.getByRole('button', { name: /sync/i }));
+    await fireEvent.click(within(screen.getByTestId('email-sync-section')).getByRole('button', { name: /sync/i }));
     await flushPromises();
 
     expect(screen.getByTestId('sync-result').textContent).toContain('Mailbox unreachable');
@@ -190,11 +190,11 @@ describe('SyncPage', () => {
 
     mountPage();
     await flushPromises();
-    await fireEvent.click(screen.getByRole('button', { name: /sync/i }));
+    await fireEvent.click(within(screen.getByTestId('email-sync-section')).getByRole('button', { name: /sync/i }));
     await flushPromises();
 
     expect(screen.getByTestId('sync-validation-error').textContent?.trim()).toBeTruthy();
-    const button = screen.getByRole('button', { name: /sync/i }) as HTMLButtonElement;
+    const button = within(screen.getByTestId('email-sync-section')).getByRole('button', { name: /sync/i }) as HTMLButtonElement;
     expect(button.disabled).toBe(false);
   });
 
@@ -215,11 +215,11 @@ describe('SyncPage', () => {
 
     mountPage();
     await flushPromises();
-    await fireEvent.click(screen.getByRole('button', { name: /sync/i }));
+    await fireEvent.click(within(screen.getByTestId('email-sync-section')).getByRole('button', { name: /sync/i }));
     await flushPromises();
 
     expect(screen.getByTestId('sync-validation-error').textContent?.trim()).toBeTruthy();
-    const button = screen.getByRole('button', { name: /sync/i }) as HTMLButtonElement;
+    const button = within(screen.getByTestId('email-sync-section')).getByRole('button', { name: /sync/i }) as HTMLButtonElement;
     expect(button.disabled).toBe(false);
   });
 
