@@ -4,6 +4,10 @@ import { validateEnv } from './env.js';
 import { loadLanesConfig } from './lanes-config.js';
 import { createIdentityVerifier } from './mcp/auth/identity.js';
 import { loadPersonFieldsConfig } from './person-fields-config.js';
+import { DEV_SEED_EVENTS } from './services/calendar/dev-seed.js';
+import { FakeCalendarProvider } from './services/calendar/fake-provider.js';
+import { GraphCalendarProvider } from './services/calendar/graph-provider.js';
+import type { CalendarProvider } from './services/calendar/provider.js';
 import { DEV_SEED_MESSAGES } from './services/email/dev-seed.js';
 import { FakeMailboxAuth } from './services/email/fake-mailbox-auth.js';
 import { FakeMailProvider } from './services/email/fake-provider.js';
@@ -33,6 +37,17 @@ function resolveDevMailProvider(): MailProvider | undefined {
 }
 
 const devMailProvider = resolveDevMailProvider();
+
+// Same MAIL_PROVIDER switch as mail (research R4/R5) — mail and calendar share one connection, so
+// MAIL_PROVIDER=fake seeds both from dev-seed data and MAIL_PROVIDER=fake-unreachable breaks both.
+function resolveDevCalendarProvider(): CalendarProvider | undefined {
+  if (process.env.NODE_ENV === 'production') return undefined;
+  if (process.env.MAIL_PROVIDER === 'fake') return new FakeCalendarProvider(DEV_SEED_EVENTS);
+  if (process.env.MAIL_PROVIDER === 'fake-unreachable') return new FakeCalendarProvider([], { failImmediately: true });
+  return undefined;
+}
+
+const devCalendarProvider = resolveDevCalendarProvider();
 
 const msClientId = process.env.MS_CLIENT_ID;
 const msTenantId = process.env.MS_TENANT_ID;
@@ -74,6 +89,8 @@ const mailboxMissingSettings = process.env.MAIL_AUTH
   ? []
   : [!msClientId && 'MS_CLIENT_ID', !msTenantId && 'MS_TENANT_ID'].filter((v): v is string => Boolean(v));
 const mailProvider = devMailProvider ?? (mailboxAuth ? new GraphMailProvider({ getAccessToken: () => mailboxAuth.getAccessToken() }) : undefined);
+const calendarProvider =
+  devCalendarProvider ?? (mailboxAuth ? new GraphCalendarProvider({ getAccessToken: () => mailboxAuth.getAccessToken() }) : undefined);
 
 const app = buildApp({
   db,
@@ -83,6 +100,7 @@ const app = buildApp({
   mcpTokenSecret: process.env.MCP_TOKEN_SECRET,
   identityVerifier: process.env.AUTHENTIK_USERINFO_URL ? createIdentityVerifier(process.env.AUTHENTIK_USERINFO_URL) : undefined,
   mailProvider,
+  calendarProvider,
   mailboxAuth,
   mailboxMissingSettings,
 });

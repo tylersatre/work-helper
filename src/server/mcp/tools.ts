@@ -7,6 +7,8 @@ import { createPerson, getPerson, listPeople, updatePerson as updatePersonServic
 import { addNote, createTask, getTaskDetail, listTasksByLane } from '../services/tasks.js';
 import { emailAddresses, personPhones } from '../db/schema.js';
 import type * as schema from '../db/schema.js';
+import type { CalendarProvider } from '../services/calendar/provider.js';
+import { listEvents } from '../services/calendar/queries.js';
 import type { MailProvider } from '../services/email/provider.js';
 import { computeSyncWindow } from '../services/email/sync.js';
 import type { SyncCoordinator } from '../services/email/sync-coordinator.js';
@@ -19,6 +21,7 @@ export interface McpToolsContext {
   lanes: string[];
   personFields: string[];
   mailProvider?: MailProvider;
+  calendarProvider?: CalendarProvider;
   syncCoordinator: SyncCoordinator;
 }
 
@@ -629,6 +632,42 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         content: [{ type: 'text', text: `Found ${addresses.length} unlinked address(es).` }],
         structuredContent: { addresses },
       };
+    },
+  );
+
+  const eventSummarySchema = {
+    id: z.number(),
+    subject: z.string(),
+    startAt: z.number(),
+    endAt: z.number(),
+    isAllDay: z.boolean(),
+    isCancelled: z.boolean(),
+    location: z.string(),
+    seriesId: z.string().nullable(),
+  };
+
+  server.registerTool(
+    'list-events',
+    {
+      description:
+        'Lists stored calendar events overlapping an inclusive date range (server-local days), ascending by start time; cancelled events are included and flagged.',
+      inputSchema: { startDate: z.string().optional(), endDate: z.string().optional() },
+      outputSchema: { events: z.array(z.object(eventSummarySchema)) },
+    },
+    async ({ startDate, endDate }) => {
+      if (!startDate || !endDate) {
+        return toolError('A start date and end date are required');
+      }
+
+      let window;
+      try {
+        window = computeSyncWindow(startDate, endDate);
+      } catch {
+        return toolError('startDate and endDate must be valid YYYY-MM-DD dates, with endDate not before startDate');
+      }
+
+      const events = listEvents(context.db, window);
+      return { content: [{ type: 'text', text: `Found ${events.length} event(s).` }], structuredContent: { events } };
     },
   );
 
