@@ -35,9 +35,15 @@ export const updatePersonInputSchema = z.object({
   firstName: z.string().trim().min(1, 'First and last name are required'),
   lastName: z.string().trim().min(1, 'First and last name are required'),
   extraFields: z.record(z.string(), z.string()).optional(),
+  companyId: z.number().nullable().optional(),
 });
 
 export const tagNameSchema = z
+  .string()
+  .trim()
+  .min(1, 'A name is required');
+
+export const companyNameSchema = z
   .string()
   .trim()
   .min(1, 'A name is required');

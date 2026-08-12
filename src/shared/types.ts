@@ -31,6 +31,7 @@ export interface Person {
   extraFields: Record<string, string>;
   createdAt: number;
   tags: Tag[];
+  company: Company | null;
 }
 
 export interface PersonInput {
@@ -138,6 +139,7 @@ export interface TaskDetail extends Task {
   people: LinkedPerson[];
   notes: Note[];
   tags: Tag[];
+  companies: Company[];
 }
 
 export interface Tag {
@@ -149,4 +151,15 @@ export interface Tag {
 export interface TagWithCounts extends Tag {
   peopleCount: number;
   tasksCount: number;
+}
+
+export interface Company {
+  id: number;
+  name: string;
+}
+
+export interface CompanyDetail extends Company {
+  people: { id: number; firstName: string; lastName: string }[];
+  cards: { id: number; title: string; lane: string }[];
+  tags: Tag[];
 }

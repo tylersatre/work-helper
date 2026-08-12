@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { noteTextSchema, titleSchema } from '../../shared/validation.js';
-import { people, emailAddresses, personPhones, taskNotes, taskPeople, tasks } from '../db/schema.js';
+import { companies, people, emailAddresses, personPhones, taskCompanies, taskNotes, taskPeople, tasks } from '../db/schema.js';
 import { getTagsForTask } from './tags.js';
 import type * as schema from '../db/schema.js';
 
@@ -134,7 +134,15 @@ export function getTaskDetail(db: AppDb, id: number) {
     .orderBy(desc(taskNotes.createdAt), desc(taskNotes.id))
     .all();
 
-  return { ...task, people: linkedPeople, notes, tags: getTagsForTask(db, id) };
+  const linkedCompanies = db
+    .select({ id: companies.id, name: companies.name })
+    .from(taskCompanies)
+    .innerJoin(companies, eq(taskCompanies.companyId, companies.id))
+    .where(eq(taskCompanies.taskId, id))
+    .orderBy(asc(sql`${companies.name} COLLATE NOCASE`))
+    .all();
+
+  return { ...task, people: linkedPeople, notes, tags: getTagsForTask(db, id), companies: linkedCompanies };
 }
 
 export type AddNoteResult = { ok: true; note: typeof taskNotes.$inferSelect } | { ok: false; error: 'task-not-found' | 'invalid-text' };

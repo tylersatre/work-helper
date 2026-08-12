@@ -129,6 +129,10 @@ export async function peopleRoutes(app: FastifyInstance): Promise<void> {
     try {
       const result = updatePerson(app.db, app.personFields, Number(id), request.body);
       if (!result.ok) {
+        if (result.error === 'company-not-found') {
+          reply.status(400);
+          return { error: { message: 'Company not found' } };
+        }
         reply.status(404);
         return { error: { message: 'Person not found' } };
       }

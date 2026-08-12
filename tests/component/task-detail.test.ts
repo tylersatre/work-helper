@@ -29,7 +29,7 @@ describe('TaskDetailPage', () => {
       'fetch',
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [] }),
+        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [], companies: [] }),
       }),
     );
 
@@ -50,7 +50,7 @@ describe('TaskDetailPage', () => {
       'fetch',
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'Waiting', position: 0, createdAt: 1, people: [], notes: [], tags: [] }),
+        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'Waiting', position: 0, createdAt: 1, people: [], notes: [], tags: [], companies: [] }),
       }),
     );
 
@@ -71,7 +71,7 @@ describe('TaskDetailPage', () => {
       if (url === '/api/tasks/1' && !options) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [] }),
+          json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [], companies: [] }),
         });
       }
       if (typeof url === 'string' && url.startsWith('/api/people?q=')) {
@@ -103,6 +103,7 @@ describe('TaskDetailPage', () => {
             ],
             notes: [],
             tags: [],
+            companies: [],
           }),
         });
       }
@@ -145,13 +146,14 @@ describe('TaskDetailPage', () => {
             ],
             notes: [],
             tags: [],
+            companies: [],
           }),
         });
       }
       if (options?.method === 'DELETE') {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [] }),
+          json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [], companies: [] }),
         });
       }
       return Promise.resolve({ ok: true, json: async () => [] });
@@ -183,6 +185,7 @@ describe('TaskDetailPage', () => {
           people: [],
           notes: [{ id: 1, taskId: 1, text: 'Waiting on budget numbers', source: 'ui', createdAt: Date.now() }],
           tags: [],
+          companies: [],
         }),
       }),
     );
@@ -200,7 +203,7 @@ describe('TaskDetailPage', () => {
       'fetch',
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [] }),
+        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [], companies: [] }),
       }),
     );
 
@@ -229,6 +232,7 @@ describe('TaskDetailPage', () => {
             { id: 1, name: 'Q3', color: '#22C55E' },
             { id: 2, name: 'VIP', color: '#3B82F6' },
           ],
+          companies: [],
         }),
       }),
     );
@@ -255,6 +259,7 @@ describe('TaskDetailPage', () => {
             people: [],
             notes: [],
             tags: [{ id: 1, name: 'VIP', color: '#3B82F6' }],
+            companies: [],
           }),
         });
       }
@@ -282,7 +287,7 @@ describe('TaskDetailPage', () => {
       if (url === '/api/tasks/1' && !options) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [] }),
+          json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [], companies: [] }),
         });
       }
       if (url === '/api/tags' && !options) {

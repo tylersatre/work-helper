@@ -97,6 +97,7 @@ onMounted(fetchPerson);
 <template>
   <section v-if="person" class="person-detail">
     <h2 class="person-name">{{ person.firstName }} {{ person.lastName }}</h2>
+    <p v-if="person.company" class="person-company" data-testid="person-company">{{ person.company.name }}</p>
 
     <div class="person-detail-section">
       <ContactEntryList

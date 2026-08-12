@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { ZodError, z } from 'zod';
 import { addNote, createTask, deleteNote, getTaskDetail, linkPerson, moveTask, unlinkPerson } from '../services/tasks.js';
 import { attachTagToTask, detachTagFromTask, type AttachInput } from '../services/tags.js';
+import { linkCompanyToTask, unlinkCompanyFromTask } from '../services/companies.js';
 
 const placementIndexSchema = z.number().int().nonnegative();
 
@@ -112,6 +113,29 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       return { error: { message: 'Task not found' } };
     }
     return result.task;
+  });
+
+  app.post('/api/tasks/:id/companies', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { companyId } = request.body as { companyId: number };
+
+    const result = linkCompanyToTask(app.db, Number(id), companyId);
+    if (!result.ok) {
+      reply.status(404);
+      return { error: { message: result.error === 'task-not-found' ? 'Task not found' : 'Company not found' } };
+    }
+    return getTaskDetail(app.db, Number(id));
+  });
+
+  app.delete('/api/tasks/:id/companies/:companyId', async (request, reply) => {
+    const { id, companyId } = request.params as { id: string; companyId: string };
+
+    const result = unlinkCompanyFromTask(app.db, Number(id), Number(companyId));
+    if (!result.ok) {
+      reply.status(404);
+      return { error: { message: 'Task not found' } };
+    }
+    return getTaskDetail(app.db, Number(id));
   });
 
   app.post('/api/tasks/:id/tags', async (request, reply) => {

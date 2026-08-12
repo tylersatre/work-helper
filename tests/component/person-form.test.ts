@@ -151,5 +151,90 @@ describe('PersonForm', () => {
       expect(screen.getByText(/first and last name are required/i)).toBeTruthy();
       expect((screen.getByLabelText(/first name/i) as HTMLInputElement).value).toBe('Ana');
     });
+
+    describe('company field (018-companies US2)', () => {
+      function stubWithCompanySearch(): ReturnType<typeof vi.fn> {
+        const fetchMock = vi.fn().mockImplementation((url: string) => {
+          if (url === '/api/person-fields') {
+            return Promise.resolve({ ok: true, json: async () => ({ fields: [] }) });
+          }
+          if (url === '/api/companies?q=acm') {
+            return Promise.resolve({ ok: true, json: async () => [{ id: 1, name: 'Acme Corp' }] });
+          }
+          if (url === '/api/companies?q=glo') {
+            return Promise.resolve({ ok: true, json: async () => [{ id: 2, name: 'Globex' }] });
+          }
+          return Promise.resolve({ ok: true, json: async () => [] });
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        return fetchMock;
+      }
+
+      async function waitForDebounce(): Promise<void> {
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        await flushPromises();
+      }
+
+      it('searches existing companies by substring with no create option, and lets the user select, switch, and clear', async () => {
+        const fetchMock = stubWithCompanySearch();
+        render(PersonForm, {
+          props: { mode: 'edit', initialValues: { firstName: 'Sam', lastName: 'Rivera', company: null }, submitLabel: 'Save changes' },
+        });
+        await flushPromises();
+
+        await fireEvent.update(screen.getByLabelText(/company/i), 'acm');
+        await waitForDebounce();
+        expect(fetchMock).toHaveBeenCalledWith('/api/companies?q=acm');
+
+        expect(screen.queryByText(/create/i)).toBeNull();
+        await fireEvent.click(await screen.findByRole('button', { name: 'Acme Corp' }));
+        await flushPromises();
+        expect(screen.getByText('Acme Corp')).toBeTruthy();
+
+        await fireEvent.update(screen.getByLabelText(/company/i), 'glo');
+        await waitForDebounce();
+        await fireEvent.click(await screen.findByRole('button', { name: 'Globex' }));
+        await flushPromises();
+        expect(screen.getByText('Globex')).toBeTruthy();
+        expect(screen.queryByText('Acme Corp')).toBeNull();
+
+        await fireEvent.click(screen.getByRole('button', { name: /clear/i }));
+        await flushPromises();
+        expect(screen.queryByText('Globex')).toBeNull();
+      });
+
+      it('includes the selected companyId in the submitted payload, and null after clearing', async () => {
+        stubWithCompanySearch();
+        const { emitted } = render(PersonForm, {
+          props: { mode: 'edit', initialValues: { firstName: 'Sam', lastName: 'Rivera', company: null }, submitLabel: 'Save changes' },
+        });
+        await flushPromises();
+
+        await fireEvent.update(screen.getByLabelText(/company/i), 'acm');
+        await waitForDebounce();
+        await fireEvent.click(await screen.findByRole('button', { name: 'Acme Corp' }));
+        await flushPromises();
+
+        await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+        expect(emitted().submit[0]).toEqual([{ firstName: 'Sam', lastName: 'Rivera', companyId: 1 }]);
+
+        await fireEvent.click(screen.getByRole('button', { name: /clear/i }));
+        await flushPromises();
+        await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+        expect(emitted().submit[1]).toEqual([{ firstName: 'Sam', lastName: 'Rivera', companyId: null }]);
+      });
+
+      it('omits companyId entirely when the field is never touched', async () => {
+        stubWithCompanySearch();
+        const { emitted } = render(PersonForm, {
+          props: { mode: 'edit', initialValues: { firstName: 'Sam', lastName: 'Rivera', company: { id: 1, name: 'Acme Corp' } }, submitLabel: 'Save changes' },
+        });
+        await flushPromises();
+
+        await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+        expect(emitted().submit[0]).toEqual([{ firstName: 'Sam', lastName: 'Rivera' }]);
+      });
+    });
   });
 });
