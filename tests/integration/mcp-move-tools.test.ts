@@ -92,3 +92,102 @@ describe('move-task harness', () => {
     expect(await boardSnapshot()).toMatchObject({ 'To Do': ['Follow up with Sam'] });
   });
 });
+
+describe('US1: move-task default position', () => {
+  it('moves a card to the bottom of another lane with no position (US1-AS1)', async () => {
+    const ids = seedBoard({
+      'To Do': ['Follow up with Sam'],
+      'In Progress': ['Write proposal', 'Review budget'],
+    });
+
+    const result = await client.callTool({
+      name: 'move-task',
+      arguments: { taskId: ids['Follow up with Sam'], lane: 'In Progress' },
+    });
+    expect(result.isError).toBeFalsy();
+
+    await assertBoardOrder({
+      'In Progress': ['Write proposal', 'Review budget', 'Follow up with Sam'],
+      'To Do': [],
+    });
+  });
+
+  it('moving a card to its current lane with no position lands it at the bottom (edge case)', async () => {
+    const ids = seedBoard({ 'To Do': ['A', 'B', 'C'] });
+
+    const result = await client.callTool({
+      name: 'move-task',
+      arguments: { taskId: ids['A'], lane: 'To Do' },
+    });
+    expect(result.isError).toBeFalsy();
+
+    await assertBoardOrder({ 'To Do': ['B', 'C', 'A'] });
+  });
+});
+
+describe('US2: move-task explicit position', () => {
+  it('moves a card cross-lane to position 2 (US2-AS1a)', async () => {
+    const ids = seedBoard({
+      'To Do': ['Draft Q3 goals'],
+      'In Progress': ['Write proposal', 'Review budget'],
+    });
+
+    const result = await client.callTool({
+      name: 'move-task',
+      arguments: { taskId: ids['Draft Q3 goals'], lane: 'In Progress', position: 2 },
+    });
+    expect(result.isError).toBeFalsy();
+
+    await assertBoardOrder({ 'In Progress': ['Write proposal', 'Draft Q3 goals', 'Review budget'] });
+  });
+
+  it('reorders a card within its own lane to position 1 (US2-AS2)', async () => {
+    const ids = seedBoard({ 'To Do': ['Book venue', 'Order catering', 'Send invites'] });
+
+    const result = await client.callTool({
+      name: 'move-task',
+      arguments: { taskId: ids['Send invites'], lane: 'To Do', position: 1 },
+    });
+    expect(result.isError).toBeFalsy();
+
+    await assertBoardOrder({ 'To Do': ['Send invites', 'Book venue', 'Order catering'] });
+  });
+
+  it('clamps a past-the-end position to the bottom and reports the true landed position (US2-AS3)', async () => {
+    const ids = seedBoard({ Waiting: ['Chase invoice', 'Await contract', 'Ping vendor'] });
+
+    const result = await client.callTool({
+      name: 'move-task',
+      arguments: { taskId: ids['Chase invoice'], lane: 'Waiting', position: 10 },
+    });
+    expect(result.isError).toBeFalsy();
+
+    await assertBoardOrder({ Waiting: ['Await contract', 'Ping vendor', 'Chase invoice'] });
+    expect((result.structuredContent as { landedPosition: number }).landedPosition).toBe(3);
+  });
+
+  it('moving a card to its current position is a successful no-op (edge case)', async () => {
+    const ids = seedBoard({ 'To Do': ['A', 'B', 'C'] });
+
+    const result = await client.callTool({
+      name: 'move-task',
+      arguments: { taskId: ids['B'], lane: 'To Do', position: 2 },
+    });
+    expect(result.isError).toBeFalsy();
+
+    await assertBoardOrder({ 'To Do': ['A', 'B', 'C'] });
+    expect((result.structuredContent as { landedPosition: number }).landedPosition).toBe(2);
+  });
+
+  it('rejects out-of-range or non-integer positions at the tool boundary, leaving the board unchanged (edge case)', async () => {
+    const ids = seedBoard({ 'To Do': ['A', 'B', 'C'] });
+
+    for (const position of [0, -1, 1.5]) {
+      const before = await boardSnapshot();
+      await expect(
+        client.callTool({ name: 'move-task', arguments: { taskId: ids['A'], lane: 'To Do', position } }),
+      ).rejects.toThrow();
+      expect(await boardSnapshot()).toEqual(before);
+    }
+  });
+});
