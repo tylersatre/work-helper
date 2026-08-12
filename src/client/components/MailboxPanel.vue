@@ -122,9 +122,9 @@ async function onDisconnect(): Promise<void> {
 .mailbox-panel {
   margin-bottom: 1rem;
   padding: 0.75rem 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--wh-border-subtle);
   border-radius: 4px;
-  background: #1f1f24;
+  background: var(--wh-surface);
 }
 
 .mailbox-pending {

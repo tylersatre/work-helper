@@ -112,7 +112,7 @@ onMounted(fetchTask);
 
 .task-lane {
   font-size: 0.8rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--wh-text-secondary);
 }
 
 .task-detail-section {
@@ -123,7 +123,7 @@ onMounted(fetchTask);
   font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--wh-text-muted);
   margin-bottom: 0.5rem;
 }
 
@@ -136,7 +136,7 @@ onMounted(fetchTask);
 
 .task-detail-tag-error {
   margin: 0 0 0.6rem;
-  color: #fca5a5;
+  color: var(--wh-error);
   font-size: 0.8rem;
 }
 </style>

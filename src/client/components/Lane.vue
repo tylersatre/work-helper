@@ -91,7 +91,7 @@ function onCardDragEnd(): void {
   min-height: 0;
   background: #1b1b20;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--wh-border-subtle);
   overflow: hidden;
 }
 
@@ -101,7 +101,7 @@ function onCardDragEnd(): void {
   padding: 0.65rem 0.75rem;
   font-size: 0.85rem;
   font-weight: 600;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--wh-border-subtle);
 }
 
 .lane-tasks {
@@ -116,7 +116,7 @@ function onCardDragEnd(): void {
 .lane-footer {
   flex: 0 0 auto;
   padding: 0.5rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--wh-border-subtle);
 }
 
 .lane-empty-item {

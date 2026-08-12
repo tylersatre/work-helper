@@ -150,7 +150,7 @@ function onSubmit(): void {
 
 .person-form-field label {
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--wh-text-secondary);
 }
 
 .person-form-actions {
@@ -159,7 +159,7 @@ function onSubmit(): void {
 
 .person-form-error {
   margin: 0;
-  color: #fca5a5;
+  color: var(--wh-error);
   font-size: 0.8rem;
   overflow-wrap: break-word;
   word-break: break-word;

@@ -184,7 +184,7 @@ onMounted(() => {
   margin: 0.75rem 0.75rem 0;
   border-radius: 4px;
   background: rgba(239, 68, 68, 0.15);
-  color: #fca5a5;
+  color: var(--wh-error);
   border: 1px solid rgba(239, 68, 68, 0.4);
 }
 </style>

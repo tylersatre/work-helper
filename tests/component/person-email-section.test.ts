@@ -41,6 +41,7 @@ describe('PersonEmailSection', () => {
     const rows = screen.getAllByTestId('person-email-row');
     expect(rows).toHaveLength(5);
     expect(rows[0]!.textContent).toContain('sam.rivera@example.com — to, cc');
+    expect(rows[0]!.closest('ul')?.classList.contains('wh-card-list')).toBe(true);
   });
 
   it('shows the "(no subject)" placeholder for an empty subject', async () => {

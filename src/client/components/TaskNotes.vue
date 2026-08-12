@@ -133,7 +133,7 @@ function onDialogShowChange(show: boolean): void {
 
 .note-form-label {
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--wh-text-secondary);
 }
 
 .note-form-submit {
@@ -142,7 +142,7 @@ function onDialogShowChange(show: boolean): void {
 
 .note-form-error {
   margin: 0;
-  color: #fca5a5;
+  color: var(--wh-error);
   font-size: 0.78rem;
 }
 </style>

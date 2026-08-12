@@ -112,14 +112,14 @@ async function onCreate(values: {
 .address-link-controls {
   margin-top: 0.3rem;
   padding: 0.4rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--wh-border-subtle);
   border-radius: 4px;
 }
 
 .address-link-label {
   display: block;
   font-size: 0.7rem;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--wh-text-muted);
   margin-bottom: 0.2rem;
 }
 
@@ -144,7 +144,7 @@ async function onCreate(values: {
 }
 
 .address-link-error {
-  color: #fca5a5;
+  color: var(--wh-error);
   font-size: 0.75rem;
   margin: 0 0 0.3rem;
 }

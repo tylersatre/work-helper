@@ -37,11 +37,11 @@ function onDragEnd(): void {
 .task-card {
   display: block;
   padding: 0.5rem 0.65rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--wh-border-subtle);
   border-radius: 4px;
   margin-bottom: 0.5rem;
   background: #26262c;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--wh-text-primary);
   font-size: 0.82rem;
   line-height: 1.35;
   overflow-wrap: break-word;

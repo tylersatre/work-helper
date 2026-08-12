@@ -95,35 +95,41 @@ onMounted(fetchConversation);
 }
 
 .email-conversation-error {
-  color: #fca5a5;
+  color: var(--wh-error);
   font-size: 0.85rem;
 }
 
 .subject-placeholder {
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--wh-text-muted);
   font-style: italic;
 }
 
 .email-message {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 0.75rem 0;
+  background: var(--wh-surface);
+  border: 1px solid var(--wh-border);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+}
+
+.email-message + .email-message {
+  margin-top: 0.9rem;
 }
 
 .email-message-header {
   font-size: 0.82rem;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--wh-text-secondary);
   margin-bottom: 0.5rem;
 }
 
 .email-message-role {
   text-transform: uppercase;
   font-size: 0.68rem;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--wh-text-muted);
   margin-right: 0.3rem;
 }
 
 .email-message-address {
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--wh-text-muted);
   margin-right: 0.4rem;
 }
 
