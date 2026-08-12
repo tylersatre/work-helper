@@ -451,6 +451,51 @@ export function createMcpServer(context: McpToolsContext): McpServer {
     },
   );
 
+  server.registerTool(
+    'sync-calendar',
+    {
+      description:
+        'Pulls calendar events for a date range (inclusive, server-local timezone) into the store, refreshing already-stored events it re-encounters and marking disappeared or cancelled in-range events cancelled.',
+      inputSchema: { startDate: z.string().optional(), endDate: z.string().optional() },
+      outputSchema: {
+        status: z.enum(['complete', 'interrupted']),
+        newCount: z.number(),
+        updatedCount: z.number(),
+        error: z.string().optional(),
+      },
+    },
+    async ({ startDate, endDate }) => {
+      if (!startDate || !endDate) {
+        return toolError('A start date and end date are required');
+      }
+
+      let window;
+      try {
+        window = computeSyncWindow(startDate, endDate);
+      } catch {
+        return toolError('startDate and endDate must be valid YYYY-MM-DD dates, with endDate not before startDate');
+      }
+
+      const outcome = await context.syncCoordinator.triggerCalendar({ startDate, endDate, window, source: 'mcp', provider: context.calendarProvider });
+      if (outcome.kind === 'already-running') {
+        return toolError('A sync is already running');
+      }
+
+      const { run } = outcome;
+      if (run.status === 'failure' && run.newCount === 0 && run.updatedCount === 0) {
+        return toolError(`Could not reach the calendar (${run.error}) — connect the mailbox on the Sync page.`);
+      }
+
+      const status = run.status === 'success' ? 'complete' : 'interrupted';
+      const text =
+        status === 'complete'
+          ? `Synced ${run.newCount} new event(s), ${run.updatedCount} updated.`
+          : `Sync interrupted after storing ${run.newCount} new event(s), ${run.updatedCount} updated: ${run.error}`;
+      const structuredContent = { status, newCount: run.newCount, updatedCount: run.updatedCount, error: run.error ?? undefined };
+      return { content: [{ type: 'text', text }], structuredContent };
+    },
+  );
+
   const personRefSchema = z.object({ id: z.number(), name: z.string() }).nullable();
 
   const conversationParticipantSummarySchema = z.object({

@@ -155,11 +155,11 @@ Single project at repository root: `src/server/`, `src/client/`, `tests/`, `driz
 
 ### Tests for User Story 6 (write first, confirm they fail)
 
-- [ ] T032 [US6] Write failing integration tests in `tests/integration/calendar-sync.test.ts`: `sync-calendar` with 2026-08-01..2026-08-31 returns `{ status: 'complete', newCount, updatedCount }` and `GET /api/calendar-sync/runs` shows the run with source `'mcp'` and matching counts; with no dates → tool error "A start and end date are required" wording per contracts/mcp-tools.md, nothing synced, run count unchanged; with start 2026-08-20 / end 2026-08-05 → the invalid-range tool error, no side effects; while a gated sync is in flight, `sync-calendar` returns "A sync is already running"; a fully-failing run (provider `failImmediately`) returns a tool error ending "connect the mailbox on the Sync page." and records a `failure` history row
+- [X] T032 [US6] Write failing integration tests in `tests/integration/calendar-sync.test.ts`: `sync-calendar` with 2026-08-01..2026-08-31 returns `{ status: 'complete', newCount, updatedCount }` and `GET /api/calendar-sync/runs` shows the run with source `'mcp'` and matching counts; with no dates → tool error "A start and end date are required" wording per contracts/mcp-tools.md, nothing synced, run count unchanged; with start 2026-08-20 / end 2026-08-05 → the invalid-range tool error, no side effects; while a gated sync is in flight, `sync-calendar` returns "A sync is already running"; a fully-failing run (provider `failImmediately`) returns a tool error ending "connect the mailbox on the Sync page." and records a `failure` history row
 
 ### Implementation for User Story 6
 
-- [ ] T033 [US6] Register the `sync-calendar` MCP tool in `src/server/mcp/tools.ts` mirroring `sync-emails`: optional-in-schema `startDate`/`endDate` validated in the handler, `SyncCoordinator.triggerCalendar` with source `'mcp'`, `newCount`/`updatedCount` output vocabulary (deliberately not `syncedCount`), tool errors per contracts/mcp-tools.md with no history row on validation failure — T032 goes green
+- [X] T033 [US6] Register the `sync-calendar` MCP tool in `src/server/mcp/tools.ts` mirroring `sync-emails`: optional-in-schema `startDate`/`endDate` validated in the handler, `SyncCoordinator.triggerCalendar` with source `'mcp'`, `newCount`/`updatedCount` output vocabulary (deliberately not `syncedCount`), tool errors per contracts/mcp-tools.md with no history row on validation failure — T032 goes green
 
 **Checkpoint**: Agents self-serve fresh calendar data through the same engine and history as the web path.
 
