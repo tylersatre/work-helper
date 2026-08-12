@@ -8,7 +8,7 @@ import { addNote, createTask, getTaskDetail, listTasksByLane } from '../services
 import { emailAddresses, personPhones } from '../db/schema.js';
 import type * as schema from '../db/schema.js';
 import type { CalendarProvider } from '../services/calendar/provider.js';
-import { listEvents } from '../services/calendar/queries.js';
+import { getEvent, listEvents } from '../services/calendar/queries.js';
 import type { MailProvider } from '../services/email/provider.js';
 import { computeSyncWindow } from '../services/email/sync.js';
 import type { SyncCoordinator } from '../services/email/sync-coordinator.js';
@@ -668,6 +668,60 @@ export function createMcpServer(context: McpToolsContext): McpServer {
 
       const events = listEvents(context.db, window);
       return { content: [{ type: 'text', text: `Found ${events.length} event(s).` }], structuredContent: { events } };
+    },
+  );
+
+  const eventParticipantSchema = z.object({
+    address: z.string(),
+    displayName: z.string(),
+    role: z.enum(['organizer', 'required', 'optional', 'resource']),
+    responseStatus: z.enum(['none', 'accepted', 'declined', 'tentative']),
+    person: personRefSchema,
+  });
+
+  server.registerTool(
+    'get-event',
+    {
+      description:
+        'Fetches a single stored calendar event with its full detail set — subject, times, all-day/cancelled flags, location, body text, online-meeting link, category, Outlook link, and organizer-first participants each showing their linked person when one exists.',
+      inputSchema: { eventId: z.number().int().positive() },
+      outputSchema: {
+        id: z.number(),
+        subject: z.string(),
+        startAt: z.number(),
+        endAt: z.number(),
+        isAllDay: z.boolean(),
+        isCancelled: z.boolean(),
+        location: z.string(),
+        bodyText: z.string(),
+        categories: z.array(z.string()),
+        onlineMeetingUrl: z.string(),
+        webLink: z.string(),
+        seriesId: z.string().nullable(),
+        participants: z.array(eventParticipantSchema),
+      },
+    },
+    async ({ eventId }) => {
+      const event = getEvent(context.db, eventId);
+      if (!event) {
+        return toolError(`Event ${eventId} not found`);
+      }
+      const structuredContent = {
+        id: event.id,
+        subject: event.subject,
+        startAt: event.startAt,
+        endAt: event.endAt,
+        isAllDay: event.isAllDay,
+        isCancelled: event.isCancelled,
+        location: event.location,
+        bodyText: event.bodyText,
+        categories: event.categories,
+        onlineMeetingUrl: event.onlineMeetingUrl,
+        webLink: event.webLink,
+        seriesId: event.seriesId,
+        participants: event.participants,
+      };
+      return { content: [{ type: 'text', text: `Event "${event.subject}".` }], structuredContent };
     },
   );
 

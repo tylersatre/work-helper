@@ -79,12 +79,12 @@ Single project at repository root: `src/server/`, `src/client/`, `tests/`, `driz
 
 ### Tests for User Story 2 (write first, confirm they fail)
 
-- [ ] T020 [US2] Write failing integration tests in `tests/integration/calendar-read-tools.test.ts` (real app + fake provider + MCP client): seed the US2 scenario-1 event ("Pricing review", organizer Sam Rivera, required Tyler Satre accepted, optional ana.alvarez no response, Conference Room B, Teams join link, "Orange category", agenda body), sync, then `get-event` returns subject, `startAt`/`endAt` epoch-ms values matching 2026-08-14 10:00–10:30, `isAllDay: false`, `isCancelled: false`, location, `bodyText`, organizer-first participants with address/displayName/role/responseStatus, `onlineMeetingUrl`, `categories: ['Orange category']`, `webLink`, `seriesId: null`; `get-event` with an unknown id returns tool error `Event <id> not found`; also cover the edge cases: an attendee with no display name stores `displayName: ''`, and a solo appointment syncs with organizer only
+- [X] T020 [US2] Write failing integration tests in `tests/integration/calendar-read-tools.test.ts` (real app + fake provider + MCP client): seed the US2 scenario-1 event ("Pricing review", organizer Sam Rivera, required Tyler Satre accepted, optional ana.alvarez no response, Conference Room B, Teams join link, "Orange category", agenda body), sync, then `get-event` returns subject, `startAt`/`endAt` epoch-ms values matching 2026-08-14 10:00–10:30, `isAllDay: false`, `isCancelled: false`, location, `bodyText`, organizer-first participants with address/displayName/role/responseStatus, `onlineMeetingUrl`, `categories: ['Orange category']`, `webLink`, `seriesId: null`; `get-event` with an unknown id returns tool error `Event <id> not found`; also cover the edge cases: an attendee with no display name stores `displayName: ''`, and a solo appointment syncs with organizer only
 
 ### Implementation for User Story 2
 
-- [ ] T021 [US2] Implement `getEvent(eventId)` in `src/server/services/calendar/queries.ts` returning the full detail shape of contracts/mcp-tools.md — event fields plus participants (organizer first, then stored order) each joined to its linked person (`person: { id, name } | null`)
-- [ ] T022 [US2] Register the `get-event` MCP tool in `src/server/mcp/tools.ts` (`eventId` positive-int input, not-found tool error, full output schema per contracts/mcp-tools.md) — T020 goes green
+- [X] T021 [US2] Implement `getEvent(eventId)` in `src/server/services/calendar/queries.ts` returning the full detail shape of contracts/mcp-tools.md — event fields plus participants (organizer first, then stored order) each joined to its linked person (`person: { id, name } | null`)
+- [X] T022 [US2] Register the `get-event` MCP tool in `src/server/mcp/tools.ts` (`eventId` positive-int input, not-found tool error, full output schema per contracts/mcp-tools.md) — T020 goes green
 
 **Checkpoint**: Agents retrieve complete event detail; US1 and US2 both independently verifiable.
 
