@@ -120,11 +120,11 @@ Single TypeScript web app at repository root: Vue SPA in `src/client/`, Fastify 
 
 ### Tests for User Story 4 (write first, must fail) ⚠️
 
-- [ ] T027 [US4] Extend tests/component/company-detail.test.ts with failing assertions: with 30 people and 30 cards the people section shows the first 25 with a load-more control and the cards section independently shows its first 25 with its own control; one activation of a control reveals that section's full 30 without affecting the other section; with 25 or fewer entries a section shows everything and no control
+- [X] T027 [US4] Extend tests/component/company-detail.test.ts with failing assertions: with 30 people and 30 cards the people section shows the first 25 with a load-more control and the cards section independently shows its first 25 with its own control; one activation of a control reveals that section's full 30 without affecting the other section; with 25 or fewer entries a section shows everything and no control
 
 ### Implementation for User Story 4
 
-- [ ] T028 [US4] Implement per-section client-side truncation in src/client/pages/CompanyDetailPage.vue: a `showAll` ref per section, `visible = showAll ? all : all.slice(0, 25)`, and a load-more button rendered only when more than 25 entries exist (PersonEmailSection.vue pattern, per D7) — T027 goes green
+- [X] T028 [US4] Implement per-section client-side truncation in src/client/pages/CompanyDetailPage.vue: a `showAll` ref per section, `visible = showAll ? all : all.slice(0, 25)`, and a load-more button rendered only when more than 25 entries exist (PersonEmailSection.vue pattern, per D7) — T027 goes green
 
 **Checkpoint**: US4 complete — detail sections paginate independently client-side; no server change.
 

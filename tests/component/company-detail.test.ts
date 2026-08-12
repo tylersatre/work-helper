@@ -140,4 +140,47 @@ describe('CompanyDetailPage', () => {
     const rows = await screen.findAllByTestId('company-card-row');
     expect(rows.map((row) => row.textContent?.trim())).toEqual(['alpha rollout', 'Zephyr onboarding']);
   });
+
+  describe('load-more pagination (018-companies US4)', () => {
+    function detailWith(peopleCount: number, cardsCount: number) {
+      return {
+        id: 1,
+        name: 'Acme Inc',
+        people: Array.from({ length: peopleCount }, (_, i) => ({ id: i + 1, firstName: 'Person', lastName: String(i + 1).padStart(2, '0') })),
+        cards: Array.from({ length: cardsCount }, (_, i) => ({ id: i + 1, title: `Card ${String(i + 1).padStart(2, '0')}`, lane: 'To Do' })),
+        tags: [],
+      };
+    }
+
+    it('shows the first 25 of 30 people and 30 cards, each with its own load-more control that independently reveals the rest', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => detailWith(30, 30) }));
+
+      await renderAt('/companies/1');
+
+      expect((await screen.findAllByTestId('company-person-row'))).toHaveLength(25);
+      expect(screen.getAllByTestId('company-card-row')).toHaveLength(25);
+
+      const [peopleLoadMore, cardsLoadMore] = screen.getAllByRole('button', { name: /show all/i });
+      await fireEvent.click(peopleLoadMore!);
+      await flushPromises();
+
+      expect(screen.getAllByTestId('company-person-row')).toHaveLength(30);
+      expect(screen.getAllByTestId('company-card-row')).toHaveLength(25);
+
+      await fireEvent.click(cardsLoadMore!);
+      await flushPromises();
+
+      expect(screen.getAllByTestId('company-card-row')).toHaveLength(30);
+    });
+
+    it('shows everything with no load-more control when a section has 25 or fewer entries', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => detailWith(25, 3) }));
+
+      await renderAt('/companies/1');
+
+      expect((await screen.findAllByTestId('company-person-row'))).toHaveLength(25);
+      expect(screen.getAllByTestId('company-card-row')).toHaveLength(3);
+      expect(screen.queryByRole('button', { name: /show all/i })).toBeNull();
+    });
+  });
 });

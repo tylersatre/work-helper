@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { NButton, NEmpty, NInput } from 'naive-ui';
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import type { CompanyDetail } from '../../shared/types.js';
 
@@ -9,6 +9,8 @@ const company = ref<CompanyDetail | null>(null);
 const isRenaming = ref(false);
 const renameValue = ref('');
 const renameError = ref('');
+const showAllPeople = ref(false);
+const showAllCards = ref(false);
 
 async function fetchCompany(): Promise<void> {
   const response = await fetch(`/api/companies/${route.params.id}`);
@@ -16,6 +18,16 @@ async function fetchCompany(): Promise<void> {
 }
 
 onMounted(fetchCompany);
+
+const visiblePeople = computed(() => {
+  if (!company.value) return [];
+  return showAllPeople.value ? company.value.people : company.value.people.slice(0, 25);
+});
+
+const visibleCards = computed(() => {
+  if (!company.value) return [];
+  return showAllCards.value ? company.value.cards : company.value.cards.slice(0, 25);
+});
 
 function startRename(): void {
   if (!company.value) return;
@@ -63,21 +75,27 @@ async function saveRename(): Promise<void> {
     <div class="company-detail-section">
       <h3>People</h3>
       <NEmpty v-if="company.people.length === 0" data-testid="company-people-empty" description="No people yet" />
-      <ul v-else class="company-detail-list">
-        <li v-for="person in company.people" :key="person.id" class="company-detail-row" data-testid="company-person-row">
-          <RouterLink :to="`/people/${person.id}`">{{ person.firstName }} {{ person.lastName }}</RouterLink>
-        </li>
-      </ul>
+      <template v-else>
+        <ul class="company-detail-list">
+          <li v-for="person in visiblePeople" :key="person.id" class="company-detail-row" data-testid="company-person-row">
+            <RouterLink :to="`/people/${person.id}`">{{ person.firstName }} {{ person.lastName }}</RouterLink>
+          </li>
+        </ul>
+        <NButton v-if="!showAllPeople && company.people.length > 25" size="small" @click="showAllPeople = true">Show all</NButton>
+      </template>
     </div>
 
     <div class="company-detail-section">
       <h3>Cards</h3>
       <NEmpty v-if="company.cards.length === 0" data-testid="company-cards-empty" description="No cards yet" />
-      <ul v-else class="company-detail-list">
-        <li v-for="card in company.cards" :key="card.id" class="company-detail-row" data-testid="company-card-row">
-          <RouterLink :to="`/tasks/${card.id}`">{{ card.title }}</RouterLink>
-        </li>
-      </ul>
+      <template v-else>
+        <ul class="company-detail-list">
+          <li v-for="card in visibleCards" :key="card.id" class="company-detail-row" data-testid="company-card-row">
+            <RouterLink :to="`/tasks/${card.id}`">{{ card.title }}</RouterLink>
+          </li>
+        </ul>
+        <NButton v-if="!showAllCards && company.cards.length > 25" size="small" @click="showAllCards = true">Show all</NButton>
+      </template>
     </div>
 
     <div class="company-detail-section">
