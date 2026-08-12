@@ -8,9 +8,25 @@ import type * as schema from '../db/schema.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
 
-export function createTask(db: AppDb, lanes: string[], rawTitle: unknown, rawNote?: unknown, source: 'ui' | 'mcp' = 'ui') {
+export class InvalidLaneError extends Error {
+  constructor(public lane: string) {
+    super(`Invalid lane: ${lane}`);
+  }
+}
+
+export function createTask(
+  db: AppDb,
+  lanes: string[],
+  rawTitle: unknown,
+  rawNote?: unknown,
+  source: 'ui' | 'mcp' = 'ui',
+  rawLane?: string,
+) {
   const title = titleSchema.parse(rawTitle);
-  const firstLane = lanes[0]!;
+  const targetLane = rawLane === undefined ? lanes[0]! : rawLane;
+  if (!lanes.includes(targetLane)) {
+    throw new InvalidLaneError(targetLane);
+  }
   const createdAt = Date.now();
 
   const trimmedNote = typeof rawNote === 'string' ? rawNote.trim() : '';
@@ -19,13 +35,13 @@ export function createTask(db: AppDb, lanes: string[], rawTitle: unknown, rawNot
     const [{ maxPosition } = { maxPosition: null }] = tx
       .select({ maxPosition: sql<number | null>`max(${tasks.position})` })
       .from(tasks)
-      .where(eq(tasks.lane, firstLane))
+      .where(eq(tasks.lane, targetLane))
       .all();
     const position = maxPosition === null ? 0 : maxPosition + 1;
 
     const [created] = tx
       .insert(tasks)
-      .values({ title, lane: firstLane, position, createdAt })
+      .values({ title, lane: targetLane, position, createdAt })
       .returning()
       .all();
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
 import { tasks } from '../../src/server/db/schema.js';
+import { createTask, InvalidLaneError } from '../../src/server/services/tasks.js';
 
 const LANES = ['To Do', 'In Progress', 'Waiting', 'Done'];
 
@@ -387,5 +388,46 @@ describe('PUT /api/tasks/:id/placement', () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.json()).toEqual({ error: { message: 'Invalid index' } });
+  });
+});
+
+describe('createTask lane targeting (US3)', () => {
+  it('creates the task at the bottom of an explicit valid lane (max position + 1)', () => {
+    const { db } = createDb(':memory:');
+    seed(db, [
+      { title: 'Chase invoice', lane: 'Waiting', position: 0 },
+      { title: 'Await contract', lane: 'Waiting', position: 1 },
+    ]);
+
+    const created = createTask(db, LANES, 'Confirm venue hold', undefined, 'mcp', 'Waiting');
+
+    expect(created).toMatchObject({ title: 'Confirm venue hold', lane: 'Waiting', position: 2 });
+  });
+
+  it('creates the task at position 0 of an explicit valid empty lane', () => {
+    const { db } = createDb(':memory:');
+
+    const created = createTask(db, LANES, 'Ping vendor', undefined, 'mcp', 'Done');
+
+    expect(created).toMatchObject({ title: 'Ping vendor', lane: 'Done', position: 0 });
+  });
+
+  it('lands at the bottom of lanes[0] when no lane is given (unchanged from today, regression pin)', () => {
+    const { db } = createDb(':memory:');
+
+    const created = createTask(db, LANES, 'Send invites');
+
+    expect(created).toMatchObject({ title: 'Send invites', lane: LANES[0], position: 0 });
+  });
+
+  it('throws InvalidLaneError for an unconfigured lane and writes zero rows', () => {
+    const { db } = createDb(':memory:');
+    seed(db, [{ title: 'Existing', lane: 'To Do', position: 0 }]);
+    const before = db.select().from(tasks).all().length;
+
+    expect(() => createTask(db, LANES, 'Book venue', undefined, 'mcp', 'Doing')).toThrow(InvalidLaneError);
+
+    const after = db.select().from(tasks).all().length;
+    expect(after).toBe(before);
   });
 });
