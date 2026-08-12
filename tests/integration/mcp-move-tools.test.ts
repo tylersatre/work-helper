@@ -180,13 +180,18 @@ describe('US2: move-task explicit position', () => {
   });
 
   it('rejects out-of-range or non-integer positions at the tool boundary, leaving the board unchanged (edge case)', async () => {
+    // The installed MCP SDK (@modelcontextprotocol/sdk) catches Zod input-validation errors inside
+    // its CallToolRequestSchema handler and returns them as a resolved CallToolResult with
+    // isError: true (see server/mcp.js's catch block, which wraps every McpError except
+    // UrlElicitationRequired via createToolError) rather than rejecting the client-side promise.
+    // This is SDK-boundary validation — our handler never runs, confirmed by the board staying byte-identical.
     const ids = seedBoard({ 'To Do': ['A', 'B', 'C'] });
 
     for (const position of [0, -1, 1.5]) {
       const before = await boardSnapshot();
-      await expect(
-        client.callTool({ name: 'move-task', arguments: { taskId: ids['A'], lane: 'To Do', position } }),
-      ).rejects.toThrow();
+      const result = await client.callTool({ name: 'move-task', arguments: { taskId: ids['A'], lane: 'To Do', position } });
+      expect(result.isError).toBe(true);
+      expect(JSON.stringify(result.content)).toContain('Input validation error');
       expect(await boardSnapshot()).toEqual(before);
     }
   });

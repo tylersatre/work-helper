@@ -13,7 +13,7 @@ import {
   unlinkCompanyFromTask,
 } from '../services/companies.js';
 import { createPerson, getPerson, listPeople, updatePerson as updatePersonService, type PersonRecord } from '../services/people.js';
-import { addNote, createTask, getTaskDetail, listTasksByLane } from '../services/tasks.js';
+import { addNote, createTask, getTaskDetail, listTasksByLane, moveTask } from '../services/tasks.js';
 import { emailAddresses, personPhones } from '../db/schema.js';
 import type * as schema from '../db/schema.js';
 import type { CalendarProvider } from '../services/calendar/provider.js';
@@ -1027,6 +1027,45 @@ export function createMcpServer(context: McpToolsContext): McpServer {
       };
       return {
         content: [{ type: 'text', text: `Found ${page.events.length} event(s) for ${personName(person)}.` }],
+        structuredContent,
+      };
+    },
+  );
+
+  server.registerTool(
+    'move-task',
+    {
+      description:
+        'Moves an existing task card to a configured lane, optionally at a 1-based position (1 = top). Without a position the card lands at the bottom of the destination lane. Supports within-lane reordering.',
+      inputSchema: {
+        taskId: z.number().int().positive(),
+        lane: z.string(),
+        position: z.number().int().min(1).optional(),
+      },
+      outputSchema: { ...taskSummarySchema, landedPosition: z.number() },
+    },
+    async ({ taskId, lane, position }) => {
+      const targetIndex = position === undefined ? Number.MAX_SAFE_INTEGER : position - 1;
+      const result = moveTask(context.db, context.lanes, taskId, lane, targetIndex);
+      if (!result.ok) {
+        if (result.error === 'task-not-found') {
+          return toolError(`Task ${taskId} not found`);
+        }
+        return toolError(`Unknown lane "${lane}". Valid lanes: ${context.lanes.join(', ')}`);
+      }
+
+      const { task } = result;
+      const landedPosition = task.position + 1;
+      const structuredContent = {
+        id: task.id,
+        title: task.title,
+        lane: task.lane,
+        position: task.position,
+        createdAt: task.createdAt,
+        landedPosition,
+      };
+      return {
+        content: [{ type: 'text', text: `Moved task "${task.title}" to lane "${task.lane}" at position ${landedPosition}.` }],
         structuredContent,
       };
     },
