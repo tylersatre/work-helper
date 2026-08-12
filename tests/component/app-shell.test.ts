@@ -35,7 +35,7 @@ describe('App shell', () => {
     expect(within(nav).getByRole('link', { name: 'Board' })).toBeTruthy();
     expect(within(nav).getByRole('link', { name: 'People' })).toBeTruthy();
     expect(within(nav).getByRole('link', { name: 'Tags' })).toBeTruthy();
-    expect(within(nav).getByRole('link', { name: 'Email Sync' })).toBeTruthy();
+    expect(within(nav).getByRole('link', { name: 'Sync' })).toBeTruthy();
     expect(within(nav).getByRole('link', { name: 'Emails' })).toBeTruthy();
   });
 
@@ -80,11 +80,11 @@ describe('App shell', () => {
     expect(within(nav).getByRole('link', { name: 'People' }).getAttribute('aria-current')).toBeNull();
   });
 
-  it('marks Email Sync active on /sync', async () => {
+  it('marks Sync active on /sync', async () => {
     await renderAt('/sync');
 
     const nav = screen.getByTestId('app-nav');
-    expect(within(nav).getByRole('link', { name: 'Email Sync' }).getAttribute('aria-current')).toBe('page');
+    expect(within(nav).getByRole('link', { name: 'Sync' }).getAttribute('aria-current')).toBe('page');
     expect(within(nav).getByRole('link', { name: 'Board' }).getAttribute('aria-current')).toBeNull();
   });
 
