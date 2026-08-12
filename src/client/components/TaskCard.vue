@@ -40,7 +40,7 @@ function onDragEnd(): void {
   border: 1px solid var(--wh-border-subtle);
   border-radius: 4px;
   margin-bottom: 0.5rem;
-  background: #26262c;
+  background: var(--wh-surface-raised);
   color: var(--wh-text-primary);
   font-size: 0.82rem;
   line-height: 1.35;

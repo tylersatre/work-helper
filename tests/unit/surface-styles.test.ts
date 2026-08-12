@@ -41,7 +41,27 @@ describe('no hardcoded dark-mode literals in client components', () => {
       expect(source).not.toMatch(/(?<!-)color:\s*rgba\(255,\s*255,\s*255,\s*0\.[0-5]\d*\)/);
     },
   );
+
+  it.each(files.map((f) => [f.slice(CLIENT_ROOT.length + 1), f]))(
+    '%s takes dark surfaces from tokens — no near-black hex backgrounds (accents allowed)',
+    (_name, path) => {
+      const source = styleOf(path);
+      const hexBackgrounds = [...source.matchAll(/background(?:-color)?:\s*(#[0-9a-f]{6})\b/gi)].map((m) => m[1]!);
+      const nearBlack = hexBackgrounds.filter((hex) => hexLuminance(hex) < 0.05);
+      expect(nearBlack).toEqual([]);
+    },
+  );
 });
+
+/** WCAG 2.x relative luminance of a #rrggbb hex — dark-gray surfaces (< 0.05) must come from --wh-* tokens; brighter accent hexes are fine. */
+function hexLuminance(hex: string): number {
+  const n = parseInt(hex.slice(1), 16);
+  const lin = (channel: number): number => {
+    const c = channel / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * lin((n >> 16) & 0xff) + 0.7152 * lin((n >> 8) & 0xff) + 0.0722 * lin(n & 0xff);
+}
 
 describe('card treatments stay declared', () => {
   it('EmailConversationPage renders each message as an outlined surface card', () => {

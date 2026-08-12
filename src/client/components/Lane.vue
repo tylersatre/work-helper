@@ -89,7 +89,7 @@ function onCardDragEnd(): void {
   width: 280px;
   height: 100%;
   min-height: 0;
-  background: #1b1b20;
+  background: var(--wh-surface);
   border-radius: 6px;
   border: 1px solid var(--wh-border-subtle);
   overflow: hidden;
