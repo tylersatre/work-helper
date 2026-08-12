@@ -320,7 +320,7 @@ export function listUnlinkedAddresses(db: AppDb): UnlinkedAddressSummary[] {
     ),
     ranked_names AS (
       SELECT ea.id AS addressId, ep.display_name AS displayName,
-             ROW_NUMBER() OVER (PARTITION BY ea.id ORDER BY (ep.display_name = '') ASC, m.sent_at DESC) AS rn
+             ROW_NUMBER() OVER (PARTITION BY ea.id ORDER BY (ep.display_name = '') ASC, m.sent_at DESC, ep.id DESC) AS rn
       FROM email_addresses ea
       JOIN email_participants ep ON ep.address_id = ea.id
       JOIN email_messages m ON m.id = ep.message_id

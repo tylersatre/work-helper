@@ -200,6 +200,24 @@ describe('US2: list-unlinked-addresses', () => {
     expect(addresses.find((a) => a.address === 'no-name@example.com')?.displayName).toBe('no-name@example.com');
   });
 
+  it('picks a display name deterministically when two messages tie on sent_at with different non-empty names', async () => {
+    const tiedMessages = [
+      msg({ from: { address: 'news@example.com', name: 'Acme News' }, receivedDateTime: '2026-08-05T09:00:00Z', sentDateTime: '2026-08-05T09:00:00Z' }),
+      msg({ from: { address: 'news@example.com', name: 'Acme Newsletter' }, receivedDateTime: '2026-08-05T09:00:00Z', sentDateTime: '2026-08-05T09:00:00Z' }),
+    ];
+    buildTestApp(new FakeMailProvider(tiedMessages));
+    await startAndConnect();
+    await sync();
+
+    const first = await listUnlinked();
+    const second = await listUnlinked();
+    const firstName = (first.structuredContent as { addresses: { address: string; displayName: string }[] }).addresses.find((a) => a.address === 'news@example.com')?.displayName;
+    const secondName = (second.structuredContent as { addresses: { address: string; displayName: string }[] }).addresses.find((a) => a.address === 'news@example.com')?.displayName;
+
+    expect(firstName).toBe('Acme Newsletter');
+    expect(secondName).toBe(firstName);
+  });
+
   it('never suppresses the mailbox owner\'s own address (FR-017)', async () => {
     buildTestApp(new FakeMailProvider([msg({ from: { address: 'someone@example.com' }, toRecipients: [{ address: 'tyler@example.com', name: 'Tyler Satre' }] })]));
     await startAndConnect();

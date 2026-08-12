@@ -76,7 +76,7 @@ An authorized agent edits an existing person's first name, last name, and extra 
 
 ### User Story 5 - Full contact lists on person fetch (Priority: P5)
 
-When an authorized agent fetches a single person, the response carries every email address and every phone number the person has, with the primary of each type marked — the detail an agent needs to manage contacts without guessing. Search results are unchanged: each result row still carries only the primary email and primary phone.
+When an authorized agent fetches a single person, the response carries every email address and every phone number the person has, with the primary of each type marked — the detail an agent needs to manage contacts without guessing. Search results are unchanged: each result row still carries only the primary email (search-people rows have never carried a phone).
 
 **Why this priority**: It rounds out the agent's read picture and is needed for an agent to verify its own contact edits, but it is a read-surface refinement riding on the write capabilities above.
 
@@ -84,7 +84,7 @@ When an authorized agent fetches a single person, the response carries every ema
 
 **Acceptance Scenarios**:
 
-1. **Given** person "Sam Rivera" with addresses sam.rivera@example.com (primary) and sam.personal@example.com, and phones "555-0100" (primary) and "555-0101", **When** an authorized agent fetches Sam Rivera with get-person and searches "sam" with search-people, **Then** the get-person response includes both email addresses and both phone numbers with the primary of each marked, while the search-people result row still shows only the primary email and phone.
+1. **Given** person "Sam Rivera" with addresses sam.rivera@example.com (primary) and sam.personal@example.com, and phones "555-0100" (primary) and "555-0101", **When** an authorized agent fetches Sam Rivera with get-person and searches "sam" with search-people, **Then** the get-person response includes both email addresses and both phone numbers with the primary of each marked, while the search-people result row still shows only the primary email.
 
 ---
 
@@ -141,7 +141,7 @@ When an authorized agent fetches a single person, the response carries every ema
 **Reading people**
 
 - **FR-018**: The single-person fetch capability MUST return all of a person's email addresses and all of their phone numbers, with the primary of each type marked.
-- **FR-019**: The people-search capability's result rows MUST continue to carry only the primary email and primary phone.
+- **FR-019**: The people-search capability's result rows MUST continue to carry only the primary email.
 
 **Parity boundary**
 
@@ -181,7 +181,7 @@ When an authorized agent fetches a single person, the response carries every ema
 
 - Deleting a person via agent capability — Tyler declined destructive power in agent hands for this slice; the People page remains the deletion path (recorded in the `mcp-tool-expansion` stub).
 - Editing an address or phone string in place via agent capability — the UI's edit-in-place stays UI-only; the agent path is remove + add.
-- Changes to people-search results — result rows keep primary-only email and phone by decision; exposing full lists in search results stays in the `mcp-tool-expansion` stub.
+- Changes to people-search results — result rows keep their existing primary-only email shape by decision; exposing full lists (or a phone field) in search results stays in the `mcp-tool-expansion` stub.
 - Provenance markers — deliberately none: a person created or edited by an agent is indistinguishable from one made in the UI; person-level history is the `person-notes` stub's territory if ever wanted.
 - Multiple emails or phones on creation — at most one of each at creation (each becoming primary), mirroring the UI create form; further entries go through the contact-management capabilities.
 - A bulk/batch create capability — an agent sweep loops single calls.
