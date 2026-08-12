@@ -307,4 +307,36 @@ describe('PeoplePage', () => {
     expect(within(row).queryByRole('textbox')).toBeNull();
     expect(within(row).queryByRole('button', { name: /remove/i })).toBeNull();
   });
+
+  it('lays out tag chips in a wrapper inside the tags cell, so the td itself stays a table cell (flex on a td breaks row alignment)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [
+          {
+            id: 1,
+            firstName: 'Sam',
+            lastName: 'Rivera',
+            emails: [entry(1, 'sam.rivera@example.com')],
+            phones: [],
+            extraFields: {},
+            createdAt: 1,
+            tags: [{ id: 1, name: 'Q3', color: '#22C55E' }],
+          },
+        ],
+      }),
+    );
+
+    render(PeoplePage);
+
+    const row = await screen.findByTestId('person-row');
+    const chipWrapper = row.querySelector('td > .people-table-tag-chips');
+    expect(chipWrapper).toBeTruthy();
+    expect(within(chipWrapper as HTMLElement).getAllByTestId('tag-chip')).toHaveLength(1);
+
+    const table = row.closest('table');
+    expect(table?.classList.contains('wh-table')).toBe(true);
+    expect(table?.parentElement?.classList.contains('wh-table-card')).toBe(true);
+  });
 });

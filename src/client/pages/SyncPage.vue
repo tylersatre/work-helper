@@ -327,7 +327,7 @@ function formatWhen(ms: number): string {
 
 .sync-page-error {
   margin: 0 0 1rem;
-  color: #fca5a5;
+  color: var(--wh-error);
   font-size: 0.8rem;
 }
 
@@ -350,10 +350,10 @@ function formatWhen(ms: number): string {
   flex-wrap: wrap;
   gap: 0.5rem;
   padding: 0.5rem 0.6rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--wh-border-subtle);
   border-radius: 4px;
   margin-bottom: 0.4rem;
-  background: #1f1f24;
+  background: var(--wh-surface);
   font-size: 0.85rem;
 }
 </style>

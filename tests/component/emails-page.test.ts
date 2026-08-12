@@ -97,6 +97,21 @@ describe('EmailsPage', () => {
     expect(row.textContent).toContain('sam.rivera@example.com');
   });
 
+  it('renders the conversation list as a contained card (wh-card-list)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ conversations: [conversation()], nextCursor: null }),
+      }),
+    );
+
+    await renderPage();
+
+    const row = await screen.findByTestId('email-conversation-row');
+    expect(row.closest('ul')?.classList.contains('wh-card-list')).toBe(true);
+  });
+
   it('shows the styled "(no subject)" placeholder for an empty subject', async () => {
     vi.stubGlobal(
       'fetch',

@@ -54,7 +54,7 @@ onMounted(() => fetchPage());
       class="emails-empty"
     />
 
-    <ul v-else class="email-conversation-list">
+    <ul v-else class="email-conversation-list wh-card-list">
       <li v-for="conversation in conversations" :key="conversation.id" class="email-conversation-row" data-testid="email-conversation-row">
         <RouterLink :to="`/emails/${conversation.id}`" class="email-conversation-link" :class="{ 'email-conversation-unread': conversation.hasUnread }">
           <span class="email-conversation-subject" :class="{ 'subject-placeholder': !conversation.subject.trim() }">
@@ -87,7 +87,7 @@ onMounted(() => fetchPage());
 }
 
 .emails-page-error {
-  color: #fca5a5;
+  color: var(--wh-error);
   font-size: 0.85rem;
 }
 
@@ -95,21 +95,11 @@ onMounted(() => fetchPage());
   margin-top: 1.5rem;
 }
 
-.email-conversation-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.email-conversation-row {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
 .email-conversation-link {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
-  padding: 0.6rem 0.4rem;
+  padding: 0.6rem 0.75rem;
   color: inherit;
   text-decoration: none;
 }
@@ -127,13 +117,13 @@ onMounted(() => fetchPage());
 }
 
 .email-conversation-subject.subject-placeholder {
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--wh-text-muted);
   font-style: italic;
 }
 
 .email-conversation-participants {
   font-size: 0.82rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--wh-text-secondary);
   font-weight: 400;
 }
 
@@ -142,7 +132,7 @@ onMounted(() => fetchPage());
   align-items: center;
   gap: 0.5rem;
   font-size: 0.78rem;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--wh-text-muted);
   font-weight: 400;
 }
 

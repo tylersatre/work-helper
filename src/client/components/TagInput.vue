@@ -94,7 +94,7 @@ function onSubmit(): void {
 
 .tag-input-label {
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--wh-text-secondary);
 }
 
 .tag-suggestions {
@@ -110,9 +110,9 @@ function onSubmit(): void {
   width: 100%;
   text-align: left;
   padding: 0.3rem 0.5rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--wh-border-subtle);
   border-radius: 4px;
-  background: #1f1f24;
+  background: var(--wh-surface);
   color: inherit;
   font-size: 0.82rem;
   cursor: pointer;
@@ -120,7 +120,7 @@ function onSubmit(): void {
 
 .tag-input-error {
   margin: 0;
-  color: #fca5a5;
+  color: var(--wh-error);
   font-size: 0.78rem;
 }
 </style>

@@ -99,14 +99,14 @@ async function onSubmit(): Promise<void> {
   border: 1px dashed rgba(255, 255, 255, 0.2);
   border-radius: 4px;
   background: transparent;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--wh-text-secondary);
   font-size: 0.8rem;
   cursor: pointer;
   text-align: left;
 }
 
 .add-task-toggle:hover {
-  border-color: rgba(255, 255, 255, 0.4);
+  border-color: var(--wh-text-muted);
   color: #fff;
 }
 
@@ -118,12 +118,12 @@ async function onSubmit(): Promise<void> {
 
 .add-task-label {
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--wh-text-secondary);
 }
 
 .add-task-error {
   margin: 0;
-  color: #fca5a5;
+  color: var(--wh-error);
   font-size: 0.75rem;
 }
 

@@ -95,15 +95,58 @@ describe('EmailConversationPage', () => {
     expect(message.textContent).toContain('tyler@example.com');
   });
 
-  it('shows the unread marker, importance, flag status, categories, and folder', async () => {
+  it('shows the metadata as a labeled grid with badges — unread, High importance, Flagged, categories, folder', async () => {
     await renderPage(detail());
 
     const message = screen.getByTestId('email-message');
     expect(within(message).getByTestId('message-unread')).toBeTruthy();
-    expect(message.textContent).toContain('high');
-    expect(message.textContent).toContain('flagged');
-    expect(message.textContent).toContain('Orange category');
-    expect(message.textContent).toContain('Inbox');
+
+    const meta = within(message).getByTestId('message-meta');
+    // Sent/Received/Folder are label+value pairs in a definition grid.
+    const terms = Array.from(meta.querySelectorAll('dt')).map((dt) => dt.textContent);
+    expect(terms).toEqual(['Sent', 'Received', 'Folder']);
+    expect(meta.textContent).toContain('Inbox');
+    // Importance and flag render as human badges, not raw API values.
+    expect(within(meta).getByText('High importance')).toBeTruthy();
+    expect(within(meta).getByText(/Flagged/)).toBeTruthy();
+    expect(meta.textContent).toContain('Orange category');
+  });
+
+  it('hides the importance and flag badges entirely for a normal, unflagged message — no raw "notFlagged" text', async () => {
+    await renderPage(detail({ messages: [baseMessage({ importance: 'normal', flagStatus: 'notFlagged', isRead: true })] }));
+
+    const message = screen.getByTestId('email-message');
+    const meta = within(message).getByTestId('message-meta');
+    expect(meta.textContent).not.toContain('notFlagged');
+    expect(meta.textContent).not.toContain('normal');
+    expect(within(meta).queryByText(/Flagged/)).toBeNull();
+    expect(within(meta).queryByText('High importance')).toBeNull();
+  });
+
+  it('renders each participant on its own boxed row — role label, person/address, and link controls inside the row for unlinked addresses', async () => {
+    await renderPage(
+      detail({
+        messages: [
+          baseMessage({
+            participants: [
+              { address: 'sam.rivera@example.com', displayName: 'Sam Rivera', role: 'from', person: { id: 3, name: 'Sam Rivera' } },
+              { address: 'jordan.smith@example.com', displayName: 'Jordan Smith', role: 'to', person: null },
+              { address: 'ana@example.com', displayName: 'Ana Alvarez', role: 'cc', person: null },
+            ],
+          }),
+        ],
+      }),
+    );
+
+    const rows = screen.getAllByTestId('participant-row');
+    expect(rows).toHaveLength(3);
+    expect(rows.map((row) => row.querySelector('.email-participant-role')?.textContent)).toEqual(['from', 'to', 'cc']);
+    // The linked participant has no controls; each unlinked one carries its controls inside its own row.
+    expect(within(rows[0]!).queryByTestId('address-link-controls')).toBeNull();
+    expect(within(rows[1]!).getByTestId('address-link-controls')).toBeTruthy();
+    expect(within(rows[2]!).getByTestId('address-link-controls')).toBeTruthy();
+    // Rows live in a contained list so each address reads as its own boxed line.
+    expect(rows[0]!.closest('ul')?.classList.contains('wh-card-list')).toBe(true);
   });
 
   it('shows attachment name, type, and formatted size, and an open-in-Outlook link', async () => {

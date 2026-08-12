@@ -47,7 +47,7 @@ onMounted(fetchConversations);
       class="person-emails-empty"
     />
 
-    <ul v-else class="person-email-list">
+    <ul v-else class="person-email-list wh-card-list">
       <li v-for="conversation in visible" :key="conversation.conversationId" class="person-email-row" data-testid="person-email-row">
         <RouterLink :to="`/emails/${conversation.conversationId}`" class="person-email-link">
           <span :class="{ 'subject-placeholder': !conversation.subject.trim() }">{{ subjectOrPlaceholder(conversation.subject) }}</span>
@@ -65,42 +65,36 @@ onMounted(fetchConversations);
 
 <style scoped>
 .person-email-list {
-  list-style: none;
-  padding: 0;
   margin: 0 0 0.5rem;
-}
-
-.person-email-row {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .person-email-link {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
-  padding: 0.4rem 0;
+  padding: 0.4rem 0.6rem;
   color: inherit;
   text-decoration: none;
   font-size: 0.85rem;
 }
 
 .subject-placeholder {
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--wh-text-muted);
   font-style: italic;
 }
 
 .person-email-date {
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--wh-text-muted);
 }
 
 .person-email-address {
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--wh-text-secondary);
 }
 
 .person-email-error {
-  color: #fca5a5;
+  color: var(--wh-error);
   font-size: 0.85rem;
 }
 </style>

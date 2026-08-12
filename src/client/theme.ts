@@ -1,12 +1,19 @@
 import type { GlobalThemeOverrides } from 'naive-ui';
+import { palette } from './palette.js';
 
 // Single tweak-point for the dark, data-forward look (research.md R2).
+// Surface colors come from palette.ts so Naive UI components and hand-written
+// component styles share the same elevation scale.
 export const themeOverrides: GlobalThemeOverrides = {
   common: {
     primaryColor: '#3B82F6',
     primaryColorHover: '#60A5FA',
     primaryColorPressed: '#2563EB',
     primaryColorSuppl: '#3B82F6',
+    bodyColor: palette.bg,
+    cardColor: palette.surface,
+    modalColor: palette.surfaceRaised,
+    popoverColor: palette.surfaceRaised,
     fontFamily:
       "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji'",
     fontSizeSmall: '12px',

@@ -80,13 +80,16 @@ async function onCreate(values: {
 
 <template>
   <div class="address-link-controls" data-testid="address-link-controls">
-    <label class="address-link-label" :for="searchInputId">Search people to link</label>
-    <NInput
-      v-model:value="query"
-      size="small"
-      class="address-link-search"
-      :input-props="{ id: searchInputId, name: 'search', 'aria-label': 'Search people to link' }"
-    />
+    <div class="address-link-actions">
+      <NInput
+        v-model:value="query"
+        size="small"
+        class="address-link-search"
+        placeholder="Search people to link"
+        :input-props="{ id: searchInputId, name: 'search', 'aria-label': 'Search people to link' }"
+      />
+      <NButton v-if="!creating" size="small" @click="creating = true">Create person</NButton>
+    </div>
 
     <ul v-if="results.length" class="address-link-results">
       <li v-for="person in results" :key="person.id" data-testid="search-result" class="address-link-result">
@@ -96,9 +99,8 @@ async function onCreate(values: {
     </ul>
     <p v-if="linkError" role="alert" class="address-link-error">{{ linkError }}</p>
 
-    <NButton v-if="!creating" size="small" @click="creating = true">Create person</NButton>
     <PersonForm
-      v-else
+      v-if="creating"
       mode="create"
       :initial-values="{ firstName: split.firstName, lastName: split.lastName, email: address, phone: '' }"
       submit-label="Create person"
@@ -109,23 +111,16 @@ async function onCreate(values: {
 </template>
 
 <style scoped>
-.address-link-controls {
-  margin-top: 0.3rem;
-  padding: 0.4rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 4px;
-}
-
-.address-link-label {
-  display: block;
-  font-size: 0.7rem;
-  color: rgba(255, 255, 255, 0.5);
-  margin-bottom: 0.2rem;
+/* Compact inline controls: sits at the right end of a participant row; the
+ * results list and create form expand below the row's action strip. */
+.address-link-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .address-link-search {
-  max-width: 280px;
-  margin-bottom: 0.3rem;
+  width: 180px;
 }
 
 .address-link-results {
@@ -144,7 +139,7 @@ async function onCreate(values: {
 }
 
 .address-link-error {
-  color: #fca5a5;
+  color: var(--wh-error);
   font-size: 0.75rem;
   margin: 0 0 0.3rem;
 }

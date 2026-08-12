@@ -133,7 +133,7 @@ async function onRemove(entryId: number): Promise<void> {
   font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--wh-text-muted);
   margin-bottom: 0.4rem;
 }
 
@@ -149,10 +149,10 @@ async function onRemove(entryId: number): Promise<void> {
   justify-content: space-between;
   gap: 0.5rem;
   padding: 0.4rem 0.6rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--wh-border-subtle);
   border-radius: 4px;
   margin-bottom: 0.35rem;
-  background: #1f1f24;
+  background: var(--wh-surface);
   font-size: 0.82rem;
 }
 
@@ -178,7 +178,7 @@ async function onRemove(entryId: number): Promise<void> {
 
 .contact-entry-empty {
   font-size: 0.82rem;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--wh-text-muted);
   margin-bottom: 0.5rem;
 }
 
@@ -195,7 +195,7 @@ async function onRemove(entryId: number): Promise<void> {
 }
 
 .contact-entry-error {
-  color: #fca5a5;
+  color: var(--wh-error);
   font-size: 0.8rem;
   overflow-wrap: break-word;
   word-break: break-word;
