@@ -100,10 +100,10 @@ async function unlinkCompany(companyId: number): Promise<void> {
   justify-content: space-between;
   gap: 0.5rem;
   padding: 0.4rem 0.6rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--wh-border-subtle);
   border-radius: 4px;
   margin-bottom: 0.4rem;
-  background: #1f1f24;
+  background: var(--wh-surface);
   font-size: 0.85rem;
   overflow-wrap: break-word;
   word-break: break-word;
