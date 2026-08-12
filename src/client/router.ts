@@ -1,4 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
+import CompaniesPage from './pages/CompaniesPage.vue';
+import CompanyDetailPage from './pages/CompanyDetailPage.vue';
 import EmailConversationPage from './pages/EmailConversationPage.vue';
 import EmailsPage from './pages/EmailsPage.vue';
 import BoardPage from './pages/BoardPage.vue';
@@ -15,6 +17,8 @@ export const router = createRouter({
     { path: '/people', component: PeoplePage },
     { path: '/people/:id', component: PersonDetailPage },
     { path: '/tasks/:id', component: TaskDetailPage },
+    { path: '/companies', component: CompaniesPage },
+    { path: '/companies/:id', component: CompanyDetailPage },
     { path: '/tags', component: TagsPage },
     { path: '/sync', component: SyncPage },
     { path: '/emails', component: EmailsPage },

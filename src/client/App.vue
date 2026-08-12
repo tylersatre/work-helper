@@ -6,8 +6,9 @@ import { themeOverrides } from './theme.js';
 
 const route = useRoute();
 
-const activeSection = computed<'board' | 'people' | 'tags' | 'sync' | 'emails'>(() => {
+const activeSection = computed<'board' | 'people' | 'companies' | 'tags' | 'sync' | 'emails'>(() => {
   if (route.path === '/people' || route.path.startsWith('/people/')) return 'people';
+  if (route.path === '/companies' || route.path.startsWith('/companies/')) return 'companies';
   if (route.path === '/tags') return 'tags';
   if (route.path === '/sync') return 'sync';
   if (route.path === '/emails' || route.path.startsWith('/emails/')) return 'emails';
@@ -27,6 +28,9 @@ const activeSection = computed<'board' | 'people' | 'tags' | 'sync' | 'emails'>(
           </RouterLink>
           <RouterLink v-slot="{ href, navigate }" to="/people" custom>
             <a :href="href" :aria-current="activeSection === 'people' ? 'page' : undefined" @click="navigate">People</a>
+          </RouterLink>
+          <RouterLink v-slot="{ href, navigate }" to="/companies" custom>
+            <a :href="href" :aria-current="activeSection === 'companies' ? 'page' : undefined" @click="navigate">Companies</a>
           </RouterLink>
           <RouterLink v-slot="{ href, navigate }" to="/tags" custom>
             <a :href="href" :aria-current="activeSection === 'tags' ? 'page' : undefined" @click="navigate">Tags</a>

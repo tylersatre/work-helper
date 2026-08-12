@@ -42,6 +42,11 @@ export const tagNameSchema = z
   .trim()
   .min(1, 'A name is required');
 
+export const companyNameSchema = z
+  .string()
+  .trim()
+  .min(1, 'A name is required');
+
 export const tagColorSchema = z
   .string()
   .regex(/^#[0-9a-fA-F]{6}$/, 'A valid color is required');

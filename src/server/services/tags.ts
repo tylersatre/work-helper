@@ -2,7 +2,7 @@ import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { nextTagColor } from '../../shared/tag-palette.js';
 import { tagColorSchema, tagNameSchema } from '../../shared/validation.js';
-import { people, personTags, tags, taskTags, tasks } from '../db/schema.js';
+import { companyTags, people, personTags, tags, taskTags, tasks } from '../db/schema.js';
 import type * as schema from '../db/schema.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
@@ -68,7 +68,12 @@ export function listTags(db: AppDb): TagWithCountsRecord[] {
     .all();
 }
 
-function getTagsForRecord(db: AppDb, joinTable: typeof personTags | typeof taskTags, idColumn: typeof personTags.personId | typeof taskTags.taskId, recordId: number): TagRecord[] {
+function getTagsForRecord(
+  db: AppDb,
+  joinTable: typeof personTags | typeof taskTags | typeof companyTags,
+  idColumn: typeof personTags.personId | typeof taskTags.taskId | typeof companyTags.companyId,
+  recordId: number,
+): TagRecord[] {
   return db
     .select({ id: tags.id, name: tags.name, color: tags.color })
     .from(joinTable)
@@ -84,6 +89,10 @@ export function getTagsForPerson(db: AppDb, personId: number): TagRecord[] {
 
 export function getTagsForTask(db: AppDb, taskId: number): TagRecord[] {
   return getTagsForRecord(db, taskTags, taskTags.taskId, taskId);
+}
+
+export function getTagsForCompany(db: AppDb, companyId: number): TagRecord[] {
+  return getTagsForRecord(db, companyTags, companyTags.companyId, companyId);
 }
 
 export type AttachInput = { tagId: number } | { name: unknown };

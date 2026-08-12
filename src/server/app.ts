@@ -9,6 +9,7 @@ import { oauthRoutes } from './mcp/auth/oauth-routes.js';
 import { deriveKey } from './mcp/auth/tokens.js';
 import { mcpRoutes } from './mcp/routes.js';
 import { boardRoutes } from './routes/board.js';
+import { companyRoutes } from './routes/companies.js';
 import { emailSyncRoutes } from './routes/email-sync.js';
 import { emailRoutes } from './routes/emails.js';
 import { mailboxRoutes } from './routes/mailbox.js';
@@ -82,6 +83,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
   app.register(taskRoutes);
   app.register(peopleRoutes);
   app.register(tagRoutes);
+  app.register(companyRoutes);
   app.register(emailSyncRoutes);
   app.register(emailRoutes);
   app.register(mailboxRoutes);

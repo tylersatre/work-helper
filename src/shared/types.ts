@@ -150,3 +150,14 @@ export interface TagWithCounts extends Tag {
   peopleCount: number;
   tasksCount: number;
 }
+
+export interface Company {
+  id: number;
+  name: string;
+}
+
+export interface CompanyDetail extends Company {
+  people: { id: number; firstName: string; lastName: string }[];
+  cards: { id: number; title: string; lane: string }[];
+  tags: Tag[];
+}

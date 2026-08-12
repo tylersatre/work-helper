@@ -14,6 +14,8 @@ async function renderAt(path: string) {
       { path: '/people/:id', component: { template: '<div>person</div>' } },
       { path: '/tasks/:id', component: { template: '<div>task</div>' } },
       { path: '/tags', component: { template: '<div>tags</div>' } },
+      { path: '/companies', component: { template: '<div>companies</div>' } },
+      { path: '/companies/:id', component: { template: '<div>company</div>' } },
       { path: '/sync', component: { template: '<div>sync</div>' } },
       { path: '/emails', component: { template: '<div>emails</div>' } },
       { path: '/emails/:id', component: { template: '<div>email</div>' } },
@@ -27,13 +29,14 @@ async function renderAt(path: string) {
 }
 
 describe('App shell', () => {
-  it('renders app-nav with the app name and Board/People/Tags/Email Sync links', async () => {
+  it('renders app-nav with the app name and Board/People/Companies/Tags/Email Sync links', async () => {
     await renderAt('/');
 
     const nav = screen.getByTestId('app-nav');
     expect(nav.textContent).toContain('work-helper');
     expect(within(nav).getByRole('link', { name: 'Board' })).toBeTruthy();
     expect(within(nav).getByRole('link', { name: 'People' })).toBeTruthy();
+    expect(within(nav).getByRole('link', { name: 'Companies' })).toBeTruthy();
     expect(within(nav).getByRole('link', { name: 'Tags' })).toBeTruthy();
     expect(within(nav).getByRole('link', { name: 'Email Sync' })).toBeTruthy();
     expect(within(nav).getByRole('link', { name: 'Emails' })).toBeTruthy();
@@ -68,6 +71,22 @@ describe('App shell', () => {
 
     const nav = screen.getByTestId('app-nav');
     expect(within(nav).getByRole('link', { name: 'People' }).getAttribute('aria-current')).toBe('page');
+    expect(within(nav).getByRole('link', { name: 'Board' }).getAttribute('aria-current')).toBeNull();
+  });
+
+  it('marks Companies active on /companies', async () => {
+    await renderAt('/companies');
+
+    const nav = screen.getByTestId('app-nav');
+    expect(within(nav).getByRole('link', { name: 'Companies' }).getAttribute('aria-current')).toBe('page');
+    expect(within(nav).getByRole('link', { name: 'Board' }).getAttribute('aria-current')).toBeNull();
+  });
+
+  it('keeps Companies active on a company detail route (/companies/1)', async () => {
+    await renderAt('/companies/1');
+
+    const nav = screen.getByTestId('app-nav');
+    expect(within(nav).getByRole('link', { name: 'Companies' }).getAttribute('aria-current')).toBe('page');
     expect(within(nav).getByRole('link', { name: 'Board' }).getAttribute('aria-current')).toBeNull();
   });
 
