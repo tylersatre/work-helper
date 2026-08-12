@@ -234,7 +234,7 @@ const deleteMessage = computed(() => {
   font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--wh-text-muted);
   margin-bottom: 0.5rem;
 }
 
@@ -246,10 +246,10 @@ const deleteMessage = computed(() => {
 
 .company-detail-row {
   padding: 0.4rem 0.6rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--wh-border-subtle);
   border-radius: 4px;
   margin-bottom: 0.4rem;
-  background: #1f1f24;
+  background: var(--wh-surface);
   font-size: 0.85rem;
 }
 

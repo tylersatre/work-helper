@@ -2,9 +2,11 @@
 import { NConfigProvider, NGlobalStyle, darkTheme } from 'naive-ui';
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
+import { paletteCssVars } from './palette.js';
 import { themeOverrides } from './theme.js';
 
 const route = useRoute();
+const cssVars = paletteCssVars();
 
 const activeSection = computed<'board' | 'people' | 'companies' | 'tags' | 'sync' | 'emails'>(() => {
   if (route.path === '/people' || route.path.startsWith('/people/')) return 'people';
@@ -19,7 +21,7 @@ const activeSection = computed<'board' | 'people' | 'companies' | 'tags' | 'sync
 <template>
   <NConfigProvider :theme="darkTheme" :theme-overrides="themeOverrides">
     <NGlobalStyle />
-    <div class="app-shell">
+    <div class="app-shell" :style="cssVars">
       <header class="app-nav" data-testid="app-nav">
         <span class="app-name">work-helper</span>
         <nav class="app-nav-links">
@@ -65,8 +67,8 @@ const activeSection = computed<'board' | 'people' | 'companies' | 'tags' | 'sync
   align-items: center;
   gap: 1.5rem;
   padding: 0.5rem 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  background: #18181c;
+  border-bottom: 1px solid var(--wh-border-subtle);
+  background: var(--wh-surface);
 }
 
 .app-name {
@@ -80,9 +82,13 @@ const activeSection = computed<'board' | 'people' | 'companies' | 'tags' | 'sync
 }
 
 .app-nav-links a {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--wh-text-secondary);
   text-decoration: none;
   font-size: 0.875rem;
+}
+
+.app-nav-links a:hover {
+  color: var(--wh-text-primary);
 }
 
 .app-nav-links a[aria-current='page'] {
@@ -105,5 +111,81 @@ const activeSection = computed<'board' | 'people' | 'companies' | 'tags' | 'sync
   .app-nav-links {
     gap: 0.75rem;
   }
+}
+</style>
+
+<style>
+/* Anchors default to the browser's light-mode blue, which is illegible on the
+ * dark theme — give every link (RouterLink or raw <a>) an AA-contrast blue.
+ * Scoped component styles (e.g. the nav, row links using inherit) still win
+ * on specificity where they opt out. */
+.app-shell a {
+  color: var(--wh-link);
+}
+
+.app-shell a:hover {
+  color: var(--wh-link-hover);
+}
+
+/* Shared contained-card treatment for tabular data and row lists, so rows read
+ * as distinct entries instead of blending into the page background. */
+.wh-table-card {
+  background: var(--wh-surface);
+  border: 1px solid var(--wh-border);
+  border-radius: 8px;
+  overflow: hidden;
+  overflow-x: auto;
+}
+
+.wh-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.wh-table th {
+  background: var(--wh-surface-raised);
+  color: var(--wh-text-secondary);
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--wh-border);
+}
+
+.wh-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--wh-border-subtle);
+}
+
+.wh-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.wh-table tbody tr:nth-child(even) {
+  background: var(--wh-row-stripe);
+}
+
+.wh-table tbody tr:hover {
+  background: var(--wh-row-hover);
+}
+
+.wh-card-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--wh-surface);
+  border: 1px solid var(--wh-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.wh-card-list > li {
+  border-bottom: 1px solid var(--wh-border-subtle);
+}
+
+.wh-card-list > li:last-child {
+  border-bottom: none;
+}
+
+.wh-card-list > li:hover {
+  background: var(--wh-row-hover);
 }
 </style>

@@ -47,8 +47,8 @@ onMounted(fetchPeople);
     </div>
 
     <NEmpty v-if="people.length === 0" data-testid="people-empty" description="No people yet" class="people-empty" />
-    <div v-else class="people-table-wrapper">
-      <table class="people-table">
+    <div v-else class="people-table-wrapper wh-table-card">
+      <table class="people-table wh-table">
         <thead>
           <tr>
             <th>Name</th>
@@ -63,8 +63,10 @@ onMounted(fetchPeople);
             <td><RouterLink :to="`/people/${person.id}`">{{ person.firstName }} {{ person.lastName }}</RouterLink></td>
             <td>{{ primaryValue(person.emails) }}</td>
             <td>{{ primaryValue(person.phones) }}</td>
-            <td class="people-table-tags">
-              <TagChip v-for="tag in person.tags" :key="tag.id" :tag="tag" />
+            <td>
+              <div class="people-table-tag-chips">
+                <TagChip v-for="tag in person.tags" :key="tag.id" :tag="tag" />
+              </div>
             </td>
             <td class="people-table-actions">
               <NButton size="small" @click="onDelete(person.id)">Delete</NButton>
@@ -91,34 +93,22 @@ onMounted(fetchPeople);
   margin-top: 1.5rem;
 }
 
-.people-table-wrapper {
-  overflow-x: auto;
-}
-
 .people-table {
-  width: 100%;
-  border-collapse: collapse;
   font-size: 0.82rem;
 }
 
 .people-table th {
-  text-align: left;
-  padding: 0.4rem 0.6rem;
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: rgba(255, 255, 255, 0.5);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .people-table td {
-  padding: 0.4rem 0.6rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   overflow-wrap: break-word;
   word-break: break-word;
 }
 
-.people-table-tags {
+.people-table-tag-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 0.3rem;

@@ -33,10 +33,10 @@ function onDelete(): void {
 <style scoped>
 .note {
   padding: 0.5rem 0.65rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--wh-border-subtle);
   border-radius: 4px;
   margin-bottom: 0.5rem;
-  background: #1f1f24;
+  background: var(--wh-surface);
   overflow-wrap: break-word;
   word-break: break-word;
 }
@@ -46,7 +46,7 @@ function onDelete(): void {
   gap: 0.5rem;
   align-items: baseline;
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--wh-text-muted);
   margin-bottom: 0.25rem;
 }
 
@@ -59,13 +59,13 @@ function onDelete(): void {
   margin-top: 0.35rem;
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--wh-text-muted);
   font-size: 0.75rem;
   cursor: pointer;
   padding: 0;
 }
 
 .note-delete:hover {
-  color: #fca5a5;
+  color: var(--wh-error);
 }
 </style>

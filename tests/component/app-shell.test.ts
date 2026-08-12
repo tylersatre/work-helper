@@ -4,6 +4,7 @@ import { flushPromises } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import App from '../../src/client/App.vue';
+import { paletteCssVars } from '../../src/client/palette.js';
 
 async function renderAt(path: string) {
   const router = createRouter({
@@ -121,6 +122,19 @@ describe('App shell', () => {
     const nav = screen.getByTestId('app-nav');
     expect(within(nav).getByRole('link', { name: 'Emails' }).getAttribute('aria-current')).toBe('page');
     expect(within(nav).getByRole('link', { name: 'Board' }).getAttribute('aria-current')).toBeNull();
+  });
+
+  it('exposes the palette as --wh-* CSS variables on the app shell so every page inherits the readability tokens', async () => {
+    const { container } = await (async () => {
+      await renderAt('/');
+      return { container: document.body };
+    })();
+
+    const shell = container.querySelector('.app-shell') as HTMLElement;
+    expect(shell).toBeTruthy();
+    for (const [name, value] of Object.entries(paletteCssVars())) {
+      expect(shell.style.getPropertyValue(name)).toBe(value);
+    }
   });
 
   it('clicking the inactive link navigates and moves the active marking', async () => {
