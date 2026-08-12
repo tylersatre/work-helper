@@ -2,7 +2,7 @@
 
 ## One-liner
 
-Make email sync run itself — scheduled polling and/or Microsoft Graph webhooks instead of only the manual MCP sync tool.
+Make sync run itself — scheduled polling and/or Microsoft Graph webhooks instead of only manual triggers — for email and, since `calendar-sync`, calendar events too.
 
 ## Origin
 
@@ -20,3 +20,4 @@ Make email sync run itself — scheduled polling and/or Microsoft Graph webhooks
 - Webhooks need a public callback endpoint and subscription renewal; the home-server-deploy Caddy setup makes that feasible but it was judged too many moving parts for the first slice.
 - An automated sync needs an incremental notion of "what's new" — the email-sync tool deliberately has none (every call requires an explicit date range; Tyler rejected a rangeless incremental default). Deciding incremental semantics is part of this feature.
 - `email-sync-improvements` (specced 2026-08-10) builds two natural foundations: a persisted run history (per-run range, status, counts) and a "last successful run's end date through today" prefill on the web Sync page. An automated schedule could reuse that watermark; the MCP tool's explicit-range requirement was deliberately left unchanged there. That feature also decided only one sync runs at a time — a scheduler must respect the same rule.
+- `calendar-sync` (specced 2026-08-12) adds a second on-demand sync this feature should schedule too. Its decisions to reuse: the natural automated calendar window is the rolling range decided there (30 days back through 30 days ahead — no watermark, since calendar re-sync refreshes stored events), and the one-sync-at-a-time rule became global across email and calendar syncs, so a scheduler must serialize both types together.
