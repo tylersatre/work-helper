@@ -4,6 +4,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
+import { tasks } from '../../src/server/db/schema.js';
 import { createIdentityVerifier } from '../../src/server/mcp/auth/identity.js';
 import { connectThroughApproval } from './helpers/oauth-client.js';
 import { startStubIdentityProvider, type StubIdentityProvider } from './helpers/stub-identity-provider.js';
@@ -11,6 +12,7 @@ import { startStubIdentityProvider, type StubIdentityProvider } from './helpers/
 const LANES = ['To Do', 'In Progress', 'Waiting', 'Done'];
 const MCP_TOKEN_SECRET = 'correct-horse-battery';
 
+let db: ReturnType<typeof createDb>['db'];
 let app: FastifyInstance;
 let client: Client;
 let stub: StubIdentityProvider;
@@ -22,7 +24,8 @@ async function totalTaskCount(): Promise<number> {
 
 beforeEach(async () => {
   stub = await startStubIdentityProvider();
-  const { db } = createDb(':memory:');
+  const created = createDb(':memory:');
+  db = created.db;
   app = buildApp({ db, lanes: LANES, mcpTokenSecret: MCP_TOKEN_SECRET, identityVerifier: createIdentityVerifier(stub.url) });
 
   await app.listen({ port: 0, host: '127.0.0.1' });
@@ -117,5 +120,62 @@ describe('US3: capture tools', () => {
 
     const detail = await app.inject({ method: 'GET', url: `/api/tasks/${taskId}` });
     expect(detail.json().notes).toEqual([]);
+  });
+
+  it('create-task with an explicit lane lands at the bottom of that lane, visible via list-board and GET /api/board (US3-AS1)', async () => {
+    db.insert(tasks)
+      .values([
+        { title: 'Chase invoice', lane: 'Waiting', position: 0, createdAt: 1 },
+        { title: 'Await contract', lane: 'Waiting', position: 1, createdAt: 2 },
+      ])
+      .run();
+
+    const result = await client.callTool({ name: 'create-task', arguments: { title: 'Confirm venue hold', lane: 'Waiting' } });
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toMatchObject({ lane: 'Waiting' });
+    expect(result.content).toEqual([{ type: 'text', text: 'Created task "Confirm venue hold" in lane "Waiting".' }]);
+
+    const boardTool = await client.callTool({ name: 'list-board', arguments: {} });
+    const { lanes: lanesFromTool } = boardTool.structuredContent as { lanes: { name: string; tasks: { title: string }[] }[] };
+    const waitingFromTool = lanesFromTool.find((lane) => lane.name === 'Waiting')!;
+    expect(waitingFromTool.tasks.map((t) => t.title)).toEqual(['Chase invoice', 'Await contract', 'Confirm venue hold']);
+
+    const boardApi = await app.inject({ method: 'GET', url: '/api/board' });
+    const waitingFromApi = boardApi.json().lanes.find((lane: { name: string }) => lane.name === 'Waiting');
+    expect(waitingFromApi.tasks.map((t: { title: string }) => t.title)).toEqual(['Chase invoice', 'Await contract', 'Confirm venue hold']);
+  });
+
+  it('create-task without a lane still lands at the bottom of lanes[0], result shape unchanged (US3-AS2)', async () => {
+    db.insert(tasks)
+      .values([
+        { title: 'Book venue', lane: 'To Do', position: 0, createdAt: 1 },
+        { title: 'Order catering', lane: 'To Do', position: 1, createdAt: 2 },
+      ])
+      .run();
+
+    const result = await client.callTool({ name: 'create-task', arguments: { title: 'Send invites' } });
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toMatchObject({ lane: LANES[0] });
+    expect(result.content).toEqual([{ type: 'text', text: 'Created task "Send invites" in lane "To Do".' }]);
+
+    const boardApi = await app.inject({ method: 'GET', url: '/api/board' });
+    const toDoFromApi = boardApi.json().lanes.find((lane: { name: string }) => lane.name === 'To Do');
+    expect(toDoFromApi.tasks.map((t: { title: string }) => t.title)).toEqual(['Book venue', 'Order catering', 'Send invites']);
+  });
+
+  it('rejects an unconfigured lane on create-task, naming the valid lanes, and creates no card (US4-AS3)', async () => {
+    const before = await totalTaskCount();
+
+    const result = await client.callTool({ name: 'create-task', arguments: { title: 'Book venue', lane: 'Doing' } });
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toEqual([
+      { type: 'text', text: 'Unknown lane "Doing". Valid lanes: To Do, In Progress, Waiting, Done' },
+    ]);
+    expect(await totalTaskCount()).toBe(before);
+
+    const board = await app.inject({ method: 'GET', url: '/api/board' });
+    const titles = board.json().lanes.flatMap((lane: { tasks: { title: string }[] }) => lane.tasks.map((t) => t.title));
+    expect(titles).not.toContain('Book venue');
   });
 });
