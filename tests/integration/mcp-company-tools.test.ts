@@ -165,6 +165,28 @@ describe('company lifecycle via MCP tools (SC-008)', () => {
     expect((notFound.content as { text: string }[])[0]?.text).toBe('Company 999 not found');
   });
 
+  it('rename-company validation errors are worded identically to HTTP, on both a duplicate and a blank name (SC-002)', async () => {
+    buildTestApp();
+    const acme = await createCompanyViaApi('Acme Corp');
+    await createCompanyViaApi('Zephyr Co');
+    await startAndConnect();
+
+    const blank = await renameCompany({ companyId: acme.id, name: '   ' });
+    expect(blank.isError).toBe(true);
+    expect((blank.content as { text: string }[])[0]?.text).toBe('A name is required');
+
+    const duplicate = await renameCompany({ companyId: acme.id, name: 'zephyr co' });
+    expect(duplicate.isError).toBe(true);
+    expect((duplicate.content as { text: string }[])[0]?.text).toBe('That company name is already in use');
+
+    const missing = await renameCompany({ companyId: 999, name: 'New Name' });
+    expect(missing.isError).toBe(true);
+    expect((missing.content as { text: string }[])[0]?.text).toBe('Company 999 not found');
+
+    const unchanged = await getCompany({ companyId: acme.id });
+    expect((unchanged.structuredContent as { name: string }).name).toBe('Acme Corp');
+  });
+
   it('delete-company reports cleared assignments and removed links, and 404s for an unknown id', async () => {
     buildTestApp();
     const acme = await createCompanyViaApi('Acme Corp');
