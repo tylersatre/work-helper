@@ -91,7 +91,7 @@ async function onCreate(): Promise<void> {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 4px;
   margin-bottom: 0.4rem;
-  background: #1f1f24;
+  background: var(--wh-surface);
 }
 
 .company-row a {

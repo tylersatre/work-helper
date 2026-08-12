@@ -91,7 +91,7 @@ function clear(): void {
   padding: 0.3rem 0.5rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 4px;
-  background: #1f1f24;
+  background: var(--wh-surface);
   color: inherit;
   font-size: 0.82rem;
   cursor: pointer;
