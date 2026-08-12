@@ -273,6 +273,44 @@ describe('add-company-to-task / remove-company-from-task (SC-008)', () => {
   });
 });
 
+describe('get-company populated detail (AS2, SC-008)', () => {
+  it("lists Sam Rivera among people and the card among cards, plus attached tags, after linking both", async () => {
+    buildTestApp();
+    const globex = await createCompanyViaApi('Globex');
+    const sam = await createPersonViaApi({ firstName: 'Sam', lastName: 'Rivera' });
+    const task = await createTaskViaApi('Follow up with Sam');
+    await startAndConnect();
+
+    await setPersonCompany({ personId: sam.id, companyId: globex.id });
+    await addCompanyToTask({ taskId: task.id, companyId: globex.id });
+    const tagged = await app.inject({ method: 'POST', url: `/api/companies/${globex.id}/tags`, payload: { name: 'VIP' } });
+    expect(tagged.statusCode).toBe(200);
+
+    const detail = await getCompany({ companyId: globex.id });
+
+    expect(detail.isError).toBeFalsy();
+    expect((detail.content as { text: string }[])[0]?.text).toBe('Company "Globex".');
+    const structured = detail.structuredContent as {
+      id: number;
+      name: string;
+      people: { id: number; firstName: string; lastName: string }[];
+      cards: { id: number; title: string; lane: string }[];
+      tags: string[];
+    };
+    expect(structured).toEqual({
+      id: globex.id,
+      name: 'Globex',
+      people: [{ id: sam.id, firstName: 'Sam', lastName: 'Rivera' }],
+      cards: [{ id: task.id, title: 'Follow up with Sam', lane: 'To Do' }],
+      tags: ['VIP'],
+    });
+
+    const httpDetail = await app.inject({ method: 'GET', url: `/api/companies/${globex.id}` });
+    expect(httpDetail.json().people).toEqual(structured.people);
+    expect(httpDetail.json().cards).toEqual(structured.cards);
+  });
+});
+
 describe('get-person / get-task company fields (FR-015)', () => {
   it('get-person includes company: { id, name } | null', async () => {
     buildTestApp();

@@ -194,11 +194,13 @@ Single TypeScript web app at repository root: Vue SPA in `src/client/`, Fastify 
 
 **Purpose**: The constitution's evidence-over-assertion gate — automated checks, browser evidence, MCP evidence, and independent verification before the PR.
 
-- [ ] T039 Run the full gate `npm run lint && npm run typecheck && npm test && npm run build` and confirm all four pass
-- [ ] T040 [P] Re-run the migration safety check from quickstart.md: `ls drizzle/` shows exactly one new 0002_*.sql and `git diff main -- drizzle/` shows only additive statements with 0000/0001 untouched
-- [ ] T041 [P] Run the browser-tester agent against the dev server (API :3018, UI :5118) covering the acceptance scenarios of US1–US6 (including reload-persistence checks) and save screenshot + results evidence to docs/evidence/018-companies/
-- [ ] T042 [P] Record the passing tests/integration/mcp-company-tools.test.ts output as the US7 (SC-008) evidence in docs/evidence/018-companies/
-- [ ] T043 Run the verifier agent to independently confirm every acceptance criterion in specs/018-companies/spec.md has a passing automated check and surface-appropriate evidence before opening the PR
+- [X] T039 Run the full gate `npm run lint && npm run typecheck && npm test && npm run build` and confirm all four pass
+- [X] T040 [P] Re-run the migration safety check from quickstart.md: `ls drizzle/` shows exactly one new 0002_*.sql and `git diff main -- drizzle/` shows only additive statements with 0000/0001 untouched
+- [X] T041 [P] Run the browser-tester agent against the dev server (API :3018, UI :5118) covering the acceptance scenarios of US1–US6 (including reload-persistence checks) and save screenshot + results evidence to docs/evidence/018-companies/
+- [X] T042 [P] Record the passing tests/integration/mcp-company-tools.test.ts output as the US7 (SC-008) evidence in docs/evidence/018-companies/
+- [X] T043 Run the verifier agent to independently confirm every acceptance criterion in specs/018-companies/spec.md has a passing automated check and surface-appropriate evidence before opening the PR
+
+  **Note**: First verifier pass returned FAIL on three gaps: (1) US2's "person's record shows their current company" (FR-008) had no automated check and no browser evidence of the populated state — fixed by adding `tests/component/person-detail-page.test.ts` coverage for `data-testid="person-company"` and capturing `us2-04-person-record-shows-company.png`; (2) US7 AS2's "Globex's own MCP detail response lists Sam Rivera among its people and the card among its cards" was untested — fixed by adding a `get-company` populated-detail test to `tests/integration/mcp-company-tools.test.ts` and re-recording the evidence output; (3) the evidence bundle and this file weren't yet committed — fixed by this commit.
 
 ---
 

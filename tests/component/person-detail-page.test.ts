@@ -293,4 +293,59 @@ describe('PersonDetailPage', () => {
 
     expect(await screen.findByTestId('person-email-row')).toBeTruthy();
   });
+
+  it("shows the person's assigned company on their record, and shows nothing when unassigned (018-companies US2)", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          id: 1,
+          firstName: 'Sam',
+          lastName: 'Rivera',
+          emails: [],
+          phones: [],
+          extraFields: {},
+          createdAt: 1,
+          tags: [],
+          company: { id: 1, name: 'Acme Corp' },
+        }),
+      }),
+    );
+
+    const router = makeRouter('/people/1');
+    await router.isReady();
+    render(PersonDetailPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect((await screen.findByTestId('person-company')).textContent).toBe('Acme Corp');
+  });
+
+  it('shows no company element when the person has no company', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          id: 1,
+          firstName: 'Sam',
+          lastName: 'Rivera',
+          emails: [],
+          phones: [],
+          extraFields: {},
+          createdAt: 1,
+          tags: [],
+          company: null,
+        }),
+      }),
+    );
+
+    const router = makeRouter('/people/1');
+    await router.isReady();
+    render(PersonDetailPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(await screen.findByText('Sam Rivera')).toBeTruthy();
+    expect(screen.queryByTestId('person-company')).toBeNull();
+  });
 });
