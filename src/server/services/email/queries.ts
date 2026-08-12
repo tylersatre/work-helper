@@ -393,6 +393,18 @@ export function listSyncRuns(db: AppDb): SyncRunRecord[] {
   return db.select().from(syncRuns).orderBy(desc(syncRuns.ranAt), desc(syncRuns.id)).all();
 }
 
+/** The conversation's earliest message's subject, without loading the rest of the thread. */
+export function conversationSubject(db: AppDb, conversationId: number): string {
+  const [row] = db
+    .select({ subject: emailMessages.subject })
+    .from(emailMessages)
+    .where(eq(emailMessages.conversationId, conversationId))
+    .orderBy(asc(emailMessages.sentAt), asc(emailMessages.id))
+    .limit(1)
+    .all();
+  return row?.subject ?? '';
+}
+
 export function getConversation(
   db: AppDb,
   conversationId: number,

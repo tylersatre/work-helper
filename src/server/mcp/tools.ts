@@ -22,7 +22,7 @@ import { eventsForPerson, getEvent, listEvents } from '../services/calendar/quer
 import type { MailProvider } from '../services/email/provider.js';
 import { computeSyncWindow } from '../services/email/sync.js';
 import type { SyncCoordinator } from '../services/email/sync-coordinator.js';
-import { emailsForPerson, getConversation, listConversations, listUnlinkedAddresses } from '../services/email/queries.js';
+import { conversationSubject, emailsForPerson, getConversation, listConversations, listUnlinkedAddresses } from '../services/email/queries.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
 
@@ -940,7 +940,6 @@ export function createMcpServer(context: McpToolsContext): McpServer {
       outputSchema: taskDetailOutputSchema,
     },
     async ({ taskId, conversationId }) => {
-      const conversationBefore = getConversation(context.db, conversationId);
       const result = unlinkConversationFromTask(context.db, taskId, conversationId);
       if (!result.ok) {
         if (result.error === 'task-not-found') return toolError(`Task ${taskId} not found`);
@@ -948,7 +947,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         return toolError(`Task ${taskId} is not linked to conversation ${conversationId}`);
       }
       const structuredContent = taskDetailContent(result.task);
-      const text = `Unlinked conversation "${conversationBefore?.subject ?? ''}" from task "${result.task.title}".`;
+      const text = `Unlinked conversation "${conversationSubject(context.db, conversationId)}" from task "${result.task.title}".`;
       return { content: [{ type: 'text', text }], structuredContent };
     },
   );
