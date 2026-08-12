@@ -115,17 +115,17 @@ function lunchThursday(): SeedMessage {
 }
 
 describe('linkConversationToTask', () => {
-  it('inserts one task_conversations row and returns { ok: true, task } including the new conversation', async () => {
+  it('inserts one task_conversations row and returns { ok: true }, visible via conversationsForTask', async () => {
     const { app, db } = buildTestApp();
     const task = await createTask(app, 'Follow up with Sam');
     const conversationId = await seedConversation(db, [pricingQuestion(), pricingReply()], '2026-07-01', '2026-07-31');
 
     const result = linkConversationToTask(db, task.id, conversationId);
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error('expected ok: true');
-    expect(result.task.conversations).toHaveLength(1);
-    expect(result.task.conversations[0]).toMatchObject({ id: conversationId, subject: 'Pricing question' });
+    expect(result).toEqual({ ok: true });
+    const conversations = conversationsForTask(db, task.id);
+    expect(conversations).toHaveLength(1);
+    expect(conversations[0]).toMatchObject({ id: conversationId, subject: 'Pricing question' });
 
     const rows = db.select().from(taskConversations).where(eq(taskConversations.taskId, task.id)).all();
     expect(rows).toEqual([{ taskId: task.id, conversationId }]);
@@ -149,7 +149,7 @@ describe('linkConversationToTask', () => {
 });
 
 describe('unlinkConversationFromTask', () => {
-  it('deletes exactly one join row and returns { ok: true, task } with the conversation removed', async () => {
+  it('deletes exactly one join row and returns { ok: true }, no longer visible via conversationsForTask', async () => {
     const { app, db } = buildTestApp();
     const task = await createTask(app, 'Follow up with Sam');
     const conversationId = await seedConversation(db, [pricingQuestion()], '2026-07-01', '2026-07-31');
@@ -157,9 +157,8 @@ describe('unlinkConversationFromTask', () => {
 
     const result = unlinkConversationFromTask(db, task.id, conversationId);
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error('expected ok: true');
-    expect(result.task.conversations).toEqual([]);
+    expect(result).toEqual({ ok: true });
+    expect(conversationsForTask(db, task.id)).toEqual([]);
 
     const rows = db.select().from(taskConversations).where(eq(taskConversations.taskId, task.id)).all();
     expect(rows).toEqual([]);
@@ -180,9 +179,8 @@ describe('unlinkConversationFromTask', () => {
     expect(db.select().from(emailMessages).where(eq(emailMessages.conversationId, conversationId)).all()).toEqual(messagesBefore);
 
     const relinked = linkConversationToTask(db, task.id, conversationId);
-    expect(relinked.ok).toBe(true);
-    if (!relinked.ok) throw new Error('expected ok: true');
-    expect(relinked.task.conversations).toHaveLength(1);
+    expect(relinked).toEqual({ ok: true });
+    expect(conversationsForTask(db, task.id)).toHaveLength(1);
   });
 
   it('returns task-not-found for a missing task, conversation-not-found for a missing conversation, and link-not-found for a not-linked pair', async () => {

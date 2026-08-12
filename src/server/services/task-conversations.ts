@@ -3,7 +3,6 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { LinkedCardSummary, LinkedConversationSummary } from '../../shared/types.js';
 import { emailConversations, tasks, taskConversations } from '../db/schema.js';
 import { participantsForConversation } from './email/queries.js';
-import { getTaskDetail } from './tasks.js';
 import type * as schema from '../db/schema.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
@@ -57,9 +56,7 @@ export function cardsForConversation(db: AppDb, conversationId: number): LinkedC
     .all();
 }
 
-export type LinkConversationResult =
-  | { ok: true; task: NonNullable<ReturnType<typeof getTaskDetail>> }
-  | { ok: false; error: 'task-not-found' | 'conversation-not-found' | 'already-linked' };
+export type LinkConversationResult = { ok: true } | { ok: false; error: 'task-not-found' | 'conversation-not-found' | 'already-linked' };
 
 export function linkConversationToTask(db: AppDb, taskId: number, conversationId: number): LinkConversationResult {
   if (!taskExists(db, taskId)) {
@@ -74,12 +71,10 @@ export function linkConversationToTask(db: AppDb, taskId: number, conversationId
 
   db.insert(taskConversations).values({ taskId, conversationId }).run();
 
-  return { ok: true, task: getTaskDetail(db, taskId)! };
+  return { ok: true };
 }
 
-export type UnlinkConversationResult =
-  | { ok: true; task: NonNullable<ReturnType<typeof getTaskDetail>> }
-  | { ok: false; error: 'task-not-found' | 'conversation-not-found' | 'link-not-found' };
+export type UnlinkConversationResult = { ok: true } | { ok: false; error: 'task-not-found' | 'conversation-not-found' | 'link-not-found' };
 
 export function unlinkConversationFromTask(db: AppDb, taskId: number, conversationId: number): UnlinkConversationResult {
   if (!taskExists(db, taskId)) {
@@ -96,5 +91,5 @@ export function unlinkConversationFromTask(db: AppDb, taskId: number, conversati
     .where(and(eq(taskConversations.taskId, taskId), eq(taskConversations.conversationId, conversationId)))
     .run();
 
-  return { ok: true, task: getTaskDetail(db, taskId)! };
+  return { ok: true };
 }

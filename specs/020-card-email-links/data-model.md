@@ -78,16 +78,12 @@ export interface LinkedCardSummary {
 
 ## Service result types (D2, D3)
 
-`TaskDetailRecord` below is shorthand for the `getTaskDetail` return type — implemented as `NonNullable<ReturnType<typeof getTaskDetail>>` per the house pattern in `src/server/services/tasks.ts` (see `LinkPersonResult`/`UnlinkPersonResult`), not a new named type.
+Unlike `LinkPersonResult`/`UnlinkPersonResult` in `src/server/services/tasks.ts` (which live in the same file as `getTaskDetail`), `task-conversations.ts` is a separate module. Returning the full task detail from these functions would require importing `getTaskDetail` from `tasks.ts`, which already imports `conversationsForTask` from here — a needless cross-file cycle. Following the `companies.ts` precedent (`linkCompanyToTask`/`unlinkCompanyFromTask`, which return just `{ ok: true }`) instead, these functions signal success only; the MCP tool layer calls `getTaskDetail` itself once it has confirmed success.
 
 ```ts
-export type LinkConversationResult =
-  | { ok: true; task: TaskDetailRecord }
-  | { ok: false; error: 'task-not-found' | 'conversation-not-found' | 'already-linked' };
+export type LinkConversationResult = { ok: true } | { ok: false; error: 'task-not-found' | 'conversation-not-found' | 'already-linked' };
 
-export type UnlinkConversationResult =
-  | { ok: true; task: TaskDetailRecord }
-  | { ok: false; error: 'task-not-found' | 'conversation-not-found' | 'link-not-found' };
+export type UnlinkConversationResult = { ok: true } | { ok: false; error: 'task-not-found' | 'conversation-not-found' | 'link-not-found' };
 ```
 
 State transitions: unlinked → linked (insert; fails `already-linked` if the row exists) and linked → unlinked (delete; fails `link-not-found` if the row doesn't exist). Both validate task then conversation existence first, in that order, so error messages name the missing entity (FR-006).

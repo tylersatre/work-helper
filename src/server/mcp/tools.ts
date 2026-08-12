@@ -925,9 +925,9 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         if (result.error === 'conversation-not-found') return toolError(`Conversation ${conversationId} not found`);
         return toolError(`Task ${taskId} is already linked to conversation ${conversationId}`);
       }
-      const structuredContent = taskDetailContent(result.task);
-      const linkedConversation = result.task.conversations.find((c) => c.id === conversationId);
-      const text = `Linked conversation "${linkedConversation?.subject ?? ''}" to task "${result.task.title}".`;
+      const task = getTaskDetail(context.db, taskId)!;
+      const structuredContent = taskDetailContent(task);
+      const text = `Linked conversation "${conversationSubject(context.db, conversationId)}" to task "${task.title}".`;
       return { content: [{ type: 'text', text }], structuredContent };
     },
   );
@@ -946,8 +946,9 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         if (result.error === 'conversation-not-found') return toolError(`Conversation ${conversationId} not found`);
         return toolError(`Task ${taskId} is not linked to conversation ${conversationId}`);
       }
-      const structuredContent = taskDetailContent(result.task);
-      const text = `Unlinked conversation "${conversationSubject(context.db, conversationId)}" from task "${result.task.title}".`;
+      const task = getTaskDetail(context.db, taskId)!;
+      const structuredContent = taskDetailContent(task);
+      const text = `Unlinked conversation "${conversationSubject(context.db, conversationId)}" from task "${task.title}".`;
       return { content: [{ type: 'text', text }], structuredContent };
     },
   );
