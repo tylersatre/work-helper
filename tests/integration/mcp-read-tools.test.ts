@@ -165,6 +165,7 @@ describe('US2: read tools', () => {
       phones: [{ id: expect.any(Number), value: '555-0100', isPrimary: true }],
       extraFields: { Nickname: 'Sammy' },
       tags: [],
+      company: null,
     });
   });
 

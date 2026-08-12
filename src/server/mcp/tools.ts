@@ -3,6 +3,15 @@ import { ZodError, z } from 'zod';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { primaryValue } from '../../shared/contacts.js';
 import { addEntry, markPrimary, removeEntry } from '../services/contact-entries.js';
+import {
+  createCompany as createCompanyService,
+  deleteCompany as deleteCompanyService,
+  getCompanyDetail,
+  linkCompanyToTask,
+  listCompanies as listCompaniesService,
+  renameCompany as renameCompanyService,
+  unlinkCompanyFromTask,
+} from '../services/companies.js';
 import { createPerson, getPerson, listPeople, updatePerson as updatePersonService, type PersonRecord } from '../services/people.js';
 import { addNote, createTask, getTaskDetail, listTasksByLane } from '../services/tasks.js';
 import { emailAddresses, personPhones } from '../db/schema.js';
@@ -38,6 +47,12 @@ const taskPersonSchema = { id: z.number(), firstName: z.string(), lastName: z.st
 
 const contactEntrySchema = z.object({ id: z.number(), value: z.string(), isPrimary: z.boolean() });
 
+const companySummarySchema = { id: z.number(), name: z.string() };
+
+function companySummary(company: { id: number; name: string }) {
+  return { id: company.id, name: company.name };
+}
+
 const personDetailSchema = {
   id: z.number(),
   firstName: z.string(),
@@ -48,6 +63,7 @@ const personDetailSchema = {
   phones: z.array(contactEntrySchema),
   extraFields: z.record(z.string(), z.string()),
   tags: z.array(z.string()),
+  company: z.object(companySummarySchema).nullable(),
 };
 
 function personDetail(person: PersonRecord) {
@@ -61,6 +77,34 @@ function personDetail(person: PersonRecord) {
     phones: person.phones.map((entry) => ({ id: entry.id, value: entry.value, isPrimary: entry.isPrimary })),
     extraFields: person.extraFields,
     tags: person.tags.map((tag) => tag.name),
+    company: person.company ? companySummary(person.company) : null,
+  };
+}
+
+const taskDetailOutputSchema = {
+  ...taskSummarySchema,
+  notes: z.array(z.object(noteSchema)),
+  people: z.array(z.object(taskPersonSchema)),
+  tags: z.array(z.string()),
+  companies: z.array(z.object(companySummarySchema)),
+};
+
+function taskDetailContent(task: NonNullable<ReturnType<typeof getTaskDetail>>) {
+  return {
+    id: task.id,
+    title: task.title,
+    lane: task.lane,
+    position: task.position,
+    createdAt: task.createdAt,
+    notes: task.notes.map((note) => ({ id: note.id, text: note.text, source: note.source, createdAt: note.createdAt })),
+    people: task.people.map((person) => ({
+      id: person.id,
+      firstName: person.firstName,
+      lastName: person.lastName,
+      email: person.email,
+    })),
+    tags: task.tags.map((tag) => tag.name),
+    companies: task.companies.map(companySummary),
   };
 }
 
@@ -110,35 +154,16 @@ export function createMcpServer(context: McpToolsContext): McpServer {
   server.registerTool(
     'get-task',
     {
-      description: 'Fetches a task by id, including its notes (newest first), linked people, and tag names.',
+      description: 'Fetches a task by id, including its notes (newest first), linked people, tag names, and linked companies.',
       inputSchema: { taskId: z.number().int().positive() },
-      outputSchema: {
-        ...taskSummarySchema,
-        notes: z.array(z.object(noteSchema)),
-        people: z.array(z.object(taskPersonSchema)),
-        tags: z.array(z.string()),
-      },
+      outputSchema: taskDetailOutputSchema,
     },
     async ({ taskId }) => {
       const task = getTaskDetail(context.db, taskId);
       if (!task) {
         return toolError(`Task ${taskId} not found`);
       }
-      const structuredContent = {
-        id: task.id,
-        title: task.title,
-        lane: task.lane,
-        position: task.position,
-        createdAt: task.createdAt,
-        notes: task.notes.map((note) => ({ id: note.id, text: note.text, source: note.source, createdAt: note.createdAt })),
-        people: task.people.map((person) => ({
-          id: person.id,
-          firstName: person.firstName,
-          lastName: person.lastName,
-          email: person.email,
-        })),
-        tags: task.tags.map((tag) => tag.name),
-      };
+      const structuredContent = taskDetailContent(task);
       return { content: [{ type: 'text', text: `Task "${task.title}" in lane "${task.lane}".` }], structuredContent };
     },
   );
@@ -629,6 +654,188 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         content: [{ type: 'text', text: `Found ${addresses.length} unlinked address(es).` }],
         structuredContent: { addresses },
       };
+    },
+  );
+
+  const companyPersonSchema = { id: z.number(), firstName: z.string(), lastName: z.string() };
+  const companyCardSchema = { id: z.number(), title: z.string(), lane: z.string() };
+
+  server.registerTool(
+    'create-company',
+    {
+      description: 'Creates a company by name (trimmed, case-insensitively unique).',
+      inputSchema: { name: z.string() },
+      outputSchema: companySummarySchema,
+    },
+    async ({ name }) => {
+      try {
+        const result = createCompanyService(context.db, name);
+        if (!result.ok) {
+          return toolError('That company name is already in use');
+        }
+        const structuredContent = companySummary(result.company);
+        return { content: [{ type: 'text', text: `Created company "${result.company.name}".` }], structuredContent };
+      } catch (error) {
+        if (error instanceof ZodError) {
+          return toolError('A name is required');
+        }
+        throw error;
+      }
+    },
+  );
+
+  server.registerTool(
+    'rename-company',
+    {
+      description: "Renames a company, subject to the same validation as creation; recasing a company's own name is allowed.",
+      inputSchema: { companyId: z.number().int().positive(), name: z.string() },
+      outputSchema: companySummarySchema,
+    },
+    async ({ companyId, name }) => {
+      const result = renameCompanyService(context.db, companyId, name);
+      if (!result.ok) {
+        if (result.error === 'not-found') return toolError(`Company ${companyId} not found`);
+        if (result.error === 'invalid-name') return toolError('A name is required');
+        return toolError('That company name is already in use');
+      }
+      const structuredContent = companySummary(result.company);
+      return { content: [{ type: 'text', text: `Renamed company to "${result.company.name}".` }], structuredContent };
+    },
+  );
+
+  server.registerTool(
+    'delete-company',
+    {
+      description:
+        'Deletes a company, clearing it from every assigned person and removing it from every linked card and tag attachment; people, cards, and tags themselves survive.',
+      inputSchema: { companyId: z.number().int().positive() },
+      outputSchema: { deleted: z.boolean() },
+    },
+    async ({ companyId }) => {
+      const detail = getCompanyDetail(context.db, companyId);
+      if (!detail) {
+        return toolError(`Company ${companyId} not found`);
+      }
+      const peopleCleared = detail.people.length;
+      const cardsRemoved = detail.cards.length;
+      deleteCompanyService(context.db, companyId);
+      const text = `Deleted company "${detail.name}". ${peopleCleared} person assignment(s) cleared, ${cardsRemoved} card link(s) removed.`;
+      return { content: [{ type: 'text', text }], structuredContent: { deleted: true } };
+    },
+  );
+
+  server.registerTool(
+    'list-companies',
+    {
+      description: 'Lists every company alphabetically by name, case-insensitive.',
+      outputSchema: { companies: z.array(z.object(companySummarySchema)) },
+    },
+    async () => {
+      const companies = listCompaniesService(context.db).map(companySummary);
+      const text = `${companies.length} ${companies.length === 1 ? 'company' : 'companies'}.`;
+      return { content: [{ type: 'text', text }], structuredContent: { companies } };
+    },
+  );
+
+  server.registerTool(
+    'get-company',
+    {
+      description: "Fetches a company by id, including its complete linked people, cards, and tag names (unpaginated); tags are read-only over MCP.",
+      inputSchema: { companyId: z.number().int().positive() },
+      outputSchema: {
+        ...companySummarySchema,
+        people: z.array(z.object(companyPersonSchema)),
+        cards: z.array(z.object(companyCardSchema)),
+        tags: z.array(z.string()),
+      },
+    },
+    async ({ companyId }) => {
+      const detail = getCompanyDetail(context.db, companyId);
+      if (!detail) {
+        return toolError(`Company ${companyId} not found`);
+      }
+      const structuredContent = {
+        id: detail.id,
+        name: detail.name,
+        people: detail.people,
+        cards: detail.cards,
+        tags: detail.tags.map((tag) => tag.name),
+      };
+      return { content: [{ type: 'text', text: `Company "${detail.name}".` }], structuredContent };
+    },
+  );
+
+  server.registerTool(
+    'set-person-company',
+    {
+      description: "Sets or switches a person's company; a null companyId clears it.",
+      inputSchema: { personId: z.number().int().positive(), companyId: z.number().int().positive().nullable() },
+      outputSchema: personDetailSchema,
+    },
+    async ({ personId, companyId }) => {
+      const current = getPerson(context.db, context.personFields, personId);
+      if (!current) {
+        return toolError(`Person ${personId} not found`);
+      }
+
+      const result = updatePersonService(context.db, context.personFields, personId, {
+        firstName: current.firstName,
+        lastName: current.lastName,
+        extraFields: current.extraFields,
+        companyId,
+      });
+      if (!result.ok) {
+        if (result.error === 'company-not-found') {
+          return toolError(`Company ${companyId} not found`);
+        }
+        return toolError(`Person ${personId} not found`);
+      }
+
+      const structuredContent = personDetail(result.person);
+      const text =
+        companyId === null
+          ? `Cleared ${personName(result.person)}'s company.`
+          : `Set ${personName(result.person)}'s company to "${result.person.company?.name}".`;
+      return { content: [{ type: 'text', text }], structuredContent };
+    },
+  );
+
+  server.registerTool(
+    'add-company-to-task',
+    {
+      description: 'Links an existing company to a task; linking an already-linked company is a no-op.',
+      inputSchema: { taskId: z.number().int().positive(), companyId: z.number().int().positive() },
+      outputSchema: taskDetailOutputSchema,
+    },
+    async ({ taskId, companyId }) => {
+      const companyDetail = getCompanyDetail(context.db, companyId);
+      const result = linkCompanyToTask(context.db, taskId, companyId);
+      if (!result.ok) {
+        return toolError(result.error === 'task-not-found' ? `Task ${taskId} not found` : `Company ${companyId} not found`);
+      }
+      const task = getTaskDetail(context.db, taskId)!;
+      const structuredContent = taskDetailContent(task);
+      return { content: [{ type: 'text', text: `Added "${companyDetail!.name}" to task "${task.title}".` }], structuredContent };
+    },
+  );
+
+  server.registerTool(
+    'remove-company-from-task',
+    {
+      description: 'Unlinks a company from a task.',
+      inputSchema: { taskId: z.number().int().positive(), companyId: z.number().int().positive() },
+      outputSchema: taskDetailOutputSchema,
+    },
+    async ({ taskId, companyId }) => {
+      const companyDetail = getCompanyDetail(context.db, companyId);
+      const result = unlinkCompanyFromTask(context.db, taskId, companyId);
+      if (!result.ok) {
+        return toolError(`Task ${taskId} not found`);
+      }
+      const task = getTaskDetail(context.db, taskId)!;
+      const structuredContent = taskDetailContent(task);
+      const label = companyDetail?.name ?? `Company ${companyId}`;
+      return { content: [{ type: 'text', text: `Removed "${label}" from task "${task.title}".` }], structuredContent };
     },
   );
 
