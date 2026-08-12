@@ -16,6 +16,7 @@ let db: ReturnType<typeof createDb>['db'];
 let app: FastifyInstance;
 let client: Client;
 let stub: StubIdentityProvider;
+let serverUrl: string;
 
 /** Seeds titled cards into named lanes, top-to-bottom in array order. Returns a title -> id lookup. */
 function seedBoard(lanesWithTitles: Record<string, string[]>): Record<string, number> {
@@ -71,7 +72,7 @@ beforeEach(async () => {
   if (!address || typeof address === 'string') {
     throw new Error('expected a listening TCP address');
   }
-  const serverUrl = `http://127.0.0.1:${address.port}`;
+  serverUrl = `http://127.0.0.1:${address.port}`;
 
   const provider = await connectThroughApproval(`${serverUrl}/mcp`, { assertion: stub.mint('tyler') });
   client = new Client({ name: 'test-client', version: '1.0.0' });
@@ -194,5 +195,50 @@ describe('US2: move-task explicit position', () => {
       expect(JSON.stringify(result.content)).toContain('Input validation error');
       expect(await boardSnapshot()).toEqual(before);
     }
+  });
+});
+
+describe('US4: move-task error contracts', () => {
+  it('rejects an unconfigured lane, naming the valid lanes, leaving the board unchanged (US4-AS1)', async () => {
+    const ids = seedBoard({ 'To Do': ['Follow up with Sam'] });
+    const before = await boardSnapshot();
+
+    const result = await client.callTool({ name: 'move-task', arguments: { taskId: ids['Follow up with Sam'], lane: 'Doing' } });
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toEqual([
+      { type: 'text', text: 'Unknown lane "Doing". Valid lanes: To Do, In Progress, Waiting, Done' },
+    ]);
+    expect(await boardSnapshot()).toEqual(before);
+  });
+
+  it('rejects a nonexistent taskId, leaving the board unchanged (US4-AS2)', async () => {
+    seedBoard({ 'To Do': ['Follow up with Sam'] });
+    const before = await boardSnapshot();
+
+    const result = await client.callTool({ name: 'move-task', arguments: { taskId: 999999, lane: 'In Progress' } });
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toEqual([{ type: 'text', text: 'Task 999999 not found' }]);
+    expect(await boardSnapshot()).toEqual(before);
+  });
+
+  it('rejects a move-task call with no authentication before the handler runs, leaving the board unchanged (auth gate, FR-013)', async () => {
+    const ids = seedBoard({ 'To Do': ['Follow up with Sam'] });
+    const before = await boardSnapshot();
+
+    const response = await fetch(`${serverUrl}/mcp`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'move-task', arguments: { taskId: ids['Follow up with Sam'], lane: 'In Progress' } },
+      }),
+    });
+
+    expect(response.status).toBe(401);
+    expect(await boardSnapshot()).toEqual(before);
   });
 });

@@ -161,4 +161,20 @@ describe('US3: capture tools', () => {
     const toDoFromApi = boardApi.json().lanes.find((lane: { name: string }) => lane.name === 'To Do');
     expect(toDoFromApi.tasks.map((t: { title: string }) => t.title)).toEqual(['Book venue', 'Order catering', 'Send invites']);
   });
+
+  it('rejects an unconfigured lane on create-task, naming the valid lanes, and creates no card (US4-AS3)', async () => {
+    const before = await totalTaskCount();
+
+    const result = await client.callTool({ name: 'create-task', arguments: { title: 'Book venue', lane: 'Doing' } });
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toEqual([
+      { type: 'text', text: 'Unknown lane "Doing". Valid lanes: To Do, In Progress, Waiting, Done' },
+    ]);
+    expect(await totalTaskCount()).toBe(before);
+
+    const board = await app.inject({ method: 'GET', url: '/api/board' });
+    const titles = board.json().lanes.flatMap((lane: { tasks: { title: string }[] }) => lane.tasks.map((t) => t.title));
+    expect(titles).not.toContain('Book venue');
+  });
 });
