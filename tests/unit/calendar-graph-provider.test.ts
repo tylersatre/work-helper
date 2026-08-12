@@ -132,6 +132,17 @@ describe('GraphCalendarProvider', () => {
     expect(Date.parse(event.end)).toBe(Date.parse('2026-08-14T16:30:00Z'));
   });
 
+  it('throws rather than silently mis-storing when Graph returns a non-UTC timeZone despite the Prefer header', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        value: [fixtureEvent({ start: { dateTime: '2026-08-14T10:00:00.0000000', timeZone: 'Mountain Standard Time' } })],
+      }),
+    );
+    const provider = new GraphCalendarProvider({ getAccessToken: async () => 'token-123' });
+
+    await expect(drain(provider, WINDOW)).rejects.toThrow(/Mountain Standard Time/);
+  });
+
   it('maps subject, seriesMasterId, isAllDay, isCancelled, location, body, categories, webLink as-is', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({

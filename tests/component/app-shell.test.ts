@@ -27,7 +27,7 @@ async function renderAt(path: string) {
 }
 
 describe('App shell', () => {
-  it('renders app-nav with the app name and Board/People/Tags/Email Sync links', async () => {
+  it('renders app-nav with the app name and Board/People/Tags/Sync links', async () => {
     await renderAt('/');
 
     const nav = screen.getByTestId('app-nav');

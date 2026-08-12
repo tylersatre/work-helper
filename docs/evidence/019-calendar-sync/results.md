@@ -1,4 +1,53 @@
-# 019-calendar-sync Browser Evidence Results (User Story 1)
+# 019-calendar-sync Evidence
+
+Evidence directory: `docs/evidence/019-calendar-sync/`. Per `spec.md`'s Out of Scope, US2–US7 have no UI surface — events are reachable only through the MCP read tools in this slice — so those criteria are covered below by recorded automated-check output (constitution Principle III). US1 is the one UI-facing story and is covered by the browser-evidence section further down.
+
+## Automated-check evidence (MCP/API-only criteria: US2–US6, FR-008–FR-021)
+
+Command (re-run against the branch after the code-review fix wave, which added one more test to `calendar-graph-provider.test.ts`):
+
+```
+npx vitest run tests/integration/calendar-sync.test.ts tests/integration/calendar-read-tools.test.ts \
+  tests/integration/calendar-sync-runs.test.ts tests/unit/calendar-refresh-rules.test.ts \
+  tests/unit/calendar-sync-window.test.ts tests/unit/calendar-graph-provider.test.ts
+```
+
+Result: **6 test files passed, 77 tests passed** (0 failed).
+
+```
+ Test Files  6 passed (6)
+      Tests  77 passed (77)
+   Start at  03:38:43 (subset of the full 7-file/89-test run reported below, minus US7's file)
+   Duration  ~2s
+```
+
+Coverage by user story:
+
+- **US2 — full event detail (`get-event`)**: `calendar-read-tools.test.ts` describe block `US2: get-event returns the full detail set` — the fully-populated "Pricing review" scenario (organizer, required/optional attendees with responses, location, join link, category, body) round-tripping every FR-008 field, the not-found tool error, the no-display-name attendee edge case, and the solo-appointment (organizer-only) edge case. `FR-012: all-day / multi-day events round-trip through sync and read tools` (added during code review) closes the gap the verifier flagged — an all-day multi-day event synced and read back via `list-events`/`get-event` with `isAllDay: true` and its full date span intact.
+- **US3 — events connect to tracked people**: `calendar-read-tools.test.ts` describe block `US3: events connect to tracked people` — case-insensitive organizer linking, the unlinked-attendee case, `events-for-person` role/address output, pagination (`limit`/`cursor`), person-not-found and invalid-cursor tool errors, cancelled events included and flagged, and retroactive linking (adding an address to a person connects already-synced events with no re-sync) via the real contact-entry route.
+- **US4 — recurring series as linked occurrences**: `calendar-sync.test.ts` describe block `US4: recurring meetings stored as linked occurrences` — a 5-occurrence weekly series plus a one-off syncing as 6 new events, two occurrences sharing a non-null `seriesId`, the one-off's `seriesId: null`, and an individually-moved occurrence keeping its `seriesId` with exceptional details.
+- **US5 — re-sync refresh and cancellation**: `tests/unit/calendar-refresh-rules.test.ts` describe block `calendar refresh rules (R9)` (8 tests: identical→untouched/uncounted, field/participant change→1 updated with delete-reinsert, disappearance→cancelled with no double-count on repeat absence, `isCancelled: true`→cancelled, cancelled→active reappearance, out-of-window rows never touched, nothing ever deleted) plus `calendar-sync.test.ts` describe block `US5: re-sync refreshes events and preserves history` (moved-event 0-new/1-updated scenario, occurrence-cancellation scenario, moved-out-of-range-then-back edge case).
+- **US6 — agent-triggered sync (`sync-calendar`)**: `calendar-sync.test.ts` describe block `US6: agents trigger calendar sync via MCP` — valid range recorded with source `'mcp'`, missing-dates and inverted-range validation errors with no history row, single-flight collision, and a fully-failing run's tool error plus recorded failure row.
+- **Provider correctness (`GraphCalendarProvider`, feeds every story)**: `tests/unit/calendar-graph-provider.test.ts` (14 tests) — `calendarView` URL/`$select`/`$orderby`/`$top`, `Prefer` headers, `@odata.nextLink` paging, UTC parsing, full FR-008 field mapping, 401/403→`MailboxNotConnectedError`, GET-only requests, and (added during code review) a guard that throws rather than silently mis-storing when Graph returns a non-UTC `timeZone` despite the `Prefer: outlook.timezone="UTC"` request. `tests/unit/calendar-sync-window.test.ts` (16 tests) covers `FakeCalendarProvider`'s window-overlap, paging, and failure-injection semantics used by every integration suite above.
+- **Cross-kind single-flight (FR-006), both directions**: calendar-in-flight blocking `sync-emails`/`sync-calendar`/web-POST is covered in `calendar-sync.test.ts` (`US1: single-flight guard spans both sync kinds`) and `calendar-sync-runs.test.ts` (`POST /api/calendar-sync/runs`); the reverse direction (email-in-flight blocking a calendar sync) is covered in `calendar-sync-runs.test.ts`'s `US1 cross-kind single-flight: email sync in flight blocks calendar sync (FR-006)` describe block, added during code review to close the gap the verifier flagged.
+- **Partial-failure recording (spec Edge Case "a sync run fails partway")**: `calendar-sync-runs.test.ts`'s `POST /api/calendar-sync/runs` describe block includes a `throwAfterEventCount`-gated test asserting a 201 response with `status: 'failure'`, a partial `newCount`, non-null `error`, and a matching failure row in `GET /api/calendar-sync/runs` — added during code review to close the gap the verifier flagged.
+
+## Automated-check evidence (US7, extends a pre-existing MCP tool)
+
+Command: `npx vitest run tests/integration/mcp-unlinked-addresses.test.ts`
+
+Result: **1 test file passed, 12 tests passed** (0 failed) — 10 pre-existing mail-only tests (`US2: list-unlinked-addresses`, a different feature's US2, unrelated to this feature's US2) unchanged, plus 2 new tests in describe block `US7: list-unlinked-addresses spans mail and calendar` covering the exact spec fixture (jordan.smith@example.com 2 msg/3 evt, news@example.com 1/0, morgan.lee@example.com 0/1, a linked address excluded, a resource-only address excluded, and an address that is `resource` on one event but non-resource on another still counted correctly).
+
+```
+ Test Files  1 passed (1)
+      Tests  12 passed (12)
+```
+
+## Full-suite corroboration
+
+The full repository gate (`npm run lint && npm run typecheck && npm test && npm run build`) passes with **870/870 tests across 77 files** as of the latest commit on this branch — the 89 calendar-specific tests above (77 + 12) plus the migration test (`tests/integration/migration-upgrade.test.ts`, verifying migration 0002 is purely additive and fresh/upgraded schemas converge) are all included in that total.
+
+## Browser evidence (User Story 1 — the one UI-facing story)
 
 Dev server: API http://localhost:3019, UI http://localhost:5119, started with `MAIL_PROVIDER=fake` (seeded FakeCalendarProvider, no real Microsoft Graph calls). Driven live via Playwright MCP against the running dev server; navigated to `http://localhost:5119/sync` for every scenario.
 

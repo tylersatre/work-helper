@@ -79,13 +79,25 @@ function toAttendee(attendee: GraphAttendee): ProviderCalendarEvent['attendees']
   };
 }
 
+/**
+ * Requests force `Prefer: outlook.timezone="UTC"` (research R3), so `timeZone` should always come
+ * back `"UTC"` — but trusting that silently would let a non-UTC response shift every stored event
+ * time with no error. Fail the run instead of mis-storing (FR-013 already surfaces sync failures).
+ */
+function toUtcInstant(time: { dateTime: string; timeZone?: string }): string {
+  if (time.timeZone !== undefined && time.timeZone !== 'UTC') {
+    throw new Error(`Calendar returned times in ${time.timeZone}, expected UTC`);
+  }
+  return `${time.dateTime}Z`;
+}
+
 function toProviderEvent(event: GraphEvent): ProviderCalendarEvent {
   return {
     id: event.id,
     seriesMasterId: event.seriesMasterId ?? null,
     subject: event.subject ?? '',
-    start: `${event.start.dateTime}Z`,
-    end: `${event.end.dateTime}Z`,
+    start: toUtcInstant(event.start),
+    end: toUtcInstant(event.end),
     isAllDay: event.isAllDay ?? false,
     isCancelled: event.isCancelled ?? false,
     location: event.location?.displayName ?? '',
