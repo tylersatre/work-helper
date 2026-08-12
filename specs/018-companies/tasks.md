@@ -98,15 +98,15 @@ Single TypeScript web app at repository root: Vue SPA in `src/client/`, Fastify 
 
 ### Tests for User Story 3 (write first, must fail) ⚠️
 
-- [ ] T021 [P] [US3] Write failing integration tests (card-links block) in tests/integration/company-links.test.ts: POST /api/tasks/:id/companies links a company and returns the full updated TaskDetail including `companies: Company[]` (ordered name NOCASE); linking an already-linked company is a no-op returning the unchanged detail; DELETE /api/tasks/:id/companies/:companyId unlinks and returns the updated detail; 404 for missing task or company; GET /api/tasks/:id includes `companies`; GET /api/companies/:id cards section lists exactly the linked cards ordered title NOCASE
-- [ ] T022 [P] [US3] Write failing component tests in tests/component/linked-companies.test.ts: search suggests existing companies by substring, excludes companies already linked to the card, offers no create option, adding shows the company on the card, and removing takes it away
-- [ ] T023 [P] [US3] Extend tests/component/company-detail.test.ts with failing assertions: a populated cards section renders the linked cards ordered by title, replacing the empty state
+- [X] T021 [P] [US3] Write failing integration tests (card-links block) in tests/integration/company-links.test.ts: POST /api/tasks/:id/companies links a company and returns the full updated TaskDetail including `companies: Company[]` (ordered name NOCASE); linking an already-linked company is a no-op returning the unchanged detail; DELETE /api/tasks/:id/companies/:companyId unlinks and returns the updated detail; 404 for missing task or company; GET /api/tasks/:id includes `companies`; GET /api/companies/:id cards section lists exactly the linked cards ordered title NOCASE
+- [X] T022 [P] [US3] Write failing component tests in tests/component/linked-companies.test.ts: search suggests existing companies by substring, excludes companies already linked to the card, offers no create option, adding shows the company on the card, and removing takes it away
+- [X] T023 [P] [US3] Extend tests/component/company-detail.test.ts with failing assertions: a populated cards section renders the linked cards ordered by title, replacing the empty state
 
 ### Implementation for User Story 3
 
-- [ ] T024 [US3] Add `companies: Company[]` to the TaskDetail type in src/shared/types.ts, implement link/unlink functions in src/server/services/companies.ts, include companies in the task detail assembly in src/server/services/tasks.ts, and add POST /api/tasks/:id/companies + DELETE /api/tasks/:id/companies/:companyId to src/server/routes/tasks.ts mirroring the task-people routes — T021 goes green
-- [ ] T025 [US3] Implement src/client/components/LinkedCompanies.vue: debounced search against GET /api/companies?q= excluding already-linked ids client-side, add via POST, remove via DELETE, rendering the card's current companies (mirrors LinkedPeople.vue)
-- [ ] T026 [US3] Host LinkedCompanies in src/client/pages/TaskDetailPage.vue and render populated card entries in the CompanyDetailPage.vue cards section — T022 and T023 go green
+- [X] T024 [US3] Add `companies: Company[]` to the TaskDetail type in src/shared/types.ts, implement link/unlink functions in src/server/services/companies.ts, include companies in the task detail assembly in src/server/services/tasks.ts, and add POST /api/tasks/:id/companies + DELETE /api/tasks/:id/companies/:companyId to src/server/routes/tasks.ts mirroring the task-people routes — T021 goes green
+- [X] T025 [US3] Implement src/client/components/LinkedCompanies.vue: debounced search against GET /api/companies?q= excluding already-linked ids client-side, add via POST, remove via DELETE, rendering the card's current companies (mirrors LinkedPeople.vue)
+- [X] T026 [US3] Host LinkedCompanies in src/client/pages/TaskDetailPage.vue and render populated card entries in the CompanyDetailPage.vue cards section — T022 and T023 go green
 
 **Checkpoint**: US1–US3 work independently — card links round-trip between card detail and company detail pages.
 

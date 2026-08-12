@@ -139,6 +139,7 @@ export interface TaskDetail extends Task {
   people: LinkedPerson[];
   notes: Note[];
   tags: Tag[];
+  companies: Company[];
 }
 
 export interface Tag {

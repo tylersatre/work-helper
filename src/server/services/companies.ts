@@ -1,7 +1,7 @@
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { companyNameSchema } from '../../shared/validation.js';
-import { companies, people, taskCompanies, tasks } from '../db/schema.js';
+import { companies, people, tasks, taskCompanies } from '../db/schema.js';
 import { getTagsForCompany, type TagRecord } from './tags.js';
 import type * as schema from '../db/schema.js';
 
@@ -111,4 +111,33 @@ export function renameCompany(db: AppDb, id: number, rawName: unknown): RenameCo
   db.update(companies).set({ name }).where(eq(companies.id, id)).run();
   const [updated] = db.select({ id: companies.id, name: companies.name }).from(companies).where(eq(companies.id, id)).limit(1).all();
   return { ok: true, company: updated! };
+}
+
+export type LinkCompanyToTaskResult = { ok: true } | { ok: false; error: 'task-not-found' | 'company-not-found' };
+
+export function linkCompanyToTask(db: AppDb, taskId: number, companyId: number): LinkCompanyToTaskResult {
+  const [task] = db.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, taskId)).limit(1).all();
+  if (!task) {
+    return { ok: false, error: 'task-not-found' };
+  }
+  if (!companyExists(db, companyId)) {
+    return { ok: false, error: 'company-not-found' };
+  }
+
+  db.insert(taskCompanies).values({ taskId, companyId }).onConflictDoNothing().run();
+  return { ok: true };
+}
+
+export type UnlinkCompanyFromTaskResult = { ok: true } | { ok: false; error: 'task-not-found' };
+
+export function unlinkCompanyFromTask(db: AppDb, taskId: number, companyId: number): UnlinkCompanyFromTaskResult {
+  const [task] = db.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, taskId)).limit(1).all();
+  if (!task) {
+    return { ok: false, error: 'task-not-found' };
+  }
+
+  db.delete(taskCompanies)
+    .where(and(eq(taskCompanies.taskId, taskId), eq(taskCompanies.companyId, companyId)))
+    .run();
+  return { ok: true };
 }

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import type { LinkedPerson, Note, Tag, TaskDetail } from '../../shared/types.js';
+import type { Company, LinkedPerson, Note, Tag, TaskDetail } from '../../shared/types.js';
+import LinkedCompanies from '../components/LinkedCompanies.vue';
 import LinkedPeople from '../components/LinkedPeople.vue';
 import TagChip from '../components/TagChip.vue';
 import TagInput from '../components/TagInput.vue';
@@ -19,6 +20,12 @@ async function fetchTask(): Promise<void> {
 function onUpdatePeople(people: LinkedPerson[]): void {
   if (task.value) {
     task.value.people = people;
+  }
+}
+
+function onUpdateCompanies(companies: Company[]): void {
+  if (task.value) {
+    task.value.companies = companies;
   }
 }
 
@@ -82,6 +89,10 @@ onMounted(fetchTask);
     <div class="task-detail-section">
       <h3>People</h3>
       <LinkedPeople :task-id="task.id" :people="task.people" @update:people="onUpdatePeople" />
+    </div>
+    <div class="task-detail-section">
+      <h3>Companies</h3>
+      <LinkedCompanies :task-id="task.id" :companies="task.companies" @update:companies="onUpdateCompanies" />
     </div>
     <div class="task-detail-section">
       <h3>Notes</h3>

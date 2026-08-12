@@ -73,6 +73,11 @@ async function saveRename(): Promise<void> {
     <div class="company-detail-section">
       <h3>Cards</h3>
       <NEmpty v-if="company.cards.length === 0" data-testid="company-cards-empty" description="No cards yet" />
+      <ul v-else class="company-detail-list">
+        <li v-for="card in company.cards" :key="card.id" class="company-detail-row" data-testid="company-card-row">
+          <RouterLink :to="`/tasks/${card.id}`">{{ card.title }}</RouterLink>
+        </li>
+      </ul>
     </div>
 
     <div class="company-detail-section">

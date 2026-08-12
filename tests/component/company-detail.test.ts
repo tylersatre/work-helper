@@ -115,4 +115,29 @@ describe('CompanyDetailPage', () => {
     const rows = await screen.findAllByTestId('company-person-row');
     expect(rows.map((row) => row.textContent?.trim())).toEqual(['ana alvarez', 'Sam Rivera']);
   });
+
+  it('a populated cards section renders the linked cards ordered by title, replacing the empty state (018-companies US3)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          id: 1,
+          name: 'Acme Inc',
+          people: [],
+          cards: [
+            { id: 1, title: 'alpha rollout', lane: 'To Do' },
+            { id: 2, title: 'Zephyr onboarding', lane: 'Waiting' },
+          ],
+          tags: [],
+        }),
+      }),
+    );
+
+    await renderAt('/companies/1');
+
+    expect(screen.queryByTestId('company-cards-empty')).toBeNull();
+    const rows = await screen.findAllByTestId('company-card-row');
+    expect(rows.map((row) => row.textContent?.trim())).toEqual(['alpha rollout', 'Zephyr onboarding']);
+  });
 });
