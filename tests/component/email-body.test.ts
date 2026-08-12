@@ -2,6 +2,7 @@
 import { render } from '@testing-library/vue';
 import { describe, expect, it } from 'vitest';
 import EmailBody from '../../src/client/components/EmailBody.vue';
+import { palette } from '../../src/client/palette.js';
 
 describe('EmailBody', () => {
   it('renders sanitized HTML formatting inside an open shadow root, with no script side effects', () => {
@@ -22,6 +23,27 @@ describe('EmailBody', () => {
     expect(shadow!.querySelector('a')?.getAttribute('href')).toBe('https://example.com/pricing');
     expect(shadow!.querySelector('script')).toBeNull();
     expect((window as unknown as { __xss?: boolean }).__xss).toBeUndefined();
+  });
+
+  it('renders html email on a light card — white background, dark text, light color-scheme — so emails authored against white stay readable on the dark app', () => {
+    const { container } = render(EmailBody, {
+      props: {
+        bodyOriginal: '<p style="color: #444444;">Will you please update my address?</p>',
+        bodyContentType: 'html',
+      },
+    });
+
+    const host = container.querySelector('[data-testid="email-body-html"]');
+    const shadow = (host as HTMLElement).shadowRoot!;
+    const style = shadow.querySelector('style');
+    expect(style).toBeTruthy();
+    expect(style!.textContent).toContain(`background: ${palette.emailCardBg}`);
+    expect(style!.textContent).toContain(`color: ${palette.emailCardText}`);
+    expect(style!.textContent).toContain('color-scheme: light');
+    // The email content itself renders inside the light card.
+    const card = shadow.querySelector('.email-light-card');
+    expect(card).toBeTruthy();
+    expect(card!.querySelector('p')?.textContent).toBe('Will you please update my address?');
   });
 
   it('renders a text body as escaped, pre-wrapped text with no auto-linking, preserving blank-line paragraphs', () => {
