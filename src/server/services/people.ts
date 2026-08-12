@@ -30,20 +30,25 @@ export interface PersonRecord {
 
 export type CreatePersonResult =
   | { ok: true; person: PersonRecord }
-  | { ok: false; error: 'email-conflict' | 'phone-conflict' };
+  | { ok: false; error: 'email-conflict' | 'phone-conflict'; holder: { id: number; name: string } };
 
-function phoneConflictExists(db: AppDb, phone: string, excludeId?: number): boolean {
+function holderName(db: AppDb, personId: number): string {
+  const [row] = db.select({ firstName: people.firstName, lastName: people.lastName }).from(people).where(eq(people.id, personId)).limit(1).all();
+  return `${row!.firstName} ${row!.lastName}`;
+}
+
+function findPhoneHolder(db: AppDb, phone: string, excludeId?: number): number | undefined {
   const conditions = [eq(personPhones.value, phone)];
   if (excludeId !== undefined) {
     conditions.push(ne(personPhones.id, excludeId));
   }
   const [row] = db
-    .select({ id: personPhones.id })
+    .select({ personId: personPhones.personId })
     .from(personPhones)
     .where(and(...conditions))
     .limit(1)
     .all();
-  return row !== undefined;
+  return row?.personId;
 }
 
 function normalizeExtraFields(raw: Record<string, string> | undefined, personFields: string[]): Record<string, string> {
@@ -92,10 +97,11 @@ export function createPerson(db: AppDb, personFields: string[], rawInput: unknow
 
   const existingEmail = input.email !== null ? findEmailAddressByValue(db, input.email) : undefined;
   if (existingEmail && existingEmail.personId !== null) {
-    return { ok: false, error: 'email-conflict' };
+    return { ok: false, error: 'email-conflict', holder: { id: existingEmail.personId, name: holderName(db, existingEmail.personId) } };
   }
-  if (input.phone !== null && phoneConflictExists(db, input.phone)) {
-    return { ok: false, error: 'phone-conflict' };
+  const phoneHolderId = input.phone !== null ? findPhoneHolder(db, input.phone) : undefined;
+  if (phoneHolderId !== undefined) {
+    return { ok: false, error: 'phone-conflict', holder: { id: phoneHolderId, name: holderName(db, phoneHolderId) } };
   }
 
   const personId = db.transaction((tx) => {

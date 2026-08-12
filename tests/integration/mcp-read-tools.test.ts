@@ -161,6 +161,8 @@ describe('US2: read tools', () => {
       lastName: 'Rivera',
       email: 'sam.rivera@example.com',
       phone: '555-0100',
+      emails: [{ id: expect.any(Number), value: 'sam.rivera@example.com', isPrimary: true }],
+      phones: [{ id: expect.any(Number), value: '555-0100', isPrimary: true }],
       extraFields: { Nickname: 'Sammy' },
       tags: [],
     });
@@ -304,5 +306,39 @@ describe('US3 (011-tags): tags on get-person and get-task', () => {
 
     const tags = (result.structuredContent as { tags: unknown[] }).tags;
     expect(tags).toEqual(['VIP']);
+  });
+});
+
+describe('US5 (015-mcp-people-tools): get-person full contact lists, search-people unchanged', () => {
+  it('get-person returns full emails/phones arrays with exactly one primary each, while search-people rows stay primary-only (FR-018/FR-019)', async () => {
+    await app.inject({ method: 'POST', url: `/api/people/${sam}/emails`, payload: { value: 'sam.personal@example.com' } });
+    await app.inject({ method: 'POST', url: `/api/people/${sam}/phones`, payload: { value: '555-0101' } });
+
+    const result = await client.callTool({ name: 'get-person', arguments: { personId: sam } });
+    expect(result.isError).toBeFalsy();
+    const person = result.structuredContent as {
+      email: string | null;
+      phone: string | null;
+      emails: { id: number; value: string; isPrimary: boolean }[];
+      phones: { id: number; value: string; isPrimary: boolean }[];
+      extraFields: Record<string, string>;
+      tags: string[];
+    };
+
+    expect(person.emails).toHaveLength(2);
+    expect(person.emails.filter((e) => e.isPrimary)).toHaveLength(1);
+    expect(person.emails.map((e) => e.value).sort()).toEqual(['sam.personal@example.com', 'sam.rivera@example.com']);
+    expect(person.phones).toHaveLength(2);
+    expect(person.phones.filter((p) => p.isPrimary)).toHaveLength(1);
+    expect(person.phones.map((p) => p.value).sort()).toEqual(['555-0100', '555-0101']);
+    expect(person.email).toBe('sam.rivera@example.com');
+    expect(person.phone).toBe('555-0100');
+    expect(person.extraFields).toEqual({ Nickname: 'Sammy' });
+
+    const search = await client.callTool({ name: 'search-people', arguments: { query: 'sam' } });
+    const { people } = search.structuredContent as { people: Record<string, unknown>[] };
+    expect(people).toEqual([{ id: sam, name: 'Sam Rivera', email: 'sam.rivera@example.com' }]);
+    expect(people[0]).not.toHaveProperty('emails');
+    expect(people[0]).not.toHaveProperty('phones');
   });
 });
