@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router';
 import type { EmailConversationDetail } from '../../shared/types.js';
 import AddressLinkControls from '../components/AddressLinkControls.vue';
 import EmailBody from '../components/EmailBody.vue';
+import LinkedCards from '../components/LinkedCards.vue';
 import { formatBytes, subjectOrPlaceholder } from '../utils/email-format.js';
 import { absoluteLocal } from '../utils/time.js';
 
@@ -54,6 +55,11 @@ onMounted(fetchConversation);
 
     <template v-else-if="conversation">
       <h2 :class="{ 'subject-placeholder': !conversation.subject.trim() }">{{ subjectOrPlaceholder(conversation.subject) }}</h2>
+
+      <section class="email-conversation-cards">
+        <h3>Cards</h3>
+        <LinkedCards :cards="conversation.cards" />
+      </section>
 
       <article v-for="message in conversation.messages" :key="message.id" class="email-message" data-testid="email-message">
         <header class="email-message-header">
@@ -130,6 +136,18 @@ onMounted(fetchConversation);
 .subject-placeholder {
   color: var(--wh-text-muted);
   font-style: italic;
+}
+
+.email-conversation-cards {
+  margin-bottom: 1rem;
+}
+
+.email-conversation-cards h3 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--wh-text-muted);
+  margin-bottom: 0.5rem;
 }
 
 .email-message {

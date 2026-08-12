@@ -1,6 +1,8 @@
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import type { LinkedCardSummary } from '../../../shared/types.js';
 import { emailAddresses, emailAttachments, emailConversations, emailMessages, emailParticipants, people, syncRuns } from '../../db/schema.js';
+import { cardsForConversation } from '../task-conversations.js';
 import type * as schema from '../../db/schema.js';
 import type { SyncRunRecord } from './sync-coordinator.js';
 
@@ -55,7 +57,7 @@ export interface ConversationsPage {
   nextCursor: string | null;
 }
 
-function participantsForConversation(db: AppDb, conversationId: number): ConversationParticipantSummary[] {
+export function participantsForConversation(db: AppDb, conversationId: number): ConversationParticipantSummary[] {
   const rows = db.all<{
     address: string;
     displayName: string;
@@ -184,6 +186,7 @@ export interface ConversationDetail {
   id: number;
   subject: string;
   messages: ConversationMessage[];
+  cards: LinkedCardSummary[];
 }
 
 export interface PersonEmailAddressRole {
@@ -415,6 +418,7 @@ export function getConversation(
   return {
     id: conversationId,
     subject: messages[0]?.subject ?? '',
+    cards: cardsForConversation(db, conversationId),
     messages: messages.map((message) => ({
       id: message.id,
       subject: message.subject,
