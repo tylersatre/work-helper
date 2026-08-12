@@ -304,3 +304,147 @@ describe('US4: recurring meetings stored as linked occurrences', () => {
     expect(movedDetail.seriesId).toBe(moved!.seriesId);
   });
 });
+
+describe('US5: re-sync refreshes events and preserves history', () => {
+  /** Full detail shape returned by get-event, trimmed to the fields US5 asserts on. */
+  interface EventDetailForRefresh {
+    startAt: number;
+    endAt: number;
+    location: string;
+    isCancelled: boolean;
+    participants: { address: string; responseStatus: string }[];
+  }
+
+  function pricingReviewV1(): SeedEvent {
+    return {
+      id: 'evt-us5-pricing',
+      subject: 'Pricing review',
+      // 2026-08-14 10:00-10:30 (spec.md US5 scenario 1's illustrative local time).
+      start: '2026-08-14T16:00:00.000Z',
+      end: '2026-08-14T16:30:00.000Z',
+      location: 'Conference Room B',
+      attendees: [{ address: 'ana.alvarez@example.com', name: 'Ana Alvarez', type: 'optional', responseStatus: 'none' }],
+    };
+  }
+
+  function pricingReviewV2Moved(): SeedEvent {
+    return {
+      id: 'evt-us5-pricing',
+      subject: 'Pricing review',
+      start: '2026-08-15T20:00:00.000Z',
+      end: '2026-08-15T20:30:00.000Z',
+      location: 'Room 4',
+      attendees: [{ address: 'ana.alvarez@example.com', name: 'Ana Alvarez', type: 'optional', responseStatus: 'accepted' }],
+    };
+  }
+
+  it('scenario 1: refreshes a moved/rescheduled event in place — 0 new / 1 updated, no duplicate', async () => {
+    buildTestApp(new FakeCalendarProvider([pricingReviewV1()]));
+    await startAndConnect();
+
+    const firstSync = await postCalendarSync({ startDate: '2026-08-01', endDate: '2026-08-31' });
+    expect(firstSync.statusCode).toBe(201);
+    expect(firstSync.json()).toMatchObject({ newCount: 1, updatedCount: 0 });
+
+    app.calendarProvider = new FakeCalendarProvider([pricingReviewV2Moved()]);
+    const secondSync = await postCalendarSync({ startDate: '2026-08-01', endDate: '2026-08-31' });
+    expect(secondSync.statusCode).toBe(201);
+    expect(secondSync.json()).toMatchObject({ newCount: 0, updatedCount: 1 });
+
+    const result = await listEvents('2026-08-01', '2026-08-31');
+    const { events } = result.structuredContent as { events: EventSummary[] };
+    const pricingEvents = events.filter((e) => e.subject === 'Pricing review');
+    expect(pricingEvents).toHaveLength(1);
+
+    const detailResult = await getEvent(pricingEvents[0]!.id);
+    expect(detailResult.isError).toBeFalsy();
+    const detail = detailResult.structuredContent as EventDetailForRefresh;
+    expect(new Date(detail.startAt).toISOString()).toBe('2026-08-15T20:00:00.000Z');
+    expect(new Date(detail.endAt).toISOString()).toBe('2026-08-15T20:30:00.000Z');
+    expect(detail.location).toBe('Room 4');
+    const ana = detail.participants.find((p) => p.address === 'ana.alvarez@example.com');
+    expect(ana?.responseStatus).toBe('accepted');
+  });
+
+  const STANDUP_SERIES_MASTER_ID = 'series-us5-standup';
+
+  function standupSeries(): SeedEvent[] {
+    return weeklySeries({
+      seriesMasterId: STANDUP_SERIES_MASTER_ID,
+      subject: 'Team standup',
+      startDate: '2026-08-03',
+      startTime: '09:00',
+      endTime: '09:15',
+      count: 5,
+      idPrefix: 'evt-us5-standup',
+    });
+  }
+
+  it('scenario 2: a removed occurrence stays stored, flagged cancelled; other occurrences unchanged', async () => {
+    const fullSeries = standupSeries();
+    buildTestApp(new FakeCalendarProvider(fullSeries));
+    await startAndConnect();
+
+    const firstSync = await postCalendarSync({ startDate: '2026-08-01', endDate: '2026-08-31' });
+    expect(firstSync.json()).toMatchObject({ newCount: 5, updatedCount: 0 });
+
+    const before = (await listEvents('2026-08-01', '2026-08-31')).structuredContent as { events: EventSummary[] };
+    const removedOccurrence = before.events.find(
+      (e) => e.subject === 'Team standup' && new Date(e.startAt).toISOString().slice(0, 10) === '2026-08-17',
+    );
+    expect(removedOccurrence).toBeDefined();
+    const otherIds = before.events.filter((e) => e.id !== removedOccurrence!.id).map((e) => e.id);
+
+    // The 2026-08-17 occurrence (index 2 of the 5 generated) disappears from the fake's seed.
+    const withoutRemoved = fullSeries.filter((_, i) => i !== 2);
+    app.calendarProvider = new FakeCalendarProvider(withoutRemoved);
+    const secondSync = await postCalendarSync({ startDate: '2026-08-01', endDate: '2026-08-31' });
+    expect(secondSync.json()).toMatchObject({ newCount: 0, updatedCount: 1 });
+
+    const after = (await listEvents('2026-08-01', '2026-08-31')).structuredContent as { events: EventSummary[] };
+    expect(after.events).toHaveLength(5); // still stored, nothing deleted
+
+    const stillThere = after.events.find((e) => e.id === removedOccurrence!.id);
+    expect(stillThere).toBeDefined();
+    expect(stillThere!.isCancelled).toBe(true);
+
+    const others = after.events.filter((e) => e.id !== removedOccurrence!.id);
+    expect(others.every((e) => e.isCancelled === false)).toBe(true);
+    expect(others.map((e) => e.id).sort()).toEqual(otherIds.sort());
+  });
+
+  it('moved-out-of-range edge case: a range-bounded sync marks the event cancelled once it moves beyond the range, then a later sync covering its new date refreshes it to active', async () => {
+    const original: SeedEvent = {
+      id: 'evt-us5-outrange',
+      subject: 'Quarterly review',
+      start: '2026-08-14T16:00:00.000Z',
+      end: '2026-08-14T16:30:00.000Z',
+    };
+    buildTestApp(new FakeCalendarProvider([original]));
+    await startAndConnect();
+
+    const firstSync = await postCalendarSync({ startDate: '2026-08-01', endDate: '2026-08-31' });
+    expect(firstSync.json()).toMatchObject({ newCount: 1, updatedCount: 0 });
+
+    // Moved beyond August — an August-bounded re-sync no longer sees it in its fetch at all.
+    const moved: SeedEvent = { ...original, start: '2026-09-10T16:00:00.000Z', end: '2026-09-10T16:30:00.000Z' };
+    app.calendarProvider = new FakeCalendarProvider([moved]);
+    const augustResync = await postCalendarSync({ startDate: '2026-08-01', endDate: '2026-08-31' });
+    expect(augustResync.json()).toMatchObject({ newCount: 0, updatedCount: 1 });
+
+    const augustList = (await listEvents('2026-08-01', '2026-08-31')).structuredContent as { events: EventSummary[] };
+    const stillListed = augustList.events.find((e) => e.subject === 'Quarterly review');
+    expect(stillListed).toBeDefined();
+    expect(stillListed!.isCancelled).toBe(true);
+
+    // A later sync covering its new date refreshes it to active.
+    const septemberSync = await postCalendarSync({ startDate: '2026-09-01', endDate: '2026-09-30' });
+    expect(septemberSync.json()).toMatchObject({ newCount: 0, updatedCount: 1 });
+
+    const septemberList = (await listEvents('2026-09-01', '2026-09-30')).structuredContent as { events: EventSummary[] };
+    const refreshed = septemberList.events.find((e) => e.subject === 'Quarterly review');
+    expect(refreshed).toBeDefined();
+    expect(refreshed!.isCancelled).toBe(false);
+    expect(new Date(refreshed!.startAt).toISOString()).toBe('2026-09-10T16:00:00.000Z');
+  });
+});
