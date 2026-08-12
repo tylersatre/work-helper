@@ -49,16 +49,19 @@ describe('no hardcoded dark-mode literals in client components', () => {
     '%s takes dark surfaces from tokens — no near-black hex backgrounds (accents allowed)',
     (_name, path) => {
       const source = styleOf(path);
-      const hexBackgrounds = [...source.matchAll(/background(?:-color)?:\s*(#[0-9a-f]{6})\b/gi)].map((m) => m[1]!);
+      const hexBackgrounds = [...source.matchAll(/background(?:-color)?:\s*(#[0-9a-f]{3}(?:[0-9a-f]{3})?)\b/gi)].map(
+        (m) => m[1]!,
+      );
       const nearBlack = hexBackgrounds.filter((hex) => hexLuminance(hex) < 0.05);
       expect(nearBlack).toEqual([]);
     },
   );
 });
 
-/** WCAG 2.x relative luminance of a #rrggbb hex — dark-gray surfaces (< 0.05) must come from --wh-* tokens; brighter accent hexes are fine. */
+/** WCAG 2.x relative luminance of a #rgb/#rrggbb hex — dark-gray surfaces (< 0.05) must come from --wh-* tokens; brighter accent hexes are fine. */
 function hexLuminance(hex: string): number {
-  const n = parseInt(hex.slice(1), 16);
+  const digits = hex.length === 4 ? [...hex.slice(1)].map((d) => d + d).join('') : hex.slice(1);
+  const n = parseInt(digits, 16);
   const lin = (channel: number): number => {
     const c = channel / 255;
     return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
@@ -74,6 +77,13 @@ describe('card treatments stay declared', () => {
     expect(rule).toContain('background: var(--wh-surface)');
     expect(rule).toContain('border: 1px solid var(--wh-border)');
     expect(rule).toContain('border-radius');
+  });
+
+  it('EmailConversationPage separates the message header from the body with a border', () => {
+    const source = styleOf(join(CLIENT_ROOT, 'pages/EmailConversationPage.vue'));
+    const rule = source.match(/\.email-message-header \{[^}]*\}/)?.[0];
+    expect(rule).toBeTruthy();
+    expect(rule).toContain('border-bottom: 1px solid var(--wh-border-subtle)');
   });
 
   it('App.vue gives every anchor the AA-contrast link token — the fix for browser-default #0000EE links', () => {
