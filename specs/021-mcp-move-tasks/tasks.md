@@ -125,7 +125,7 @@ Single TypeScript project at repo root: `src/server/`, `tests/integration/` (per
 - [X] T016 Run the full gate `npm run lint && npm run typecheck && npm test && npm run build` and record passing output (quickstart.md §1)
 - [X] T017 Run the targeted suite `npx vitest run tests/integration/mcp-move-tools.test.ts` and confirm every quickstart.md §2 expected outcome is pinned by a passing test; record output as automated-check evidence for the MCP-only criteria
 - [X] T018 Dispatch the `browser-tester` agent against the dev server (`npm run dev`, API 3021 / UI 5121) to capture web-app-visibility evidence for the "after a page reload" clauses of US1–US3 and SC-004 (MCP-driven move and lane-aware create visible on the web board after reload), stored in docs/evidence/021-mcp-move-tasks/
-- [ ] T019 Dispatch the `verifier` agent to independently confirm every acceptance criterion has a passing automated check plus surface-appropriate evidence (browser evidence for UI-facing criteria, recorded test output for MCP-only criteria) before reporting the feature done
+- [X] T019 Dispatch the `verifier` agent to independently confirm every acceptance criterion has a passing automated check plus surface-appropriate evidence (browser evidence for UI-facing criteria, recorded test output for MCP-only criteria) before reporting the feature done
 
 ---
 
