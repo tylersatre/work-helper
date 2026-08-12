@@ -136,4 +136,54 @@ describe('migration upgrade path (drizzle/0001_silly_sauron.sql, production data
     upgradedSqlite.close();
     freshSqlite.close();
   });
+
+  it('applies 0004 (task_conversations join table) to a pre-existing baseline-only database without losing data, and converges with a fresh-DB schema', () => {
+    dir = mkdtempSync(join(tmpdir(), 'work-helper-upgrade-'));
+    const dbPath = join(dir, 'work-helper.db');
+    baselineMigrationsDir = buildBaselineOnlyMigrationsFolder();
+
+    // Stand up the database exactly as it looked pre-020-card-email-links, and store data through it.
+    const baselineSqlite = new Database(dbPath);
+    baselineSqlite.pragma('foreign_keys = ON');
+    const baselineDb = drizzle(baselineSqlite, {});
+    migrate(baselineDb, { migrationsFolder: baselineMigrationsDir });
+
+    baselineSqlite.prepare('INSERT INTO tasks (title, lane, position, created_at) VALUES (?, ?, ?, ?)').run('Follow up with Sam', 'To Do', 0, 1);
+    baselineSqlite.prepare('INSERT INTO email_conversations (graph_conversation_id, created_at) VALUES (?, ?)').run('conv-1', 1);
+    baselineSqlite.close();
+
+    // Upgrade in place through the app's real migration runner (drizzle/, which now includes 0004).
+    const { db: upgradedDb, sqlite: upgradedSqlite } = createDb(dbPath);
+
+    const tasksRows = upgradedDb.all<{ title: string }>('SELECT title FROM tasks' as never);
+    expect(tasksRows).toHaveLength(1);
+    const conversationRows = upgradedDb.all<{ graph_conversation_id: string }>('SELECT graph_conversation_id FROM email_conversations' as never);
+    expect(conversationRows).toHaveLength(1);
+
+    // The new join table exists and is empty (no lossy/backfill surprises on upgrade).
+    expect(upgradedSqlite.prepare('SELECT * FROM task_conversations').all()).toEqual([]);
+
+    // Converges with a fresh :memory: DB's schema — the upgrade path and a brand-new install end up identical.
+    const { sqlite: freshSqlite } = createDb(':memory:');
+    expect(tableInfo(upgradedSqlite, 'task_conversations')).toEqual(tableInfo(freshSqlite, 'task_conversations'));
+
+    // Composite primary key on (task_id, conversation_id) — structurally forbids duplicate links.
+    const pkColumns = (upgradedSqlite.prepare("PRAGMA table_info('task_conversations')").all() as { name: string; pk: number }[])
+      .filter((c) => c.pk > 0)
+      .sort((a, b) => a.pk - b.pk)
+      .map((c) => c.name);
+    expect(pkColumns).toEqual(['task_id', 'conversation_id']);
+
+    // Both FKs cascade on delete.
+    const fks = upgradedSqlite.prepare("PRAGMA foreign_key_list('task_conversations')").all() as { table: string; from: string; on_delete: string }[];
+    expect(fks).toContainEqual(expect.objectContaining({ table: 'tasks', from: 'task_id', on_delete: 'CASCADE' }));
+    expect(fks).toContainEqual(expect.objectContaining({ table: 'email_conversations', from: 'conversation_id', on_delete: 'CASCADE' }));
+
+    // The reverse-lookup index on conversation_id exists.
+    const indexes = upgradedSqlite.prepare("PRAGMA index_list('task_conversations')").all() as { name: string }[];
+    expect(indexes.some((i) => i.name === 'task_conversations_conversation_id')).toBe(true);
+
+    upgradedSqlite.close();
+    freshSqlite.close();
+  });
 });

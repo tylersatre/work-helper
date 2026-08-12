@@ -2,6 +2,7 @@ import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { noteTextSchema, titleSchema } from '../../shared/validation.js';
 import { companies, people, emailAddresses, personPhones, taskCompanies, taskNotes, taskPeople, tasks } from '../db/schema.js';
+import { conversationsForTask } from './task-conversations.js';
 import { getTagsForTask } from './tags.js';
 import type * as schema from '../db/schema.js';
 
@@ -158,7 +159,14 @@ export function getTaskDetail(db: AppDb, id: number) {
     .orderBy(asc(sql`${companies.name} COLLATE NOCASE`))
     .all();
 
-  return { ...task, people: linkedPeople, notes, tags: getTagsForTask(db, id), companies: linkedCompanies };
+  return {
+    ...task,
+    people: linkedPeople,
+    notes,
+    tags: getTagsForTask(db, id),
+    companies: linkedCompanies,
+    conversations: conversationsForTask(db, id),
+  };
 }
 
 export type AddNoteResult = { ok: true; note: typeof taskNotes.$inferSelect } | { ok: false; error: 'task-not-found' | 'invalid-text' };

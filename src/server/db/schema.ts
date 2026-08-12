@@ -235,6 +235,19 @@ export const taskCompanies = sqliteTable(
   (t) => [primaryKey({ columns: [t.taskId, t.companyId] })],
 );
 
+export const taskConversations = sqliteTable(
+  'task_conversations',
+  {
+    taskId: integer('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    conversationId: integer('conversation_id')
+      .notNull()
+      .references(() => emailConversations.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.taskId, t.conversationId] }), index('task_conversations_conversation_id').on(t.conversationId)],
+);
+
 export const companyTags = sqliteTable(
   'company_tags',
   {

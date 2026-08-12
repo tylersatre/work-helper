@@ -8,7 +8,10 @@ import TaskDetailPage from '../../src/client/pages/TaskDetailPage.vue';
 function makeRouter(initialPath: string) {
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/tasks/:id', component: TaskDetailPage }],
+    routes: [
+      { path: '/tasks/:id', component: TaskDetailPage },
+      { path: '/emails/:id', component: { template: '<div>email</div>' } },
+    ],
   });
   router.push(initialPath);
   return router;
@@ -29,7 +32,7 @@ describe('TaskDetailPage', () => {
       'fetch',
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [], companies: [] }),
+        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [], companies: [], conversations: [] }),
       }),
     );
 
@@ -50,7 +53,7 @@ describe('TaskDetailPage', () => {
       'fetch',
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'Waiting', position: 0, createdAt: 1, people: [], notes: [], tags: [], companies: [] }),
+        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'Waiting', position: 0, createdAt: 1, people: [], notes: [], tags: [], companies: [], conversations: [] }),
       }),
     );
 
@@ -71,7 +74,7 @@ describe('TaskDetailPage', () => {
       if (url === '/api/tasks/1' && !options) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [], companies: [] }),
+          json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [], companies: [], conversations: [] }),
         });
       }
       if (typeof url === 'string' && url.startsWith('/api/people?q=')) {
@@ -103,7 +106,7 @@ describe('TaskDetailPage', () => {
             ],
             notes: [],
             tags: [],
-            companies: [],
+            companies: [], conversations: [],
           }),
         });
       }
@@ -146,14 +149,14 @@ describe('TaskDetailPage', () => {
             ],
             notes: [],
             tags: [],
-            companies: [],
+            companies: [], conversations: [],
           }),
         });
       }
       if (options?.method === 'DELETE') {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [], companies: [] }),
+          json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [], companies: [], conversations: [] }),
         });
       }
       return Promise.resolve({ ok: true, json: async () => [] });
@@ -185,7 +188,7 @@ describe('TaskDetailPage', () => {
           people: [],
           notes: [{ id: 1, taskId: 1, text: 'Waiting on budget numbers', source: 'ui', createdAt: Date.now() }],
           tags: [],
-          companies: [],
+          companies: [], conversations: [],
         }),
       }),
     );
@@ -203,7 +206,7 @@ describe('TaskDetailPage', () => {
       'fetch',
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [], companies: [] }),
+        json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [], companies: [], conversations: [] }),
       }),
     );
 
@@ -232,7 +235,7 @@ describe('TaskDetailPage', () => {
             { id: 1, name: 'Q3', color: '#22C55E' },
             { id: 2, name: 'VIP', color: '#3B82F6' },
           ],
-          companies: [],
+          companies: [], conversations: [],
         }),
       }),
     );
@@ -259,7 +262,7 @@ describe('TaskDetailPage', () => {
             people: [],
             notes: [],
             tags: [{ id: 1, name: 'VIP', color: '#3B82F6' }],
-            companies: [],
+            companies: [], conversations: [],
           }),
         });
       }
@@ -287,7 +290,7 @@ describe('TaskDetailPage', () => {
       if (url === '/api/tasks/1' && !options) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [], companies: [] }),
+          json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, people: [], notes: [], tags: [], companies: [], conversations: [] }),
         });
       }
       if (url === '/api/tags' && !options) {
@@ -315,5 +318,42 @@ describe('TaskDetailPage', () => {
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ name: 'Roadmap' }) }),
     );
     expect(await screen.findByText('Roadmap')).toBeTruthy();
+  });
+
+  it('renders an Emails section listing the linked conversations', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          id: 1,
+          title: 'Follow up with Sam',
+          lane: 'To Do',
+          createdAt: 1,
+          people: [],
+          notes: [],
+          tags: [],
+          companies: [],
+          conversations: [
+            {
+              id: 12,
+              subject: 'Pricing question',
+              participants: [{ address: 'sam.rivera@example.com', displayName: 'Sam Rivera', person: null }],
+              latestMessageAt: Date.parse('2026-07-11T15:00:00Z'),
+            },
+          ],
+        }),
+      }),
+    );
+
+    const router = makeRouter('/tasks/1');
+    await router.isReady();
+    render(TaskDetailPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(screen.getByText('Emails')).toBeTruthy();
+    const linked = await screen.findAllByTestId('linked-conversation');
+    expect(linked).toHaveLength(1);
+    expect(linked[0]?.textContent).toContain('Pricing question');
   });
 });

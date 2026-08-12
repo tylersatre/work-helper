@@ -97,6 +97,7 @@ export interface EmailConversationDetail {
   id: number;
   subject: string;
   messages: EmailConversationMessage[];
+  cards: LinkedCardSummary[];
 }
 
 export interface PersonEmailAddress {
@@ -140,6 +141,7 @@ export interface TaskDetail extends Task {
   notes: Note[];
   tags: Tag[];
   companies: Company[];
+  conversations: LinkedConversationSummary[];
 }
 
 export interface Tag {
@@ -162,4 +164,17 @@ export interface CompanyDetail extends Company {
   people: { id: number; firstName: string; lastName: string }[];
   cards: { id: number; title: string; lane: string }[];
   tags: Tag[];
+}
+
+export interface LinkedConversationSummary {
+  id: number;
+  subject: string;
+  participants: EmailParticipantSummary[];
+  latestMessageAt: number;
+}
+
+export interface LinkedCardSummary {
+  id: number;
+  title: string;
+  lane: string;
 }

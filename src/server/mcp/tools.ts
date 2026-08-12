@@ -14,6 +14,7 @@ import {
 } from '../services/companies.js';
 import { createPerson, getPerson, listPeople, updatePerson as updatePersonService, type PersonRecord } from '../services/people.js';
 import { addNote, createTask, getTaskDetail, InvalidLaneError, listTasksByLane, moveTask } from '../services/tasks.js';
+import { linkConversationToTask, unlinkConversationFromTask } from '../services/task-conversations.js';
 import { emailAddresses, personPhones } from '../db/schema.js';
 import type * as schema from '../db/schema.js';
 import type { CalendarProvider } from '../services/calendar/provider.js';
@@ -21,7 +22,7 @@ import { eventsForPerson, getEvent, listEvents } from '../services/calendar/quer
 import type { MailProvider } from '../services/email/provider.js';
 import { computeSyncWindow } from '../services/email/sync.js';
 import type { SyncCoordinator } from '../services/email/sync-coordinator.js';
-import { emailsForPerson, getConversation, listConversations, listUnlinkedAddresses } from '../services/email/queries.js';
+import { conversationSubject, emailsForPerson, getConversation, listConversations, listUnlinkedAddresses } from '../services/email/queries.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
 
@@ -84,12 +85,26 @@ function personDetail(person: PersonRecord) {
   };
 }
 
+const taskConversationParticipantSchema = z.object({
+  address: z.string(),
+  displayName: z.string(),
+  person: z.object({ id: z.number(), name: z.string() }).nullable(),
+});
+
+const linkedConversationSchema = z.object({
+  id: z.number(),
+  subject: z.string(),
+  participants: z.array(taskConversationParticipantSchema),
+  latestMessageAt: z.number(),
+});
+
 const taskDetailOutputSchema = {
   ...taskSummarySchema,
   notes: z.array(z.object(noteSchema)),
   people: z.array(z.object(taskPersonSchema)),
   tags: z.array(z.string()),
   companies: z.array(z.object(companySummarySchema)),
+  conversations: z.array(linkedConversationSchema),
 };
 
 function taskDetailContent(task: NonNullable<ReturnType<typeof getTaskDetail>>) {
@@ -108,6 +123,7 @@ function taskDetailContent(task: NonNullable<ReturnType<typeof getTaskDetail>>) 
     })),
     tags: task.tags.map((tag) => tag.name),
     companies: task.companies.map(companySummary),
+    conversations: task.conversations,
   };
 }
 
@@ -157,7 +173,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
   server.registerTool(
     'get-task',
     {
-      description: 'Fetches a task by id, including its notes (newest first), linked people, tag names, and linked companies.',
+      description: 'Fetches a task by id, including its notes (newest first), linked people, tag names, linked companies, and linked email conversations.',
       inputSchema: { taskId: z.number().int().positive() },
       outputSchema: taskDetailOutputSchema,
     },
@@ -604,12 +620,13 @@ export function createMcpServer(context: McpToolsContext): McpServer {
   server.registerTool(
     'get-conversation',
     {
-      description: "Fetches one conversation's full message thread, chronological, with role-tagged participants.",
+      description: "Fetches one conversation's full message thread, chronological, with role-tagged participants, and its linked cards.",
       inputSchema: { conversationId: z.number().int().positive() },
       outputSchema: {
         id: z.number(),
         subject: z.string(),
         messages: z.array(conversationMessageSchema),
+        cards: z.array(z.object({ id: z.number(), title: z.string(), lane: z.string() })),
       },
     },
     async ({ conversationId }) => {
@@ -617,7 +634,12 @@ export function createMcpServer(context: McpToolsContext): McpServer {
       if (!conversation) {
         return toolError(`Conversation ${conversationId} not found`);
       }
-      const structuredContent = { id: conversation.id, subject: conversation.subject, messages: conversation.messages };
+      const structuredContent = {
+        id: conversation.id,
+        subject: conversation.subject,
+        messages: conversation.messages,
+        cards: conversation.cards,
+      };
       return {
         content: [
           { type: 'text', text: `Conversation "${conversation.subject}" has ${conversation.messages.length} message(s).` },
@@ -890,6 +912,48 @@ export function createMcpServer(context: McpToolsContext): McpServer {
       const structuredContent = taskDetailContent(task);
       const label = companyDetail?.name ?? `Company ${companyId}`;
       return { content: [{ type: 'text', text: `Removed "${label}" from task "${task.title}".` }], structuredContent };
+    },
+  );
+
+  server.registerTool(
+    'link-conversation-to-task',
+    {
+      description: 'Links an existing email conversation to a task; fails if the pair is already linked.',
+      inputSchema: { taskId: z.number().int().positive(), conversationId: z.number().int().positive() },
+      outputSchema: taskDetailOutputSchema,
+    },
+    async ({ taskId, conversationId }) => {
+      const result = linkConversationToTask(context.db, taskId, conversationId);
+      if (!result.ok) {
+        if (result.error === 'task-not-found') return toolError(`Task ${taskId} not found`);
+        if (result.error === 'conversation-not-found') return toolError(`Conversation ${conversationId} not found`);
+        return toolError(`Task ${taskId} is already linked to conversation ${conversationId}`);
+      }
+      const task = getTaskDetail(context.db, taskId)!;
+      const structuredContent = taskDetailContent(task);
+      const text = `Linked conversation "${conversationSubject(context.db, conversationId)}" to task "${task.title}".`;
+      return { content: [{ type: 'text', text }], structuredContent };
+    },
+  );
+
+  server.registerTool(
+    'unlink-conversation-from-task',
+    {
+      description: 'Unlinks an email conversation from a task; the card, the conversation, and its messages are unaffected.',
+      inputSchema: { taskId: z.number().int().positive(), conversationId: z.number().int().positive() },
+      outputSchema: taskDetailOutputSchema,
+    },
+    async ({ taskId, conversationId }) => {
+      const result = unlinkConversationFromTask(context.db, taskId, conversationId);
+      if (!result.ok) {
+        if (result.error === 'task-not-found') return toolError(`Task ${taskId} not found`);
+        if (result.error === 'conversation-not-found') return toolError(`Conversation ${conversationId} not found`);
+        return toolError(`Task ${taskId} is not linked to conversation ${conversationId}`);
+      }
+      const task = getTaskDetail(context.db, taskId)!;
+      const structuredContent = taskDetailContent(task);
+      const text = `Unlinked conversation "${conversationSubject(context.db, conversationId)}" from task "${task.title}".`;
+      return { content: [{ type: 'text', text }], structuredContent };
     },
   );
 

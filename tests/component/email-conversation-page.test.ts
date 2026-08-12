@@ -16,6 +16,7 @@ function makeRouter(initialPath: string) {
     routes: [
       { path: '/emails/:id', component: EmailConversationPage },
       { path: '/people/:id', component: { template: '<div>person</div>' } },
+      { path: '/tasks/:id', component: { template: '<div>task</div>' } },
     ],
   });
   router.push(initialPath);
@@ -46,7 +47,7 @@ function baseMessage(overrides: Record<string, unknown> = {}) {
 }
 
 function detail(overrides: Record<string, unknown> = {}) {
-  return { id: 12, subject: 'Quote attached', messages: [baseMessage()], ...overrides };
+  return { id: 12, subject: 'Quote attached', messages: [baseMessage()], cards: [], ...overrides };
 }
 
 async function renderPage(body: unknown) {
@@ -359,5 +360,14 @@ describe('EmailConversationPage — link/create controls (US4)', () => {
     await flushPromises();
 
     expect(await within(controls).findByText(/that email is already in use/i)).toBeTruthy();
+  });
+
+  it('renders a Cards section listing the linked cards', async () => {
+    await renderPage(detail({ cards: [{ id: 5, title: 'Follow up with Sam', lane: 'To Do' }] }));
+
+    expect(screen.getByText('Cards')).toBeTruthy();
+    const linked = await screen.findAllByTestId('linked-card');
+    expect(linked).toHaveLength(1);
+    expect(linked[0]?.textContent).toContain('Follow up with Sam');
   });
 });

@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import type { Company, LinkedPerson, Note, Tag, TaskDetail } from '../../shared/types.js';
 import LinkedCompanies from '../components/LinkedCompanies.vue';
+import LinkedConversations from '../components/LinkedConversations.vue';
 import LinkedPeople from '../components/LinkedPeople.vue';
 import TagChip from '../components/TagChip.vue';
 import TagInput from '../components/TagInput.vue';
@@ -93,6 +94,10 @@ onMounted(fetchTask);
     <div class="task-detail-section">
       <h3>Companies</h3>
       <LinkedCompanies :task-id="task.id" :companies="task.companies" @update:companies="onUpdateCompanies" />
+    </div>
+    <div class="task-detail-section">
+      <h3>Emails</h3>
+      <LinkedConversations :conversations="task.conversations" />
     </div>
     <div class="task-detail-section">
       <h3>Notes</h3>
