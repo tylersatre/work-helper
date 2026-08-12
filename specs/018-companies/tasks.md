@@ -138,13 +138,13 @@ Single TypeScript web app at repository root: Vue SPA in `src/client/`, Fastify 
 
 ### Tests for User Story 5 (write first, must fail) ⚠️
 
-- [ ] T029 [P] [US5] Write failing integration tests (tag-attachments block) in tests/integration/company-links.test.ts: POST /api/companies/:id/tags accepts `{ tagId }` XOR `{ name }` (both or neither → 400 "Provide a tagId or a name"; blank name → 400 "A name is required"); attaching a name that case-insensitively matches an existing tag attaches that tag without creating a duplicate record; DELETE /api/companies/:id/tags/:tagId detaches and returns the remaining tags; 404 for missing company, missing tagId, or unattached tag; GET /api/companies/:id includes the attached tags
-- [ ] T030 [P] [US5] Extend tests/component/company-detail.test.ts with failing assertions: the tags section hosts the shared TagInput (suggesting existing tags case-insensitively, excluding already-attached ones), a selected suggestion appears as a chip, and a chip can be detached
+- [X] T029 [P] [US5] Write failing integration tests (tag-attachments block) in tests/integration/company-links.test.ts: POST /api/companies/:id/tags accepts `{ tagId }` XOR `{ name }` (both or neither → 400 "Provide a tagId or a name"; blank name → 400 "A name is required"); attaching a name that case-insensitively matches an existing tag attaches that tag without creating a duplicate record; DELETE /api/companies/:id/tags/:tagId detaches and returns the remaining tags; 404 for missing company, missing tagId, or unattached tag; GET /api/companies/:id includes the attached tags
+- [X] T030 [P] [US5] Extend tests/component/company-detail.test.ts with failing assertions: the tags section hosts the shared TagInput (suggesting existing tags case-insensitively, excluding already-attached ones), a selected suggestion appears as a chip, and a chip can be detached
 
 ### Implementation for User Story 5
 
-- [ ] T031 [US5] Implement company tag attach/detach in src/server/services/companies.ts reusing the tags service's AttachInput resolution, and add POST /api/companies/:id/tags + DELETE /api/companies/:id/tags/:tagId to src/server/routes/companies.ts mirroring the person/task tag routes — T029 goes green
-- [ ] T032 [US5] Mount the existing TagInput.vue and TagChip.vue in the CompanyDetailPage.vue tags section wired to the company tag endpoints — T030 goes green
+- [X] T031 [US5] Implement company tag attach/detach in src/server/services/companies.ts reusing the tags service's AttachInput resolution, and add POST /api/companies/:id/tags + DELETE /api/companies/:id/tags/:tagId to src/server/routes/companies.ts mirroring the person/task tag routes — T029 goes green
+- [X] T032 [US5] Mount the existing TagInput.vue and TagChip.vue in the CompanyDetailPage.vue tags section wired to the company tag endpoints — T030 goes green
 
 **Checkpoint**: US5 complete — companies share the single tag vocabulary; the Tags page count never changes from attaching existing tags.
 

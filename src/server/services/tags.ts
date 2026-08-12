@@ -99,7 +99,7 @@ export type AttachInput = { tagId: number } | { name: unknown };
 
 export type AttachResult = { ok: true; tags: TagRecord[] } | { ok: false; error: 'record-not-found' | 'tag-not-found' | 'invalid-name' };
 
-function resolveOrCreateTag(db: AppDb, input: AttachInput): { ok: true; tagId: number } | { ok: false; error: 'tag-not-found' | 'invalid-name' } {
+export function resolveOrCreateTag(db: AppDb, input: AttachInput): { ok: true; tagId: number } | { ok: false; error: 'tag-not-found' | 'invalid-name' } {
   if ('tagId' in input) {
     const [row] = db.select({ id: tags.id }).from(tags).where(eq(tags.id, input.tagId)).limit(1).all();
     if (!row) {

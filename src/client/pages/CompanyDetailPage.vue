@@ -2,7 +2,9 @@
 import { NButton, NEmpty, NInput } from 'naive-ui';
 import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import type { CompanyDetail } from '../../shared/types.js';
+import type { CompanyDetail, Tag } from '../../shared/types.js';
+import TagChip from '../components/TagChip.vue';
+import TagInput from '../components/TagInput.vue';
 
 const route = useRoute();
 const company = ref<CompanyDetail | null>(null);
@@ -11,6 +13,7 @@ const renameValue = ref('');
 const renameError = ref('');
 const showAllPeople = ref(false);
 const showAllCards = ref(false);
+const tagError = ref('');
 
 async function fetchCompany(): Promise<void> {
   const response = await fetch(`/api/companies/${route.params.id}`);
@@ -28,6 +31,50 @@ const visibleCards = computed(() => {
   if (!company.value) return [];
   return showAllCards.value ? company.value.cards : company.value.cards.slice(0, 25);
 });
+
+async function attachTag(tagId: number): Promise<void> {
+  if (!company.value) return;
+  const response = await fetch(`/api/companies/${company.value.id}/tags`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ tagId }),
+  });
+  const body = await response.json();
+  if (!response.ok) {
+    tagError.value = body.error.message;
+    return;
+  }
+  tagError.value = '';
+  company.value.tags = body.tags;
+}
+
+async function createAndAttachTag(name: string): Promise<void> {
+  if (!company.value) return;
+  const response = await fetch(`/api/companies/${company.value.id}/tags`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  const body = await response.json();
+  if (!response.ok) {
+    tagError.value = body.error.message;
+    return;
+  }
+  tagError.value = '';
+  company.value.tags = body.tags;
+}
+
+async function detachTag(tag: Tag): Promise<void> {
+  if (!company.value) return;
+  const response = await fetch(`/api/companies/${company.value.id}/tags/${tag.id}`, { method: 'DELETE' });
+  const body = await response.json();
+  if (!response.ok) {
+    tagError.value = body.error.message;
+    return;
+  }
+  tagError.value = '';
+  company.value.tags = body.tags;
+}
 
 function startRename(): void {
   if (!company.value) return;
@@ -101,6 +148,11 @@ async function saveRename(): Promise<void> {
     <div class="company-detail-section">
       <h3>Tags</h3>
       <NEmpty v-if="company.tags.length === 0" data-testid="company-tags-empty" description="No tags yet" />
+      <div v-else class="company-detail-tags">
+        <TagChip v-for="tag in company.tags" :key="tag.id" :tag="tag" removable @remove="detachTag(tag)" />
+      </div>
+      <p v-if="tagError" role="alert" class="company-detail-error">{{ tagError }}</p>
+      <TagInput :attached-tags="company.tags" @attach="attachTag" @create="createAndAttachTag" />
     </div>
   </section>
 </template>
@@ -153,5 +205,12 @@ async function saveRename(): Promise<void> {
 .company-detail-row a {
   color: inherit;
   text-decoration: none;
+}
+
+.company-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
 }
 </style>

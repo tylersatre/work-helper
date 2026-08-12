@@ -141,6 +141,43 @@ describe('CompanyDetailPage', () => {
     expect(rows.map((row) => row.textContent?.trim())).toEqual(['alpha rollout', 'Zephyr onboarding']);
   });
 
+  it('the tags section hosts TagInput: a selected suggestion appears as a chip, and a chip can be detached (018-companies US5)', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+      if (url === '/api/companies/1' && !options) {
+        return Promise.resolve({ ok: true, json: async () => ({ id: 1, name: 'Acme Inc', people: [], cards: [], tags: [] }) });
+      }
+      if (url === '/api/tags' && !options) {
+        return Promise.resolve({ ok: true, json: async () => [{ id: 1, name: 'VIP', color: '#3B82F6' }] });
+      }
+      if (url === '/api/companies/1/tags' && options?.method === 'POST') {
+        return Promise.resolve({ ok: true, json: async () => ({ tags: [{ id: 1, name: 'VIP', color: '#3B82F6' }] }) });
+      }
+      if (url === '/api/companies/1/tags/1' && options?.method === 'DELETE') {
+        return Promise.resolve({ ok: true, json: async () => ({ tags: [] }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => [] });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await renderAt('/companies/1');
+    expect(await screen.findByTestId('company-tags-empty')).toBeTruthy();
+
+    await fireEvent.update(screen.getByRole('textbox', { name: /add tag/i }), 'VIP');
+    await flushPromises();
+    await fireEvent.click(screen.getByTestId('tag-suggestion'));
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/companies/1/tags', expect.objectContaining({ method: 'POST', body: JSON.stringify({ tagId: 1 }) }));
+    const chips = await screen.findAllByTestId('tag-chip');
+    expect(chips.map((chip) => chip.textContent?.trim().replace(/\s*×$/, ''))).toEqual(['VIP']);
+
+    await fireEvent.click(screen.getByRole('button', { name: /remove vip/i }));
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/companies/1/tags/1', expect.objectContaining({ method: 'DELETE' }));
+    expect(screen.queryAllByTestId('tag-chip')).toHaveLength(0);
+  });
+
   describe('load-more pagination (018-companies US4)', () => {
     function detailWith(peopleCount: number, cardsCount: number) {
       return {

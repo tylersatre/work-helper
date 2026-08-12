@@ -1,8 +1,8 @@
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { companyNameSchema } from '../../shared/validation.js';
-import { companies, people, tasks, taskCompanies } from '../db/schema.js';
-import { getTagsForCompany, type TagRecord } from './tags.js';
+import { companies, companyTags, people, tasks, taskCompanies } from '../db/schema.js';
+import { getTagsForCompany, resolveOrCreateTag, type AttachInput, type TagRecord } from './tags.js';
 import type * as schema from '../db/schema.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
@@ -140,4 +140,41 @@ export function unlinkCompanyFromTask(db: AppDb, taskId: number, companyId: numb
     .where(and(eq(taskCompanies.taskId, taskId), eq(taskCompanies.companyId, companyId)))
     .run();
   return { ok: true };
+}
+
+export type AttachTagToCompanyResult =
+  | { ok: true; tags: TagRecord[] }
+  | { ok: false; error: 'record-not-found' | 'tag-not-found' | 'invalid-name' };
+
+export function attachTagToCompany(db: AppDb, companyId: number, input: AttachInput): AttachTagToCompanyResult {
+  if (!companyExists(db, companyId)) {
+    return { ok: false, error: 'record-not-found' };
+  }
+
+  const resolved = db.transaction((tx) => {
+    const result = resolveOrCreateTag(tx, input);
+    if (result.ok) {
+      tx.insert(companyTags).values({ companyId, tagId: result.tagId }).onConflictDoNothing().run();
+    }
+    return result;
+  });
+  if (!resolved.ok) {
+    return { ok: false, error: resolved.error };
+  }
+
+  return { ok: true, tags: getTagsForCompany(db, companyId) };
+}
+
+export type DetachTagFromCompanyResult = { ok: true; tags: TagRecord[] } | { ok: false; error: 'record-not-found' };
+
+export function detachTagFromCompany(db: AppDb, companyId: number, tagId: number): DetachTagFromCompanyResult {
+  if (!companyExists(db, companyId)) {
+    return { ok: false, error: 'record-not-found' };
+  }
+
+  db.delete(companyTags)
+    .where(and(eq(companyTags.companyId, companyId), eq(companyTags.tagId, tagId)))
+    .run();
+
+  return { ok: true, tags: getTagsForCompany(db, companyId) };
 }
