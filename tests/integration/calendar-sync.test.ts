@@ -8,7 +8,7 @@ import { createDb } from '../../src/server/db/index.js';
 import type * as schema from '../../src/server/db/schema.js';
 import { createIdentityVerifier } from '../../src/server/mcp/auth/identity.js';
 import type { CalendarProvider, ProviderCalendarEvent } from '../../src/server/services/calendar/provider.js';
-import { FakeCalendarProvider, type SeedEvent } from '../../src/server/services/calendar/fake-provider.js';
+import { FakeCalendarProvider, weeklySeries, type SeedEvent } from '../../src/server/services/calendar/fake-provider.js';
 import type { MailProvider } from '../../src/server/services/email/provider.js';
 import { FakeMailProvider } from './helpers/fake-mail-provider.js';
 import { connectThroughApproval } from './helpers/oauth-client.js';
@@ -25,6 +25,15 @@ interface EventSummary {
   isAllDay: boolean;
   isCancelled: boolean;
   location: string;
+  seriesId: string | null;
+}
+
+/** Subset of get-event's structuredContent needed by the US4 series tests. */
+interface EventSeriesDetail {
+  id: number;
+  location: string;
+  startAt: number;
+  endAt: number;
   seriesId: string | null;
 }
 
@@ -113,6 +122,10 @@ async function listEvents(startDate: string | undefined, endDate: string | undef
   return client.callTool({ name: 'list-events', arguments: args });
 }
 
+async function getEvent(eventId: number) {
+  return client.callTool({ name: 'get-event', arguments: { eventId } });
+}
+
 async function syncEmails(startDate: string, endDate: string) {
   return client.callTool({ name: 'sync-emails', arguments: { startDate, endDate } });
 }
@@ -190,5 +203,104 @@ describe('US1: single-flight guard spans both sync kinds (FR-006)', () => {
     release();
     const calendarResponse = await calendarPromise;
     expect(calendarResponse.statusCode).toBe(201);
+  });
+});
+
+describe('US4: recurring meetings stored as linked occurrences', () => {
+  const STANDUP_SERIES_MASTER_ID = 'series-team-standup-2026';
+  const STANDUP_MONDAYS = ['2026-08-03', '2026-08-10', '2026-08-17', '2026-08-24', '2026-08-31'];
+
+  /** Five weekly "Team standup" occurrences (09:00-09:15 UTC each Monday), each its own SeedEvent with a unique id, sharing one seriesMasterId (spec.md US4 acceptance scenario 1). The 2026-08-17 occurrence (index 2) is individually moved and given an exceptional location — the "moved occurrence" edge case (spec.md Edge Cases) — while keeping its own id and the shared seriesMasterId. */
+  function teamStandupSeries(): SeedEvent[] {
+    return weeklySeries({
+      seriesMasterId: STANDUP_SERIES_MASTER_ID,
+      subject: 'Team standup',
+      startDate: '2026-08-03',
+      startTime: '09:00',
+      endTime: '09:15',
+      count: 5,
+      idPrefix: 'evt-standup',
+      overrides: {
+        2: { start: '2026-08-17T14:00:00.000Z', end: '2026-08-17T14:30:00.000Z', location: 'Room 12' },
+      },
+    });
+  }
+
+  function pricingReviewOneOff(): SeedEvent {
+    return {
+      id: 'evt-us4-pricing',
+      subject: 'Pricing review',
+      start: '2026-08-14T16:00:00.000Z',
+      end: '2026-08-14T16:30:00.000Z',
+    };
+  }
+
+  it('syncs the 5 weekly occurrences plus the one-off as 6 new events, each occurrence its own event with its own date', async () => {
+    buildTestApp(new FakeCalendarProvider([...teamStandupSeries(), pricingReviewOneOff()]));
+    await startAndConnect();
+
+    const syncResponse = await postCalendarSync({ startDate: '2026-08-01', endDate: '2026-08-31' });
+    expect(syncResponse.statusCode).toBe(201);
+    expect(syncResponse.json()).toMatchObject({ newCount: 6, updatedCount: 0 });
+
+    const result = await listEvents('2026-08-01', '2026-08-31');
+    expect(result.isError).toBeFalsy();
+    const { events } = result.structuredContent as { events: EventSummary[] };
+    expect(events).toHaveLength(6);
+
+    const standups = events.filter((e) => e.subject === 'Team standup');
+    expect(standups).toHaveLength(5);
+    expect(standups.map((e) => new Date(e.startAt).toISOString().slice(0, 10)).sort()).toEqual(STANDUP_MONDAYS);
+    // Each occurrence is its own stored row.
+    expect(new Set(standups.map((e) => e.id)).size).toBe(5);
+  });
+
+  it('gives two different standup occurrences the same non-null seriesId, while the one-off has none', async () => {
+    buildTestApp(new FakeCalendarProvider([...teamStandupSeries(), pricingReviewOneOff()]));
+    await startAndConnect();
+    await postCalendarSync({ startDate: '2026-08-01', endDate: '2026-08-31' });
+
+    const { events } = (await listEvents('2026-08-01', '2026-08-31')).structuredContent as { events: EventSummary[] };
+    const standups = events.filter((e) => e.subject === 'Team standup');
+    const pricingReview = events.find((e) => e.subject === 'Pricing review')!;
+    expect(pricingReview).toBeDefined();
+
+    const firstDetailResult = await getEvent(standups[0]!.id);
+    const secondDetailResult = await getEvent(standups[1]!.id);
+    expect(firstDetailResult.isError).toBeFalsy();
+    expect(secondDetailResult.isError).toBeFalsy();
+    const firstDetail = firstDetailResult.structuredContent as EventSeriesDetail;
+    const secondDetail = secondDetailResult.structuredContent as EventSeriesDetail;
+
+    expect(firstDetail.seriesId).not.toBeNull();
+    expect(firstDetail.seriesId).toBe(secondDetail.seriesId);
+
+    const pricingDetailResult = await getEvent(pricingReview.id);
+    expect(pricingDetailResult.isError).toBeFalsy();
+    expect((pricingDetailResult.structuredContent as EventSeriesDetail).seriesId).toBeNull();
+  });
+
+  it('keeps a moved/modified occurrence as its own event with its exceptional time and location, still carrying the series identifier', async () => {
+    buildTestApp(new FakeCalendarProvider(teamStandupSeries()));
+    await startAndConnect();
+    await postCalendarSync({ startDate: '2026-08-01', endDate: '2026-08-31' });
+
+    const { events } = (await listEvents('2026-08-01', '2026-08-31')).structuredContent as { events: EventSummary[] };
+    expect(events).toHaveLength(5);
+
+    const moved = events.find((e) => e.location === 'Room 12');
+    expect(moved).toBeDefined();
+    expect(new Date(moved!.startAt).toISOString()).toBe('2026-08-17T14:00:00.000Z');
+    expect(new Date(moved!.endAt).toISOString()).toBe('2026-08-17T14:30:00.000Z');
+
+    const seriesIds = new Set(events.map((e) => e.seriesId));
+    expect(seriesIds.size).toBe(1);
+    expect(seriesIds.has(null)).toBe(false);
+
+    const movedDetailResult = await getEvent(moved!.id);
+    expect(movedDetailResult.isError).toBeFalsy();
+    const movedDetail = movedDetailResult.structuredContent as EventSeriesDetail;
+    expect(movedDetail.location).toBe('Room 12');
+    expect(movedDetail.seriesId).toBe(moved!.seriesId);
   });
 });

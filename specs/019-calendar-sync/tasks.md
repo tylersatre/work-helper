@@ -118,11 +118,11 @@ Single project at repository root: `src/server/`, `src/client/`, `tests/`, `driz
 
 ### Tests for User Story 4 (write first, confirm they fail)
 
-- [ ] T027 [US4] Write failing integration tests in `tests/integration/calendar-sync.test.ts`: fake seeded with weekly "Team standup" occurrences (2026-08-03/10/17/24/31, each its own event id sharing a `seriesMasterId`) plus one-off "Pricing review" 2026-08-14; syncing 2026-08-01..2026-08-31 reports 6 new; `get-event` on two different standup occurrences returns the same non-null `seriesId` while "Pricing review" returns `seriesId: null`; an individually modified occurrence (moved time, changed location) syncs with its exceptional details while keeping its `seriesId` (moved-occurrence edge case)
+- [X] T027 [US4] Write failing integration tests in `tests/integration/calendar-sync.test.ts`: fake seeded with weekly "Team standup" occurrences (2026-08-03/10/17/24/31, each its own event id sharing a `seriesMasterId`) plus one-off "Pricing review" 2026-08-14; syncing 2026-08-01..2026-08-31 reports 6 new; `get-event` on two different standup occurrences returns the same non-null `seriesId` while "Pricing review" returns `seriesId: null`; an individually modified occurrence (moved time, changed location) syncs with its exceptional details while keeping its `seriesId` (moved-occurrence edge case)
 
 ### Implementation for User Story 4
 
-- [ ] T028 [US4] Ensure `seriesMasterId` flows provider → engine → storage → every read tool as `seriesId`: add a series-seeding helper to `src/server/services/calendar/fake-provider.ts` (expand a weekly rule into per-occurrence `SeedEvent`s with a shared `seriesMasterId`) and fix any gap in `src/server/services/calendar/sync.ts` / `queries.ts` surfaced by T027 — T027 goes green
+- [X] T028 [US4] Ensure `seriesMasterId` flows provider → engine → storage → every read tool as `seriesId`: add a series-seeding helper to `src/server/services/calendar/fake-provider.ts` (expand a weekly rule into per-occurrence `SeedEvent`s with a shared `seriesMasterId`) and fix any gap in `src/server/services/calendar/sync.ts` / `queries.ts` surfaced by T027 — T027 goes green
 
 **Checkpoint**: Recurring meetings behave as first-class per-occurrence events with series linkage.
 
