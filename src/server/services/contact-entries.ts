@@ -1,7 +1,7 @@
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { entryValueSchema } from '../../shared/validation.js';
-import { emailAddresses, emailParticipants, people, type personPhones } from '../db/schema.js';
+import { calendarEventParticipants, emailAddresses, emailParticipants, people, type personPhones } from '../db/schema.js';
 import type * as schema from '../db/schema.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
@@ -68,15 +68,25 @@ function entryExists(db: AppDb, table: EntryTable, personId: number, entryId: nu
   return row !== undefined;
 }
 
-/** Whether any synced-mail participant row references this email address — the DB-level guarantee that referenced addresses can't be deleted maps to this service-level unlink-vs-delete decision. */
+/** Whether any synced-mail or synced-calendar participant row references this email address — the DB-level guarantee that referenced addresses can't be deleted maps to this service-level unlink-vs-delete decision. */
 export function isEmailAddressReferenced(db: AppDb, addressId: number): boolean {
-  const [row] = db
+  const [mailRow] = db
     .select({ id: emailParticipants.id })
     .from(emailParticipants)
     .where(eq(emailParticipants.addressId, addressId))
     .limit(1)
     .all();
-  return row !== undefined;
+  if (mailRow !== undefined) {
+    return true;
+  }
+
+  const [eventRow] = db
+    .select({ id: calendarEventParticipants.id })
+    .from(calendarEventParticipants)
+    .where(eq(calendarEventParticipants.addressId, addressId))
+    .limit(1)
+    .all();
+  return eventRow !== undefined;
 }
 
 export function findEmailAddressByValue(db: AppDb, value: string): { id: number; personId: number | null } | undefined {

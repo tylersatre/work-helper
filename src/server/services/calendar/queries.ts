@@ -2,6 +2,7 @@ import { asc, desc, eq, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { calendarEventParticipants, calendarEvents, calendarSyncRuns, emailAddresses, people } from '../../db/schema.js';
 import type * as schema from '../../db/schema.js';
+import { decodeCursor, encodeCursor } from '../email/queries.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
 
@@ -38,6 +39,78 @@ export function listEvents(db: AppDb, window: { startUtc: string; endUtc: string
     .all();
 
   return rows;
+}
+
+export interface PersonEventAddress {
+  address: string;
+  role: 'organizer' | 'required' | 'optional' | 'resource';
+  displayName: string;
+  responseStatus: 'none' | 'accepted' | 'declined' | 'tentative';
+}
+
+export interface PersonEvent extends EventSummary {
+  addresses: PersonEventAddress[];
+}
+
+export interface PersonEventsPage {
+  events: PersonEvent[];
+  nextCursor: string | null;
+}
+
+/**
+ * Events where any of the person's linked addresses appears as a participant (any role),
+ * newest-first by `startAt` (ties by `id` desc), keyset-paged — mirrors `emailsForPerson`'s
+ * two-query shape (id-only page query, then per-row detail) rather than `participantsForEvent`'s
+ * full-participant join, since each event here only needs the person's own matching addresses,
+ * not every participant on the event (FR-021).
+ */
+export function eventsForPerson(db: AppDb, personId: number, params: { limit: number; cursor?: string }): PersonEventsPage {
+  const cursor = params.cursor ? decodeCursor(params.cursor) : undefined;
+  const cursorCondition = cursor
+    ? sql`AND (ce.start_at < ${cursor.primary} OR (ce.start_at = ${cursor.primary} AND ce.id < ${cursor.id}))`
+    : sql``;
+
+  const rows = db.all<{ id: number; startAt: number }>(sql`
+    SELECT DISTINCT ce.id AS id, ce.start_at AS startAt
+    FROM calendar_events ce
+    JOIN calendar_event_participants cep ON cep.event_id = ce.id
+    JOIN email_addresses ea ON ea.id = cep.address_id
+    WHERE ea.person_id = ${personId} ${cursorCondition}
+    ORDER BY ce.start_at DESC, ce.id DESC
+    LIMIT ${params.limit + 1}
+  `);
+
+  const hasMore = rows.length > params.limit;
+  const page = hasMore ? rows.slice(0, params.limit) : rows;
+  const last = page[page.length - 1];
+  const nextCursor = hasMore && last ? encodeCursor({ primary: last.startAt, id: last.id }) : null;
+
+  const events = page.map((row) => {
+    const [event] = db
+      .select({
+        id: calendarEvents.id,
+        subject: calendarEvents.subject,
+        startAt: calendarEvents.startAt,
+        endAt: calendarEvents.endAt,
+        isAllDay: calendarEvents.isAllDay,
+        isCancelled: calendarEvents.isCancelled,
+        location: calendarEvents.location,
+        seriesId: calendarEvents.seriesMasterId,
+      })
+      .from(calendarEvents)
+      .where(eq(calendarEvents.id, row.id))
+      .limit(1)
+      .all();
+    const addresses = db.all<PersonEventAddress>(sql`
+      SELECT ea.value AS address, cep.role AS role, cep.display_name AS displayName, cep.response_status AS responseStatus
+      FROM calendar_event_participants cep
+      JOIN email_addresses ea ON ea.id = cep.address_id
+      WHERE cep.event_id = ${row.id} AND ea.person_id = ${personId}
+    `);
+    return { ...event!, addresses };
+  });
+
+  return { events, nextCursor };
 }
 
 export interface CalendarSyncRunRecord {

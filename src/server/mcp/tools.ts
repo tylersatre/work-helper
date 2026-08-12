@@ -8,7 +8,7 @@ import { addNote, createTask, getTaskDetail, listTasksByLane } from '../services
 import { emailAddresses, personPhones } from '../db/schema.js';
 import type * as schema from '../db/schema.js';
 import type { CalendarProvider } from '../services/calendar/provider.js';
-import { getEvent, listEvents } from '../services/calendar/queries.js';
+import { eventsForPerson, getEvent, listEvents } from '../services/calendar/queries.js';
 import type { MailProvider } from '../services/email/provider.js';
 import { computeSyncWindow } from '../services/email/sync.js';
 import type { SyncCoordinator } from '../services/email/sync-coordinator.js';
@@ -722,6 +722,59 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         participants: event.participants,
       };
       return { content: [{ type: 'text', text: `Event "${event.subject}".` }], structuredContent };
+    },
+  );
+
+  server.registerTool(
+    'events-for-person',
+    {
+      description:
+        "Every stored calendar event involving any of a person's addresses as organizer or attendee, newest-first, keyset-paged; cancelled events are included and flagged, each event identifying that person's matching addresses and roles.",
+      inputSchema: {
+        personId: z.number().int().positive(),
+        limit: z.number().int().min(1).max(200).default(50),
+        cursor: z.string().optional(),
+      },
+      outputSchema: {
+        person: z.object({ id: z.number(), name: z.string() }),
+        events: z.array(
+          z.object({
+            ...eventSummarySchema,
+            addresses: z.array(
+              z.object({
+                address: z.string(),
+                role: z.enum(['organizer', 'required', 'optional', 'resource']),
+                displayName: z.string(),
+                responseStatus: z.enum(['none', 'accepted', 'declined', 'tentative']),
+              }),
+            ),
+          }),
+        ),
+        nextCursor: z.string().nullable(),
+      },
+    },
+    async ({ personId, limit, cursor }) => {
+      const person = getPerson(context.db, context.personFields, personId);
+      if (!person) {
+        return toolError(`Person ${personId} not found`);
+      }
+
+      let page;
+      try {
+        page = eventsForPerson(context.db, personId, { limit, cursor });
+      } catch {
+        return toolError('Invalid cursor');
+      }
+
+      const structuredContent = {
+        person: { id: person.id, name: personName(person) },
+        events: page.events,
+        nextCursor: page.nextCursor,
+      };
+      return {
+        content: [{ type: 'text', text: `Found ${page.events.length} event(s) for ${personName(person)}.` }],
+        structuredContent,
+      };
     },
   );
 
