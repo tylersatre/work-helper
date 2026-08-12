@@ -19,12 +19,12 @@ Four MCP-equivalent actions were applied, in order, before this capture began:
 
 | Scenario | Result | Screenshot(s) |
 | --- | --- | --- |
-| US2-AS2: within-lane reorder — "Send invites" is first in To Do | PASS | 01-initial-state.png, 02-after-reload.png |
-| US2-AS1: cross-lane precise position — "Draft Q3 goals" is 2nd in In Progress, between "Write proposal" and "Review budget" | PASS | 01-initial-state.png, 02-after-reload.png |
-| US1-AS1: no-position move lands at bottom of a populated lane — "Order catering" is 4th/last in In Progress, below 3 other cards | PASS | 01-initial-state.png, 02-after-reload.png |
-| US3-AS1: lane-aware create lands at bottom of a populated lane — "Confirm venue hold" is 3rd/last in Waiting, below 2 pre-existing cards, and not in To Do | PASS | 01-initial-state.png, 02-after-reload.png |
-| Done lane remains empty | PASS | 01-initial-state.png, 02-after-reload.png |
-| FR-012/SC-004: state persists across a full page reload (not just SPA client state) | PASS | 02-after-reload.png |
+| US2-AS2: within-lane reorder — "Send invites" is first in To Do | PASS | pr-screenshots/01-initial-state.png, pr-screenshots/02-after-reload.png |
+| US2-AS1: cross-lane precise position — "Draft Q3 goals" is 2nd in In Progress, between "Write proposal" and "Review budget" | PASS | pr-screenshots/01-initial-state.png, pr-screenshots/02-after-reload.png |
+| US1-AS1: no-position move lands at bottom of a populated lane — "Order catering" is 4th/last in In Progress, below 3 other cards | PASS | pr-screenshots/01-initial-state.png, pr-screenshots/02-after-reload.png |
+| US3-AS1: lane-aware create lands at bottom of a populated lane — "Confirm venue hold" is 3rd/last in Waiting, below 2 pre-existing cards, and not in To Do | PASS | pr-screenshots/01-initial-state.png, pr-screenshots/02-after-reload.png |
+| Done lane remains empty | PASS | pr-screenshots/01-initial-state.png, pr-screenshots/02-after-reload.png |
+| FR-012/SC-004: state persists across a full page reload (not just SPA client state) | PASS | pr-screenshots/02-after-reload.png |
 
 ## Narrative
 
@@ -42,9 +42,9 @@ This matches the expected board state exactly, in the exact order specified:
 - In Waiting, "Confirm venue hold" is the 3rd and last card, below the two pre-existing cards "Await contract" and "Ping vendor", confirming the lane-aware create (US3-AS1) landed at the bottom of a populated destination lane rather than in the default To Do lane or at the top of Waiting.
 - Done remained empty throughout, confirming none of the four actions touched a lane they weren't targeted at.
 
-Screenshot `01-initial-state.png` captures this state.
+Screenshot `pr-screenshots/01-initial-state.png` captures this state.
 
-The page was then reloaded via a full navigation (`page.goto`, not an SPA route change) back to `http://localhost:5121`. A fresh accessibility snapshot was taken and every lane's card order was re-verified to be byte-for-byte identical to the pre-reload state: To Do = [Send invites, Book venue], In Progress = [Write proposal, Draft Q3 goals, Review budget, Order catering], Waiting = [Await contract, Ping vendor, Confirm venue hold], Done = empty. This is the critical persistence check (FR-012, SC-004) proving the board state is server/DB-backed rather than held only in client-side state — a hard reload discards all client state, and the identical ordering came back from the server. Screenshot `02-after-reload.png` captures this post-reload state.
+The page was then reloaded via a full navigation (`page.goto`, not an SPA route change) back to `http://localhost:5121`. A fresh accessibility snapshot was taken and every lane's card order was re-verified to be byte-for-byte identical to the pre-reload state: To Do = [Send invites, Book venue], In Progress = [Write proposal, Draft Q3 goals, Review budget, Order catering], Waiting = [Await contract, Ping vendor, Confirm venue hold], Done = empty. This is the critical persistence check (FR-012, SC-004) proving the board state is server/DB-backed rather than held only in client-side state — a hard reload discards all client state, and the identical ordering came back from the server. Screenshot `pr-screenshots/02-after-reload.png` captures this post-reload state.
 
 ## Summary
 

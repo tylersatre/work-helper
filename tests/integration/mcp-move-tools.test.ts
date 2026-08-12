@@ -145,6 +145,21 @@ describe('US2: move-task explicit position', () => {
     await assertBoardOrder({ 'In Progress': ['Write proposal', 'Draft Q3 goals', 'Review budget'] });
   });
 
+  it('moving a card out of a multi-card source lane preserves the relative order of the cards left behind (FR-006)', async () => {
+    const ids = seedBoard({
+      'To Do': ['A', 'B', 'C'],
+      'In Progress': ['Write proposal'],
+    });
+
+    const result = await client.callTool({
+      name: 'move-task',
+      arguments: { taskId: ids['B'], lane: 'In Progress' },
+    });
+    expect(result.isError).toBeFalsy();
+
+    await assertBoardOrder({ 'To Do': ['A', 'C'], 'In Progress': ['Write proposal', 'B'] });
+  });
+
   it('reorders a card within its own lane to position 1 (US2-AS2)', async () => {
     const ids = seedBoard({ 'To Do': ['Book venue', 'Order catering', 'Send invites'] });
 
@@ -195,7 +210,7 @@ describe('US2: move-task explicit position', () => {
       const before = await boardSnapshot();
       const result = await client.callTool({ name: 'move-task', arguments: { taskId: ids['A'], lane: 'To Do', position } });
       expect(result.isError).toBe(true);
-      expect(JSON.stringify(result.content)).toContain('Input validation error');
+      expect(JSON.stringify(result.content)).toContain('position');
       expect(await boardSnapshot()).toEqual(before);
     }
   });
