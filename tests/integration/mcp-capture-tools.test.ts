@@ -133,6 +133,7 @@ describe('US3: capture tools', () => {
     const result = await client.callTool({ name: 'create-task', arguments: { title: 'Confirm venue hold', lane: 'Waiting' } });
     expect(result.isError).toBeFalsy();
     expect(result.structuredContent).toMatchObject({ lane: 'Waiting' });
+    expect(result.content).toEqual([{ type: 'text', text: 'Created task "Confirm venue hold" in lane "Waiting".' }]);
 
     const boardTool = await client.callTool({ name: 'list-board', arguments: {} });
     const { lanes: lanesFromTool } = boardTool.structuredContent as { lanes: { name: string; tasks: { title: string }[] }[] };

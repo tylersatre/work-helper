@@ -106,6 +106,9 @@ describe('US1: move-task default position', () => {
       arguments: { taskId: ids['Follow up with Sam'], lane: 'In Progress' },
     });
     expect(result.isError).toBeFalsy();
+    expect(result.content).toEqual([
+      { type: 'text', text: 'Moved task "Follow up with Sam" to lane "In Progress" at position 3.' },
+    ]);
 
     await assertBoardOrder({
       'In Progress': ['Write proposal', 'Review budget', 'Follow up with Sam'],

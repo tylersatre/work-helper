@@ -1,44 +1,51 @@
 # 021-mcp-move-tasks Evidence
 
-Evidence directory: `docs/evidence/021-mcp-move-tasks/`. This slice's automated-check evidence (unit/integration tests against `moveTask`/`createTask` in `src/server/services/tasks.ts` and the `move-task`/`create-task` MCP tools, covering US1-US4 and FR-001-FR-014 including validation and no-partial-effect guarantees) is recorded separately per the project's Definition of Done. This document covers the browser-visibility half of the Definition of Done -- SC-004 ("every board change made through the MCP survives a web app page reload -- no divergence between what agents see through tools and what Tyler sees on the board") -- by driving the live web board against a dev database that was pre-seeded with the exact writes the MCP tools would have produced.
+Evidence directory: `docs/evidence/021-mcp-move-tasks/`.
 
-## Methodology note
+## Methodology note (redo)
 
-The MCP transport requires an Authentik OAuth flow not configured in this local dev environment. The two writes under test were performed by directly invoking `moveTask` and `createTask` in `src/server/services/tasks.ts` -- the identical service functions the `move-task` and `create-task` MCP tools call -- against the same SQLite file (`./data/work-helper.db`) the running dev server reads. This is functionally equivalent to the MCP tool having made the call: the web app has no way to distinguish how a row was written, it only reads via `GET /api/board`. This document verifies what the web board displays and persists as a result.
+This is a redo of a prior evidence capture that was rejected because the seeded board only ever had one card in each destination lane, so "lands at the bottom of the lane" was never actually demonstrated, and no precise-positioning (US2) scenario was captured. This attempt fixes both problems: every destination lane below has multiple cards before the demonstrated action, and it covers a precise cross-lane position, a within-lane reorder, a no-position bottom-placement into a non-empty lane, and a lane-aware create into a non-empty lane.
 
-Dev server: API `http://localhost:3021`, UI `http://localhost:5121`. Driven live via Playwright MCP against the running dev server.
+Because the MCP transport requires an Authentik OAuth flow not configured in this local dev environment, the writes under test were performed by directly invoking `moveTask`/`createTask` in `src/server/services/tasks.ts` — the identical service functions the `move-task`/`create-task` MCP tools call — against the same SQLite file the running dev server (UI http://localhost:5121, API http://localhost:3021) reads. The web app has no way to distinguish how a row was written; it only ever reads via `GET /api/board`. The full MCP protocol path (auth, transport, 1-based-to-0-based mapping, error formatting) is independently covered by `tests/integration/mcp-move-tools.test.ts`'s real MCP-client integration tests. This evidence's job is specifically to prove the web board renders and PERSISTS (survives reload) what those tools produce.
 
-Board seeded state prior to this session (confirmed via `GET /api/board` before starting, per the task brief): To Do = [Write proposal, Review budget, Chase invoice]; In Progress = [Follow up with Sam]; Waiting = [Confirm venue hold]; Done = [] -- the result of two prior MCP-tool-equivalent actions on an initial 4-card board:
+Four MCP-equivalent actions were applied, in order, before this capture began:
 
-1. A `move-task` call moving "Follow up with Sam" from To Do to In Progress with no position (US1-AS1: lands at the bottom of the destination lane).
-2. A `create-task` call with an explicit `lane: "Waiting"` creating "Confirm venue hold" directly in Waiting (US3-AS1: lane-aware creation, bottom of the chosen lane, no drag and no UI lane picker involved).
+1. **`move-task` cross-lane to explicit position 2** (US2-AS1): "Draft Q3 goals" moved from To Do to In Progress at position 2 — landed between "Write proposal" and "Review budget", not at the end.
+2. **`move-task` within-lane reorder to position 1** (US2-AS2): "Send invites" moved within To Do to position 1 — jumped to the top of To Do.
+3. **`move-task` with no position given** (US1-AS1): "Order catering" moved from To Do to In Progress with no position — landed at the bottom of In Progress, which by that point already held 3 other cards (Write proposal, Draft Q3 goals, Review budget).
+4. **`create-task` with an explicit lane** (US3-AS1): "Confirm venue hold" created directly in Waiting, which already held 2 cards (Await contract, Ping vendor) — landed at the bottom (3rd/last).
 
-## Results
+## Board state driven live via Playwright against http://localhost:5121
 
-| # | Scenario | Result | Screenshot(s) |
-| --- | --- | --- | --- |
-| 1 | Navigate to board, capture initial state | PASS | 01-initial-state.png |
-| 2 | "Follow up with Sam" appears in In Progress (not To Do), only card in that lane | PASS | 01-initial-state.png |
-| 3 | "Confirm venue hold" appears in Waiting | PASS | 01-initial-state.png |
-| 4 | Write proposal / Review budget / Chase invoice undisturbed, still in To Do in original relative order | PASS | 01-initial-state.png |
-| 5 | Page reload -- all of the above still holds (proves server/DB-backed state, not client-only) | PASS | 02-after-reload.png |
-| 6 | Final screenshot after reload showing all four lanes | PASS | 02-after-reload.png |
+| Scenario | Result | Screenshot(s) |
+| --- | --- | --- |
+| US2-AS2: within-lane reorder — "Send invites" is first in To Do | PASS | 01-initial-state.png, 02-after-reload.png |
+| US2-AS1: cross-lane precise position — "Draft Q3 goals" is 2nd in In Progress, between "Write proposal" and "Review budget" | PASS | 01-initial-state.png, 02-after-reload.png |
+| US1-AS1: no-position move lands at bottom of a populated lane — "Order catering" is 4th/last in In Progress, below 3 other cards | PASS | 01-initial-state.png, 02-after-reload.png |
+| US3-AS1: lane-aware create lands at bottom of a populated lane — "Confirm venue hold" is 3rd/last in Waiting, below 2 pre-existing cards, and not in To Do | PASS | 01-initial-state.png, 02-after-reload.png |
+| Done lane remains empty | PASS | 01-initial-state.png, 02-after-reload.png |
+| FR-012/SC-004: state persists across a full page reload (not just SPA client state) | PASS | 02-after-reload.png |
 
 ## Narrative
 
-Navigated to `http://localhost:5121`. The board rendered four lanes:
+Navigated to `http://localhost:5121` (a fresh, full navigation). The board rendered with four lanes:
 
-- **To Do**: Write proposal, Review budget, Chase invoice (top to bottom) -- the exact original order, no disturbance from either MCP-equivalent write.
-- **In Progress**: Follow up with Sam -- the sole card in the lane, confirming the move landed it in In Progress and nowhere else (it does not appear in To Do). Since In Progress has only one card after the move, "bottom-most" is trivially satisfied -- there was nothing else in the lane for it to land below.
-- **Waiting**: Confirm venue hold -- present and the only card in the lane, confirming the lane-aware create landed the card in Waiting, not the default lane (To Do), and that nothing else was added to Waiting alongside it.
-- **Done**: empty ("No tasks" empty-state shown) -- unchanged from the seed.
+- **To Do**: Send invites, Book venue
+- **In Progress**: Write proposal, Draft Q3 goals, Review budget, Order catering
+- **Waiting**: Await contract, Ping vendor, Confirm venue hold
+- **Done**: No tasks
 
-Accessibility snapshot at this point (`01-initial-state.png`) matched exactly.
+This matches the expected board state exactly, in the exact order specified:
 
-Reloaded the page with a full navigation to `http://localhost:5121` (a fresh navigation, not an SPA route change, so any client-only or cached state would not survive). Took a fresh accessibility snapshot and it was identical to the pre-reload snapshot: To Do still [Write proposal, Review budget, Chase invoice], In Progress still [Follow up with Sam], Waiting still [Confirm venue hold], Done still empty. This confirms the board state is being read fresh from the server/DB via `GET /api/board` on every load, not held in client-side-only state -- satisfying SC-004 and FR-012 ("Every lane or position change made through the MCP MUST be reflected identically in the board-listing tool and in the web app board (after a page reload), and MUST persist across reloads").
+- "Send invites" is the first card in To Do, confirming the within-lane reorder-to-position-1 (US2-AS2) landed correctly — it jumped to the top ahead of "Book venue".
+- In In Progress, "Draft Q3 goals" sits as the 2nd card, sandwiched between "Write proposal" (1st) and "Review budget" (3rd), confirming the cross-lane move to an explicit mid-lane position (US2-AS1) landed precisely rather than at either end. "Order catering" sits as the 4th and last card in this same lane, below the three other cards, confirming the no-position move (US1-AS1) landed at the bottom of a lane that was already populated — not the trivial single-card case the prior evidence attempt mistakenly relied on.
+- In Waiting, "Confirm venue hold" is the 3rd and last card, below the two pre-existing cards "Await contract" and "Ping vendor", confirming the lane-aware create (US3-AS1) landed at the bottom of a populated destination lane rather than in the default To Do lane or at the top of Waiting.
+- Done remained empty throughout, confirming none of the four actions touched a lane they weren't targeted at.
 
-Screenshot `02-after-reload.png` shows the final state of all four lanes post-reload.
+Screenshot `01-initial-state.png` captures this state.
+
+The page was then reloaded via a full navigation (`page.goto`, not an SPA route change) back to `http://localhost:5121`. A fresh accessibility snapshot was taken and every lane's card order was re-verified to be byte-for-byte identical to the pre-reload state: To Do = [Send invites, Book venue], In Progress = [Write proposal, Draft Q3 goals, Review budget, Order catering], Waiting = [Await contract, Ping vendor, Confirm venue hold], Done = empty. This is the critical persistence check (FR-012, SC-004) proving the board state is server/DB-backed rather than held only in client-side state — a hard reload discards all client state, and the identical ordering came back from the server. Screenshot `02-after-reload.png` captures this post-reload state.
 
 ## Summary
 
-All six checks in the task brief pass. The web board correctly displays both MCP-tool-equivalent writes -- the no-position move of "Follow up with Sam" into In Progress (US1-AS1) and the lane-aware creation of "Confirm venue hold" directly into Waiting (US3-AS1) -- with no disturbance to the other three To Do cards' order, and both changes persist identically across a full page reload, which is the SC-004 evidence this feature's Definition of Done requires for its UI-facing surface.
+All demonstrated scenarios pass. Every destination lane involved in the four MCP-equivalent actions had multiple pre-existing cards before the action under test, closing the gap the prior evidence attempt was rejected for. The precise cross-lane position (US2-AS1), the within-lane reorder (US2-AS2), the no-position bottom-placement into a populated lane (US1-AS1), and the lane-aware create into a populated lane (US3-AS1) are all independently visible in the rendered board, and every one of them survives a full page reload, confirming server-side persistence rather than client-only state.
