@@ -36,3 +36,13 @@ The `verifier` agent's independent pass failed the feature on real gaps: six com
 - Console: zero errors and zero page errors on fresh loads of all seven pages (per-load listeners); neither the favicon 404 nor the round-2 HMR artifact recurred.
 - Known cosmetic leftover (out of scope, spun off as a follow-up task): the board's native scrollbars render light because the scroll container doesn't opt into dark scrollbars.
 - Dev-DB side effects from evidence runs: tag "test-tag" (+ "vendor"), one note on task 1.
+
+## Round 4 — Tyler's follow-up: boxed participant rows, metadata grid and badges
+
+Tyler's directives: participants "should have the box around them with one email per line", link/create controls "to the right (smaller field for search is probably fine)", and the message info "displayed more nicely... (show that better than just `notFlagged`) - maybe a table or something? Better separated out from the body". Implemented with failing-first component tests (3 new/rewritten in email-conversation-page.test.ts), then verified live:
+
+- AC13 Boxed participant rows with inline controls (PASS): on /emails/2, three `li[data-testid="participant-row"]` inside one `ul.email-participants.wh-card-list` (`rgb(35, 39, 47)`, 1px border, radius 8px, bordered rows); uppercase role labels; person link/name + address centered on one line per participant; only the unlinked cc row carries `address-link-controls`, right-aligned inside its own row (9.6px from the row edge) with a compact 180px "Search people to link" input and Create person button; linked rows have no controls. Screenshot: 21-participant-rows.png
+- AC14 Metadata grid, badges, separation (PASS): `message-meta` holds a `dl` with dt labels exactly Sent / Received / Folder and correct values; badge pills Unread / High importance / ⚑ Flagged / Orange category plus the Open in Outlook link; the raw strings "notFlagged" and "Importance:" appear nowhere; `.email-message-header` carries a visible 1px bottom border separating header from body. On /emails/5 (normal, notFlagged) zero importance/flag badges render and "notFlagged" appears nowhere. Screenshots: 22-meta-badges.png, 23-meta-normal.png
+- Link/create flow still works in the compact layout (PASS): typing "Sam" in the cc row's search field surfaced "Sam Rivera — sam.rivera@example.com" with a Link button after the debounce, inline within the row (not clicked — measurement only). Screenshot: 24-link-search-open.png
+- Console: zero errors on fresh loads of both pages.
+- Gate at this round: 73 files / 861 tests, lint/typecheck clean.
