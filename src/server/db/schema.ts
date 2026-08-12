@@ -17,6 +17,7 @@ export const people = sqliteTable('people', {
     .$type<Record<string, string>>()
     .notNull()
     .default({}),
+  companyId: integer('company_id').references(() => companies.id, { onDelete: 'set null' }),
   createdAt: integer('created_at').notNull(),
 });
 
@@ -209,6 +210,42 @@ export const taskTags = sqliteTable(
       .references(() => tags.id, { onDelete: 'cascade' }),
   },
   (t) => [primaryKey({ columns: [t.taskId, t.tagId] })],
+);
+
+export const companies = sqliteTable(
+  'companies',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    name: text('name').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [uniqueIndex('companies_name_unique').on(sql`lower(${t.name})`)],
+);
+
+export const taskCompanies = sqliteTable(
+  'task_companies',
+  {
+    taskId: integer('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    companyId: integer('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.taskId, t.companyId] })],
+);
+
+export const companyTags = sqliteTable(
+  'company_tags',
+  {
+    companyId: integer('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    tagId: integer('tag_id')
+      .notNull()
+      .references(() => tags.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.companyId, t.tagId] })],
 );
 
 export const oauthClients = sqliteTable('oauth_clients', {

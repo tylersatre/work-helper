@@ -81,6 +81,23 @@ describe('migration upgrade path (drizzle/0001_silly_sauron.sql, production data
     expect(tableInfo(upgradedSqlite, 'email_attachments')).toEqual(tableInfo(freshSqlite, 'email_attachments'));
     expect(tableInfo(upgradedSqlite, 'app_state')).toEqual(tableInfo(freshSqlite, 'app_state'));
 
+    // 018-companies (0002): companies, task_companies, company_tags tables and people.company_id column
+    // converge between the upgraded and fresh schemas, and the pre-existing person row survived untouched.
+    expect(tableInfo(upgradedSqlite, 'companies')).toEqual(tableInfo(freshSqlite, 'companies'));
+    expect(tableInfo(upgradedSqlite, 'task_companies')).toEqual(tableInfo(freshSqlite, 'task_companies'));
+    expect(tableInfo(upgradedSqlite, 'company_tags')).toEqual(tableInfo(freshSqlite, 'company_tags'));
+    expect(tableInfo(upgradedSqlite, 'people')).toEqual(tableInfo(freshSqlite, 'people'));
+
+    const companiesIndexes = upgradedSqlite.prepare("PRAGMA index_list('companies')").all() as { name: string; unique: number }[];
+    expect(companiesIndexes.some((i) => i.name === 'companies_name_unique' && i.unique === 1)).toBe(true);
+
+    const upgradedPerson = upgradedSqlite.prepare('SELECT first_name, last_name, company_id FROM people').get() as {
+      first_name: string;
+      last_name: string;
+      company_id: number | null;
+    };
+    expect(upgradedPerson).toEqual({ first_name: 'Sam', last_name: 'Rivera', company_id: null });
+
     upgradedSqlite.close();
     freshSqlite.close();
   });
