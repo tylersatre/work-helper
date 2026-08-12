@@ -130,6 +130,30 @@ async function syncEmails(startDate: string, endDate: string) {
   return client.callTool({ name: 'sync-emails', arguments: { startDate, endDate } });
 }
 
+async function syncCalendar(startDate?: string, endDate?: string) {
+  const args: Record<string, unknown> = {};
+  if (startDate !== undefined) args.startDate = startDate;
+  if (endDate !== undefined) args.endDate = endDate;
+  return client.callTool({ name: 'sync-calendar', arguments: args });
+}
+
+interface CalendarSyncRunView {
+  id: number;
+  ranAt: number;
+  startDate: string;
+  endDate: string;
+  source: 'web' | 'mcp';
+  status: 'success' | 'failure';
+  newCount: number;
+  updatedCount: number;
+  error: string | null;
+}
+
+async function getCalendarSyncRuns(): Promise<{ runs: CalendarSyncRunView[] }> {
+  const response = await app.inject({ method: 'GET', url: '/api/calendar-sync/runs' });
+  return response.json();
+}
+
 beforeEach(async () => {
   stub = await startStubIdentityProvider();
 });
@@ -446,5 +470,95 @@ describe('US5: re-sync refreshes events and preserves history', () => {
     expect(refreshed).toBeDefined();
     expect(refreshed!.isCancelled).toBe(false);
     expect(new Date(refreshed!.startAt).toISOString()).toBe('2026-09-10T16:00:00.000Z');
+  });
+});
+
+describe('US6: agents trigger calendar sync via MCP', () => {
+  it('syncs exactly as a web run does and appears in the run history with source mcp and matching counts', async () => {
+    buildTestApp(new FakeCalendarProvider([pricingReview(), teamStandup(), septemberPlanning()]));
+    await startAndConnect();
+
+    const result = await syncCalendar('2026-08-01', '2026-08-31');
+
+    expect(result.isError).toBeFalsy();
+    const structuredContent = result.structuredContent as { status: string; newCount: number; updatedCount: number };
+    expect(structuredContent.status).toBe('complete');
+    expect(structuredContent.newCount).toBe(2);
+    expect(structuredContent.updatedCount).toBe(0);
+
+    const { runs } = await getCalendarSyncRuns();
+    expect(runs).toHaveLength(1);
+    expect(runs[0]!.source).toBe('mcp');
+    expect(runs[0]!.status).toBe('success');
+    expect(runs[0]!.newCount).toBe(structuredContent.newCount);
+    expect(runs[0]!.updatedCount).toBe(structuredContent.updatedCount);
+  });
+
+  it('rejects a call with no date range, syncing nothing and recording no history row', async () => {
+    buildTestApp(new FakeCalendarProvider([pricingReview()]));
+    await startAndConnect();
+
+    const result = await syncCalendar(undefined, undefined);
+
+    expect(result.isError).toBe(true);
+    const content = result.content as Array<{ type: string; text: string }>;
+    expect(content[0]?.text).toBe('A start date and end date are required');
+
+    const { runs } = await getCalendarSyncRuns();
+    expect(runs).toHaveLength(0);
+  });
+
+  it('rejects an inverted range with a validation error and no side effects', async () => {
+    buildTestApp(new FakeCalendarProvider([pricingReview()]));
+    await startAndConnect();
+
+    const result = await syncCalendar('2026-08-20', '2026-08-05');
+
+    expect(result.isError).toBe(true);
+    const content = result.content as Array<{ type: string; text: string }>;
+    expect(content[0]?.text).toBe('startDate and endDate must be valid YYYY-MM-DD dates, with endDate not before startDate');
+
+    const { runs } = await getCalendarSyncRuns();
+    expect(runs).toHaveLength(0);
+  });
+
+  it('returns "a sync is already running" while a gated sync is in flight', async () => {
+    let release!: () => void;
+    let markStarted!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    buildTestApp(new GatedCalendarProvider(gate, markStarted));
+    await startAndConnect();
+
+    const firstSync = postCalendarSync({ startDate: '2026-08-01', endDate: '2026-08-31' });
+    await started;
+
+    const collision = await syncCalendar('2026-07-01', '2026-07-31');
+    expect(collision.isError).toBe(true);
+    expect(JSON.stringify(collision.content)).toMatch(/already running/i);
+
+    release();
+    const firstResponse = await firstSync;
+    expect(firstResponse.statusCode).toBe(201);
+  });
+
+  it('a fully-failing run returns a tool error ending "connect the mailbox on the Sync page." and records a failure history row', async () => {
+    buildTestApp(new FakeCalendarProvider([], { failImmediately: true }));
+    await startAndConnect();
+
+    const result = await syncCalendar('2026-08-01', '2026-08-31');
+
+    expect(result.isError).toBe(true);
+    const content = result.content as Array<{ type: string; text: string }>;
+    expect(content[0]?.text).toMatch(/connect the mailbox on the Sync page\.$/);
+
+    const { runs } = await getCalendarSyncRuns();
+    expect(runs).toHaveLength(1);
+    expect(runs[0]!.status).toBe('failure');
+    expect(runs[0]!.source).toBe('mcp');
   });
 });
