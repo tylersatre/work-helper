@@ -13,7 +13,7 @@ import {
   unlinkCompanyFromTask,
 } from '../services/companies.js';
 import { createPerson, getPerson, listPeople, updatePerson as updatePersonService, type PersonRecord } from '../services/people.js';
-import { addNote, createTask, getTaskDetail, InvalidLaneError, listTasksByLane, moveTask } from '../services/tasks.js';
+import { addNote, createTask, getTaskDetail, InvalidLaneError, linkPerson, listTasksByLane, moveTask, unlinkPerson } from '../services/tasks.js';
 import { linkConversationToTask, unlinkConversationFromTask } from '../services/task-conversations.js';
 import { emailAddresses, personPhones } from '../db/schema.js';
 import type * as schema from '../db/schema.js';
@@ -872,6 +872,45 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         companyId === null
           ? `Cleared ${personName(result.person)}'s company.`
           : `Set ${personName(result.person)}'s company to "${result.person.company?.name}".`;
+      return { content: [{ type: 'text', text }], structuredContent };
+    },
+  );
+
+  server.registerTool(
+    'add-person-to-task',
+    {
+      description: 'Links an existing person to a task; linking an already-linked person is a no-op.',
+      inputSchema: { taskId: z.number().int().positive(), personId: z.number().int().positive() },
+      outputSchema: taskDetailOutputSchema,
+    },
+    async ({ taskId, personId }) => {
+      const person = getPerson(context.db, context.personFields, personId);
+      const result = linkPerson(context.db, taskId, personId);
+      if (!result.ok) {
+        return toolError(result.error === 'task-not-found' ? `Task ${taskId} not found` : `Person ${personId} not found`);
+      }
+      const structuredContent = taskDetailContent(result.task);
+      const text = `Added "${personName(person!)}" to task "${result.task.title}".`;
+      return { content: [{ type: 'text', text }], structuredContent };
+    },
+  );
+
+  server.registerTool(
+    'remove-person-from-task',
+    {
+      description: 'Unlinks a person from a task; the card and the person themselves are unaffected.',
+      inputSchema: { taskId: z.number().int().positive(), personId: z.number().int().positive() },
+      outputSchema: taskDetailOutputSchema,
+    },
+    async ({ taskId, personId }) => {
+      const person = getPerson(context.db, context.personFields, personId);
+      const result = unlinkPerson(context.db, taskId, personId);
+      if (!result.ok) {
+        return toolError(`Task ${taskId} not found`);
+      }
+      const structuredContent = taskDetailContent(result.task);
+      const label = person ? personName(person) : `Person ${personId}`;
+      const text = `Removed "${label}" from task "${result.task.title}".`;
       return { content: [{ type: 'text', text }], structuredContent };
     },
   );
