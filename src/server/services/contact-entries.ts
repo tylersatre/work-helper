@@ -16,26 +16,37 @@ export interface ContactEntry {
 
 export type EntryMutationResult =
   | { ok: true; entries: ContactEntry[] }
-  | { ok: false; error: 'person-not-found' | 'entry-not-found' | 'conflict' };
+  | { ok: false; error: 'person-not-found' | 'entry-not-found' }
+  | { ok: false; error: 'conflict'; holder: { id: number; name: string } | null };
 
 function personExists(db: AppDb, personId: number): boolean {
   const [row] = db.select({ id: people.id }).from(people).where(eq(people.id, personId)).limit(1).all();
   return row !== undefined;
 }
 
-function conflictExists(db: AppDb, table: EntryTable, value: string, excludeId?: number): boolean {
+function holderName(db: AppDb, personId: number): string {
+  const [row] = db.select({ firstName: people.firstName, lastName: people.lastName }).from(people).where(eq(people.id, personId)).limit(1).all();
+  return `${row!.firstName} ${row!.lastName}`;
+}
+
+function toHolder(db: AppDb, personId: number | null): { id: number; name: string } | null {
+  return personId === null ? null : { id: personId, name: holderName(db, personId) };
+}
+
+/** The row (if any) already holding `value` in `table` — its `personId` is null for an unlinked synced address. */
+function findConflictRow(db: AppDb, table: EntryTable, value: string, excludeId?: number): { personId: number | null } | undefined {
   const isEmailTable = table === emailAddresses;
   const conditions = [isEmailTable ? sql`lower(${table.value}) = lower(${value})` : eq(table.value, value)];
   if (excludeId !== undefined) {
     conditions.push(ne(table.id, excludeId));
   }
   const [row] = db
-    .select({ id: table.id })
+    .select({ personId: table.personId })
     .from(table)
     .where(and(...conditions))
     .limit(1)
     .all();
-  return row !== undefined;
+  return row;
 }
 
 function loadEntries(db: AppDb, table: EntryTable, personId: number): ContactEntry[] {
@@ -89,7 +100,7 @@ export function addEntry(db: AppDb, table: EntryTable, personId: number, rawValu
     const existing = findEmailAddressByValue(db, value);
     if (existing) {
       if (existing.personId !== null) {
-        return { ok: false, error: 'conflict' };
+        return { ok: false, error: 'conflict', holder: toHolder(db, existing.personId) };
       }
       db.transaction((tx) => {
         const [existingForPerson] = tx.select({ id: table.id }).from(table).where(eq(table.personId, personId)).limit(1).all();
@@ -100,8 +111,11 @@ export function addEntry(db: AppDb, table: EntryTable, personId: number, rawValu
       });
       return { ok: true, entries: loadEntries(db, table, personId) };
     }
-  } else if (conflictExists(db, table, value)) {
-    return { ok: false, error: 'conflict' };
+  } else {
+    const conflictRow = findConflictRow(db, table, value);
+    if (conflictRow) {
+      return { ok: false, error: 'conflict', holder: toHolder(db, conflictRow.personId) };
+    }
   }
 
   db.transaction((tx) => {
@@ -127,8 +141,9 @@ export function editEntry(
   if (!entryExists(db, table, personId, entryId)) {
     return { ok: false, error: 'entry-not-found' };
   }
-  if (conflictExists(db, table, value, entryId)) {
-    return { ok: false, error: 'conflict' };
+  const conflictRow = findConflictRow(db, table, value, entryId);
+  if (conflictRow) {
+    return { ok: false, error: 'conflict', holder: toHolder(db, conflictRow.personId) };
   }
 
   if (table === emailAddresses && isEmailAddressReferenced(db, entryId)) {

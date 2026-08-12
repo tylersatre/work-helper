@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
+import { addEntry } from '../../src/server/services/contact-entries.js';
+import { emailAddresses, personPhones } from '../../src/server/db/schema.js';
 
 const LANES = ['To Do', 'In Progress', 'Waiting', 'Done'];
 
@@ -564,5 +566,49 @@ describe('uniqueness and blank rejection (US3)', () => {
 
     const fetched = await app.inject({ method: 'GET', url: `/api/people/${samId}` });
     expect(fetched.json().emails[0]).toMatchObject({ value: 'sam.rivera@example.com' });
+  });
+});
+
+describe('addEntry service: conflict results carry the holding person (015-mcp-people-tools FR-006)', () => {
+  it('an email held by another person, matched case-insensitively, identifies that person as the holder', async () => {
+    const app = buildTestApp();
+    const samId = await createPerson(app, { firstName: 'Sam', lastName: 'Rivera' });
+    await app.inject({ method: 'POST', url: `/api/people/${samId}/emails`, payload: { value: 'sam.rivera@example.com' } });
+    const anaId = await createPerson(app, { firstName: 'Ana', lastName: 'Alvarez' });
+
+    const result = addEntry(app.db, emailAddresses, anaId, 'Sam.Rivera@example.com');
+
+    expect(result).toEqual({ ok: false, error: 'conflict', holder: { id: samId, name: 'Sam Rivera' } });
+  });
+
+  it('a phone held by another person, matched on exact text, identifies that person as the holder', async () => {
+    const app = buildTestApp();
+    const samId = await createPerson(app, { firstName: 'Sam', lastName: 'Rivera' });
+    await app.inject({ method: 'POST', url: `/api/people/${samId}/phones`, payload: { value: '555-0100' } });
+    const anaId = await createPerson(app, { firstName: 'Ana', lastName: 'Alvarez' });
+
+    const result = addEntry(app.db, personPhones, anaId, '555-0100');
+
+    expect(result).toEqual({ ok: false, error: 'conflict', holder: { id: samId, name: 'Sam Rivera' } });
+  });
+
+  it('a value the target person already holds identifies that same person as the holder (edge case)', async () => {
+    const app = buildTestApp();
+    const samId = await createPerson(app, { firstName: 'Sam', lastName: 'Rivera' });
+    await app.inject({ method: 'POST', url: `/api/people/${samId}/emails`, payload: { value: 'sam.rivera@example.com' } });
+
+    const result = addEntry(app.db, emailAddresses, samId, 'sam.rivera@example.com');
+
+    expect(result).toEqual({ ok: false, error: 'conflict', holder: { id: samId, name: 'Sam Rivera' } });
+  });
+
+  it('a phone the target person already holds identifies that same person as the holder (edge case)', async () => {
+    const app = buildTestApp();
+    const samId = await createPerson(app, { firstName: 'Sam', lastName: 'Rivera' });
+    await app.inject({ method: 'POST', url: `/api/people/${samId}/phones`, payload: { value: '555-0100' } });
+
+    const result = addEntry(app.db, personPhones, samId, '555-0100');
+
+    expect(result).toEqual({ ok: false, error: 'conflict', holder: { id: samId, name: 'Sam Rivera' } });
   });
 });

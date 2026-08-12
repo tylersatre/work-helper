@@ -2,13 +2,15 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ZodError, z } from 'zod';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { primaryValue } from '../../shared/contacts.js';
-import { getPerson, listPeople } from '../services/people.js';
+import { addEntry, markPrimary, removeEntry } from '../services/contact-entries.js';
+import { createPerson, getPerson, listPeople, updatePerson as updatePersonService, type PersonRecord } from '../services/people.js';
 import { addNote, createTask, getTaskDetail, listTasksByLane } from '../services/tasks.js';
+import { emailAddresses, personPhones } from '../db/schema.js';
 import type * as schema from '../db/schema.js';
 import type { MailProvider } from '../services/email/provider.js';
 import { computeSyncWindow } from '../services/email/sync.js';
 import type { SyncCoordinator } from '../services/email/sync-coordinator.js';
-import { emailsForPerson, getConversation, listConversations } from '../services/email/queries.js';
+import { emailsForPerson, getConversation, listConversations, listUnlinkedAddresses } from '../services/email/queries.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
 
@@ -33,6 +35,61 @@ const taskSummarySchema = { id: z.number(), title: z.string(), lane: z.string(),
 const noteSchema = { id: z.number(), text: z.string(), source: z.enum(['ui', 'mcp']), createdAt: z.number() };
 
 const taskPersonSchema = { id: z.number(), firstName: z.string(), lastName: z.string(), email: z.string().nullable() };
+
+const contactEntrySchema = z.object({ id: z.number(), value: z.string(), isPrimary: z.boolean() });
+
+const personDetailSchema = {
+  id: z.number(),
+  firstName: z.string(),
+  lastName: z.string(),
+  email: z.string().nullable(),
+  phone: z.string().nullable(),
+  emails: z.array(contactEntrySchema),
+  phones: z.array(contactEntrySchema),
+  extraFields: z.record(z.string(), z.string()),
+  tags: z.array(z.string()),
+};
+
+function personDetail(person: PersonRecord) {
+  return {
+    id: person.id,
+    firstName: person.firstName,
+    lastName: person.lastName,
+    email: primaryValue(person.emails),
+    phone: primaryValue(person.phones),
+    emails: person.emails.map((entry) => ({ id: entry.id, value: entry.value, isPrimary: entry.isPrimary })),
+    phones: person.phones.map((entry) => ({ id: entry.id, value: entry.value, isPrimary: entry.isPrimary })),
+    extraFields: person.extraFields,
+    tags: person.tags.map((tag) => tag.name),
+  };
+}
+
+/** Rejects any extraFields key not in the configured person-fields list, naming every offender (FR-005) — the UI's normalizeExtraFields silently drops unknown keys instead, so this guard lives only at the MCP tool layer. */
+function unknownFieldsError(extraFields: Record<string, string> | undefined, personFields: string[]): string | undefined {
+  if (!extraFields) return undefined;
+  const allowed = new Set(personFields);
+  const unknown = Object.keys(extraFields).filter((key) => !allowed.has(key));
+  if (unknown.length === 0) return undefined;
+  return `Unknown field ${unknown.map((key) => `"${key}"`).join(', ')}`;
+}
+
+/** `A value is required` for an explicitly blank/whitespace contact value; undefined for an omitted one. */
+function blankContactValueError(value: string | undefined): string | undefined {
+  return value !== undefined && value.trim() === '' ? 'A value is required' : undefined;
+}
+
+function tableFor(type: 'email' | 'phone') {
+  return type === 'email' ? emailAddresses : personPhones;
+}
+
+function toContactEntries(entries: { id: number; value: string; isPrimary: boolean }[]) {
+  return entries.map((entry) => ({ id: entry.id, value: entry.value, isPrimary: entry.isPrimary }));
+}
+
+function conflictError(type: 'email' | 'phone', holder: { id: number; name: string } | null): string {
+  const label = type === 'email' ? 'email' : 'phone number';
+  return holder ? `That ${label} is already in use by ${holder.name}` : `That ${label} is already in use`;
+}
 
 export function createMcpServer(context: McpToolsContext): McpServer {
   const server = new McpServer({ name: 'work-helper', version: '1.0.0' });
@@ -108,33 +165,196 @@ export function createMcpServer(context: McpToolsContext): McpServer {
   server.registerTool(
     'get-person',
     {
-      description: 'Fetches a person by id, including their configured extra fields and tag names.',
+      description: "Fetches a person by id, including every email address and phone number (primary of each type marked), configured extra fields, and tag names.",
       inputSchema: { personId: z.number().int().positive() },
-      outputSchema: {
-        id: z.number(),
-        firstName: z.string(),
-        lastName: z.string(),
-        email: z.string().nullable(),
-        phone: z.string().nullable(),
-        extraFields: z.record(z.string(), z.string()),
-        tags: z.array(z.string()),
-      },
+      outputSchema: personDetailSchema,
     },
     async ({ personId }) => {
       const person = getPerson(context.db, context.personFields, personId);
       if (!person) {
         return toolError(`Person ${personId} not found`);
       }
-      const structuredContent = {
-        id: person.id,
-        firstName: person.firstName,
-        lastName: person.lastName,
-        email: primaryValue(person.emails),
-        phone: primaryValue(person.phones),
-        extraFields: person.extraFields,
-        tags: person.tags.map((tag) => tag.name),
-      };
+      const structuredContent = personDetail(person);
       return { content: [{ type: 'text', text: `${personName(person)}` }], structuredContent };
+    },
+  );
+
+  server.registerTool(
+    'create-person',
+    {
+      description:
+        'Creates a person with names, at most one email, at most one phone, and any configured extra fields — indistinguishable from a UI-created person. An email matching an address already synced but unlinked is linked instead of duplicated, bringing its mail history.',
+      inputSchema: {
+        firstName: z.string(),
+        lastName: z.string(),
+        email: z.string().optional(),
+        phone: z.string().optional(),
+        extraFields: z.record(z.string(), z.string()).optional(),
+      },
+      outputSchema: personDetailSchema,
+    },
+    async ({ firstName, lastName, email, phone, extraFields }) => {
+      if (firstName.trim() === '' || lastName.trim() === '') {
+        return toolError('First and last name are required');
+      }
+      const fieldsError = unknownFieldsError(extraFields, context.personFields);
+      if (fieldsError) {
+        return toolError(fieldsError);
+      }
+      const emailError = blankContactValueError(email);
+      if (emailError) {
+        return toolError(emailError);
+      }
+      const phoneError = blankContactValueError(phone);
+      if (phoneError) {
+        return toolError(phoneError);
+      }
+
+      const result = createPerson(context.db, context.personFields, { firstName, lastName, email, phone, extraFields });
+      if (!result.ok) {
+        const label = result.error === 'email-conflict' ? 'email' : 'phone number';
+        return toolError(`That ${label} is already in use by ${result.holder.name}`);
+      }
+
+      const structuredContent = personDetail(result.person);
+      return { content: [{ type: 'text', text: `Created person "${personName(result.person)}".` }], structuredContent };
+    },
+  );
+
+  server.registerTool(
+    'update-person',
+    {
+      description:
+        "Partially edits a person's first name, last name, and extra configured field values, under the same validation as creation. Omitted inputs keep current values; provided extraFields keys merge over current ones, with an empty-string value clearing that field. Contact lists are not editable here — use the contact-entry tools.",
+      inputSchema: {
+        personId: z.number().int().positive(),
+        firstName: z.string().optional(),
+        lastName: z.string().optional(),
+        extraFields: z.record(z.string(), z.string()).optional(),
+      },
+      outputSchema: personDetailSchema,
+    },
+    async ({ personId, firstName, lastName, extraFields }) => {
+      const current = getPerson(context.db, context.personFields, personId);
+      if (!current) {
+        return toolError(`Person ${personId} not found`);
+      }
+
+      if ((firstName !== undefined && firstName.trim() === '') || (lastName !== undefined && lastName.trim() === '')) {
+        return toolError('First and last name are required');
+      }
+      const fieldsError = unknownFieldsError(extraFields, context.personFields);
+      if (fieldsError) {
+        return toolError(fieldsError);
+      }
+
+      const result = updatePersonService(context.db, context.personFields, personId, {
+        firstName: firstName ?? current.firstName,
+        lastName: lastName ?? current.lastName,
+        extraFields: { ...current.extraFields, ...extraFields },
+      });
+      if (!result.ok) {
+        return toolError(`Person ${personId} not found`);
+      }
+
+      const structuredContent = personDetail(result.person);
+      return { content: [{ type: 'text', text: `Updated person "${personName(result.person)}".` }], structuredContent };
+    },
+  );
+
+  const contactMutationOutputSchema = {
+    personId: z.number(),
+    type: z.enum(['email', 'phone']),
+    entries: z.array(contactEntrySchema),
+  };
+
+  server.registerTool(
+    'add-contact-entry',
+    {
+      description:
+        "Adds an email or phone number to a person. The first entry of its type becomes primary; an email that exists in synced mail but is linked to no person is linked in place, bringing its mail history.",
+      inputSchema: { personId: z.number().int().positive(), type: z.enum(['email', 'phone']), value: z.string() },
+      outputSchema: contactMutationOutputSchema,
+    },
+    async ({ personId, type, value }) => {
+      try {
+        const result = addEntry(context.db, tableFor(type), personId, value);
+        if (!result.ok) {
+          if (result.error === 'person-not-found') {
+            return toolError(`Person ${personId} not found`);
+          }
+          if (result.error === 'conflict') {
+            return toolError(conflictError(type, result.holder));
+          }
+          return toolError('Entry not found');
+        }
+
+        const person = getPerson(context.db, context.personFields, personId)!;
+        const structuredContent = { personId, type, entries: toContactEntries(result.entries) };
+        return {
+          content: [{ type: 'text', text: `Added ${type} "${value.trim()}" to ${personName(person)}.` }],
+          structuredContent,
+        };
+      } catch (error) {
+        if (error instanceof ZodError) {
+          return toolError(error.issues[0]?.message ?? 'A value is required');
+        }
+        throw error;
+      }
+    },
+  );
+
+  server.registerTool(
+    'mark-contact-primary',
+    {
+      description: "Marks one of a person's email addresses or phone numbers as primary, moving the marker off the previous primary of that type. Marking the current primary again is a no-op.",
+      inputSchema: { personId: z.number().int().positive(), type: z.enum(['email', 'phone']), entryId: z.number().int().positive() },
+      outputSchema: contactMutationOutputSchema,
+    },
+    async ({ personId, type, entryId }) => {
+      const result = markPrimary(context.db, tableFor(type), personId, entryId);
+      if (!result.ok) {
+        if (result.error === 'person-not-found') {
+          return toolError(`Person ${personId} not found`);
+        }
+        return toolError(`Entry ${entryId} not found`);
+      }
+
+      const person = getPerson(context.db, context.personFields, personId)!;
+      const value = result.entries.find((entry) => entry.id === entryId)?.value ?? '';
+      const structuredContent = { personId, type, entries: toContactEntries(result.entries) };
+      return {
+        content: [{ type: 'text', text: `Marked "${value}" as ${personName(person)}'s primary ${type}.` }],
+        structuredContent,
+      };
+    },
+  );
+
+  server.registerTool(
+    'remove-contact-entry',
+    {
+      description:
+        "Removes one of a person's email addresses or phone numbers. A removed email that synced mail references reverts to unlinked (mail untouched); an unreferenced one is deleted. If the removed entry was primary and others remain, one is promoted automatically.",
+      inputSchema: { personId: z.number().int().positive(), type: z.enum(['email', 'phone']), entryId: z.number().int().positive() },
+      outputSchema: contactMutationOutputSchema,
+    },
+    async ({ personId, type, entryId }) => {
+      const person = getPerson(context.db, context.personFields, personId);
+      const removedValue = (type === 'email' ? person?.emails : person?.phones)?.find((entry) => entry.id === entryId)?.value;
+
+      const result = removeEntry(context.db, tableFor(type), personId, entryId);
+      if (!result.ok) {
+        if (result.error === 'person-not-found') {
+          return toolError(`Person ${personId} not found`);
+        }
+        return toolError(`Entry ${entryId} not found`);
+      }
+
+      const structuredContent = { personId, type, entries: toContactEntries(result.entries) };
+      return {
+        content: [{ type: 'text', text: `Removed ${type} "${removedValue}" from ${personName(person!)}.` }],
+        structuredContent,
+      };
     },
   );
 
@@ -383,6 +603,31 @@ export function createMcpServer(context: McpToolsContext): McpServer {
       return {
         content: [{ type: 'text', text: `Found ${page.emails.length} email(s) for ${personName(person)}.` }],
         structuredContent,
+      };
+    },
+  );
+
+  server.registerTool(
+    'list-unlinked-addresses',
+    {
+      description:
+        'Lists every synced-mail address linked to no person — complete, unsuppressed, and computed live — with its message count, most recently seen display name, and most recent message date, ordered by message count descending.',
+      outputSchema: {
+        addresses: z.array(
+          z.object({
+            address: z.string(),
+            messageCount: z.number(),
+            displayName: z.string(),
+            lastMessageAt: z.number(),
+          }),
+        ),
+      },
+    },
+    async () => {
+      const addresses = listUnlinkedAddresses(context.db);
+      return {
+        content: [{ type: 'text', text: `Found ${addresses.length} unlinked address(es).` }],
+        structuredContent: { addresses },
       };
     },
   );

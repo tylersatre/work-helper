@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
+import { createPerson as createPersonService } from '../../src/server/services/people.js';
 
 const LANES = ['To Do', 'In Progress', 'Waiting', 'Done'];
 
@@ -405,5 +406,35 @@ describe('POST /api/people phone-conflict rejection (US3)', () => {
 
     expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({ error: { message: 'That email is already in use' } });
+  });
+});
+
+describe('createPerson service: conflict results carry the holding person (015-mcp-people-tools FR-006)', () => {
+  it('an email-conflict result carries the holder id and name, matched case-insensitively', async () => {
+    const app = buildTestApp();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/people',
+      payload: { firstName: 'Sam', lastName: 'Rivera', email: 'sam.rivera@example.com' },
+    });
+    const samId = created.json().id;
+
+    const result = createPersonService(app.db, [], { firstName: 'Other', lastName: 'Person', email: 'Sam.Rivera@example.com' });
+
+    expect(result).toEqual({ ok: false, error: 'email-conflict', holder: { id: samId, name: 'Sam Rivera' } });
+  });
+
+  it('a phone-conflict result carries the holder id and name, matched on exact text', async () => {
+    const app = buildTestApp();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/people',
+      payload: { firstName: 'Ana', lastName: 'Alvarez', phone: '555-0200' },
+    });
+    const anaId = created.json().id;
+
+    const result = createPersonService(app.db, [], { firstName: 'Other', lastName: 'Person', phone: '555-0200' });
+
+    expect(result).toEqual({ ok: false, error: 'phone-conflict', holder: { id: anaId, name: 'Ana Alvarez' } });
   });
 });

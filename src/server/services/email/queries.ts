@@ -300,6 +300,46 @@ function participantsForMessage(db: AppDb, messageId: number): ConversationParti
   }));
 }
 
+export interface UnlinkedAddressSummary {
+  address: string;
+  messageCount: number;
+  displayName: string;
+  lastMessageAt: number;
+}
+
+/** Every synced-mail address linked to no person, complete and computed live per call (FR-015–FR-017). */
+export function listUnlinkedAddresses(db: AppDb): UnlinkedAddressSummary[] {
+  const rows = db.all<{ address: string; messageCount: number; lastMessageAt: number; displayName: string }>(sql`
+    WITH agg AS (
+      SELECT ea.id AS addressId, ea.value AS address, COUNT(DISTINCT ep.message_id) AS messageCount, MAX(m.sent_at) AS lastMessageAt
+      FROM email_addresses ea
+      JOIN email_participants ep ON ep.address_id = ea.id
+      JOIN email_messages m ON m.id = ep.message_id
+      WHERE ea.person_id IS NULL
+      GROUP BY ea.id
+    ),
+    ranked_names AS (
+      SELECT ea.id AS addressId, ep.display_name AS displayName,
+             ROW_NUMBER() OVER (PARTITION BY ea.id ORDER BY (ep.display_name = '') ASC, m.sent_at DESC, ep.id DESC) AS rn
+      FROM email_addresses ea
+      JOIN email_participants ep ON ep.address_id = ea.id
+      JOIN email_messages m ON m.id = ep.message_id
+      WHERE ea.person_id IS NULL
+    )
+    SELECT agg.address AS address, agg.messageCount AS messageCount, agg.lastMessageAt AS lastMessageAt, ranked_names.displayName AS displayName
+    FROM agg
+    JOIN ranked_names ON ranked_names.addressId = agg.addressId AND ranked_names.rn = 1
+    ORDER BY agg.messageCount DESC, agg.lastMessageAt DESC, agg.address ASC
+  `);
+
+  return rows.map((row) => ({
+    address: row.address,
+    messageCount: row.messageCount,
+    displayName: row.displayName === '' ? row.address : row.displayName,
+    lastMessageAt: row.lastMessageAt,
+  }));
+}
+
 export function listSyncRuns(db: AppDb): SyncRunRecord[] {
   return db.select().from(syncRuns).orderBy(desc(syncRuns.ranAt), desc(syncRuns.id)).all();
 }
