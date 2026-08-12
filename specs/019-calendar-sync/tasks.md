@@ -177,8 +177,8 @@ Single project at repository root: `src/server/`, `src/client/`, `tests/`, `driz
 
 ### Implementation for User Story 7
 
-- [ ] T035 [US7] Extend `listUnlinkedAddresses` in `src/server/services/email/queries.ts` per research R11: qualify unlinked addresses seen in mail OR as non-resource event participants, add `eventCount` (`COUNT(DISTINCT event_id)` over non-resource rows), make `lastMessageAt` nullable, pick the most recent non-empty display name across mail (`sent_at`) and events (`start_at`), keep ordering `messageCount DESC` → `lastMessageAt DESC` (nulls last) → `address ASC`
-- [ ] T036 [US7] Update the `list-unlinked-addresses` tool's output schema and summary text in `src/server/mcp/tools.ts` to include `eventCount` and nullable `lastMessageAt` per contracts/mcp-tools.md — T034 goes green
+- [X] T035 [US7] Extend `listUnlinkedAddresses` in `src/server/services/email/queries.ts` per research R11: qualify unlinked addresses seen in mail OR as non-resource event participants, add `eventCount` (`COUNT(DISTINCT event_id)` over non-resource rows), make `lastMessageAt` nullable, pick the most recent non-empty display name across mail (`sent_at`) and events (`start_at`), keep ordering `messageCount DESC` → `lastMessageAt DESC` (nulls last) → `address ASC`
+- [X] T036 [US7] Update the `list-unlinked-addresses` tool's output schema and summary text in `src/server/mcp/tools.ts` to include `eventCount` and nullable `lastMessageAt` per contracts/mcp-tools.md — T034 goes green
 
 **Checkpoint**: All seven stories implemented and independently tested.
 

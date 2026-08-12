@@ -659,14 +659,15 @@ export function createMcpServer(context: McpToolsContext): McpServer {
     'list-unlinked-addresses',
     {
       description:
-        'Lists every synced-mail address linked to no person — complete, unsuppressed, and computed live — with its message count, most recently seen display name, and most recent message date, ordered by message count descending.',
+        'Lists every address linked to no person — seen in synced mail, as a calendar event participant (excluding resource attendees like rooms and equipment), or both — complete, unsuppressed, and computed live — with its message count, event count, most recently seen display name, and most recent message date (null when the address has never appeared in mail), ordered by message count descending.',
       outputSchema: {
         addresses: z.array(
           z.object({
             address: z.string(),
             messageCount: z.number(),
+            eventCount: z.number(),
             displayName: z.string(),
-            lastMessageAt: z.number(),
+            lastMessageAt: z.number().nullable(),
           }),
         ),
       },
