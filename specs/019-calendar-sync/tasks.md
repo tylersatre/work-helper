@@ -189,7 +189,7 @@ Single project at repository root: `src/server/`, `src/client/`, `tests/`, `driz
 **Purpose**: The evidence gate — full-suite verification, browser evidence, independent confirmation (constitution Principle III).
 
 - [X] T037 Run the full gate `npm run lint && npm run typecheck && npm test && npm run build` plus every targeted suite listed in quickstart.md, and fix anything red
-- [ ] T038 Launch the dev server with `MAIL_PROVIDER=fake npm run dev` (ports 3019/5119) and dispatch the `browser-tester` agent to execute quickstart scenario 1 (US1 acceptance scenarios 1–2: prefill, empty state, sync run, in-progress disable, result counts, history persistence across reload, email section unchanged, nav renamed) capturing screenshots and results to `docs/evidence/019-calendar-sync/`
+- [X] T038 Launch the dev server with `MAIL_PROVIDER=fake npm run dev` (ports 3019/5119) and dispatch the `browser-tester` agent to execute quickstart scenario 1 (US1 acceptance scenarios 1–2: prefill, empty state, sync run, in-progress disable, result counts, history persistence across reload, email section unchanged, nav renamed) capturing screenshots and results to `docs/evidence/019-calendar-sync/`
 - [ ] T039 Dispatch the `verifier` agent to independently confirm every acceptance criterion in spec.md has a passing automated check and surface-appropriate evidence (browser evidence for US1 UI criteria, recorded test output for US2–US7 MCP/API criteria), re-running checks itself; fix and re-verify anything it rejects
 
 ---
