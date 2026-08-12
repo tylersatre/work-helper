@@ -7,6 +7,7 @@ import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
 import type { CalendarProvider, ProviderCalendarEvent } from '../../src/server/services/calendar/provider.js';
 import { FakeCalendarProvider, type SeedEvent } from '../../src/server/services/calendar/fake-provider.js';
+import type { MailMessage, MailProvider } from '../../src/server/services/email/provider.js';
 
 const LANES = ['To Do', 'In Progress', 'Waiting', 'Done'];
 
@@ -43,6 +44,15 @@ function teamStandup(): SeedEvent {
   };
 }
 
+function projectKickoff(): SeedEvent {
+  return {
+    id: 'evt-kickoff-1',
+    subject: 'Project kickoff',
+    start: '2026-08-20T14:00:00.000Z',
+    end: '2026-08-20T14:30:00.000Z',
+  };
+}
+
 /** A provider whose fetchEvents awaits an external gate before yielding — lets a test hold a sync in flight. */
 class GatedCalendarProvider implements CalendarProvider {
   constructor(
@@ -65,15 +75,41 @@ class DisconnectedCalendarProvider implements CalendarProvider {
   }
 }
 
+/** A provider whose fetchMessages awaits an external gate before yielding — lets a test hold an email sync in flight (mirrors GatedCalendarProvider, reverse direction, FR-006). */
+class GatedMailProvider implements MailProvider {
+  constructor(
+    private readonly gate: Promise<void>,
+    private readonly markStarted?: () => void,
+  ) {}
+
+  async listFolders() {
+    return [{ id: 'inbox', name: 'Inbox', wellKnown: 'inbox' as const, children: [] }];
+  }
+
+  async *fetchMessages(): AsyncIterable<MailMessage[]> {
+    this.markStarted?.();
+    await this.gate;
+    yield [];
+  }
+
+  async fetchAttachmentMetadata() {
+    return [];
+  }
+}
+
 let app: FastifyInstance;
 
-function buildTestApp(calendarProvider?: CalendarProvider, dbPath = ':memory:') {
+function buildTestApp(calendarProvider?: CalendarProvider, dbPath = ':memory:', mailProvider?: MailProvider) {
   const { db } = createDb(dbPath);
-  app = buildApp({ db, lanes: LANES, calendarProvider } as unknown as Parameters<typeof buildApp>[0]);
+  app = buildApp({ db, lanes: LANES, calendarProvider, mailProvider } as unknown as Parameters<typeof buildApp>[0]);
 }
 
 async function postRun(body: Record<string, unknown>) {
   return app.inject({ method: 'POST', url: '/api/calendar-sync/runs', payload: body });
+}
+
+async function postEmailRun(body: Record<string, unknown>) {
+  return app.inject({ method: 'POST', url: '/api/email-sync/runs', payload: body });
 }
 
 async function getRuns(): Promise<{ runs: CalendarSyncRunView[] }> {
@@ -251,6 +287,27 @@ describe('POST /api/calendar-sync/runs', () => {
     expect(run).toMatchObject({ status: 'success', newCount: 0, updatedCount: 0 });
     expect((await getRuns()).runs).toHaveLength(1);
   });
+
+  it('records a failure run with a partial newCount when the connection drops mid-run (spec.md Edge Case: "A sync run fails partway")', async () => {
+    const allSeeded = [pricingReview(), teamStandup(), projectKickoff()];
+    buildTestApp(new FakeCalendarProvider(allSeeded, { pageSize: 1, throwAfterEventCount: 2 }));
+
+    const response = await postRun({ startDate: '2026-08-01', endDate: '2026-08-31' });
+
+    expect(response.statusCode).toBe(201);
+    const run = response.json() as CalendarSyncRunView;
+    expect(run.status).toBe('failure');
+    expect(run.newCount).toBe(2);
+    expect(run.newCount).toBeLessThan(allSeeded.length);
+    expect(run.updatedCount).toBe(0);
+    expect(typeof run.error).toBe('string');
+    expect(run.error).not.toBeNull();
+
+    const { runs } = await getRuns();
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ status: 'failure', newCount: 2, updatedCount: 0 });
+    expect(typeof runs[0]!.error).toBe('string');
+  });
 });
 
 describe('GET /api/sync/status', () => {
@@ -276,5 +333,33 @@ describe('GET /api/sync/status', () => {
     await firstPromise;
 
     expect(await getStatus()).toEqual({ running: false });
+  });
+});
+
+describe('US1 cross-kind single-flight: email sync in flight blocks calendar sync (FR-006)', () => {
+  it('rejects POST /api/calendar-sync/runs with 409 while a web-triggered email sync is in flight, and records nothing for it', async () => {
+    let release!: () => void;
+    let markStarted!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    buildTestApp(new FakeCalendarProvider([pricingReview()]), ':memory:', new GatedMailProvider(gate, markStarted));
+
+    const emailPromise = postEmailRun({ startDate: '2026-08-01', endDate: '2026-08-31' });
+    await started;
+
+    const calendarResponse = await postRun({ startDate: '2026-08-01', endDate: '2026-08-31' });
+    expect(calendarResponse.statusCode).toBe(409);
+    expect(calendarResponse.json()).toEqual({ error: { message: 'A sync is already running' } });
+
+    release();
+    const emailResponse = await emailPromise;
+    expect(emailResponse.statusCode).toBe(201);
+
+    const { runs } = await getRuns();
+    expect(runs).toHaveLength(0);
   });
 });

@@ -257,3 +257,4 @@ Each subsequent phase is one deployable increment: US2 (full detail reads) → U
 - `drizzle/0002_*.sql` is immutable once merged — any later schema fix is a new migration.
 - FR-014 is absolute: no Graph write calls anywhere in this feature.
 - Commit after each red→green cycle or logical group, Conventional Commits style.
+- Post-implementation verifier pass flagged 3 automated-coverage gaps against already-correct behavior (no production code changes needed): a "sync fails partway" (`interrupted`/failure) test in `tests/integration/calendar-sync-runs.test.ts`, an FR-012 all-day/multi-day end-to-end store-and-read-back test in `tests/integration/calendar-read-tools.test.ts`, and the reverse-direction FR-006 single-flight test (email-in-flight blocks calendar) in `tests/integration/calendar-sync-runs.test.ts`. All three closed.

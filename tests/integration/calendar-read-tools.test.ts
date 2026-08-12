@@ -260,6 +260,41 @@ describe('US2: get-event returns the full detail set', () => {
   });
 });
 
+describe('FR-012: all-day / multi-day events round-trip through sync and read tools', () => {
+  it('stores and reads back a multi-day all-day event with isAllDay true and the full seeded span', async () => {
+    const offsiteConference: SeedEvent = {
+      id: 'evt-offsite-allday-1',
+      subject: 'Offsite conference',
+      // Multi-day all-day span: 2026-08-30 through 2026-09-01 inclusive (exclusive end 2026-09-02),
+      // deliberately overlapping the August sync window's end boundary.
+      start: '2026-08-30T00:00:00.000Z',
+      end: '2026-09-02T00:00:00.000Z',
+      isAllDay: true,
+      organizer: { address: 'sam.rivera@example.com', name: 'Sam Rivera' },
+    };
+    buildTestApp(new FakeCalendarProvider([offsiteConference]));
+    await startAndConnect();
+
+    const syncResponse = await postCalendarSync({ startDate: '2026-08-01', endDate: '2026-08-31' });
+    expect(syncResponse.statusCode).toBe(201);
+    expect((syncResponse.json() as { newCount: number }).newCount).toBe(1);
+
+    const events = await listEvents('2026-08-01', '2026-08-31');
+    expect(events).toHaveLength(1);
+    expect(events[0]!.subject).toBe('Offsite conference');
+    expect(events[0]!.isAllDay).toBe(true);
+    expect(events[0]!.startAt).toBe(Date.parse('2026-08-30T00:00:00.000Z'));
+    expect(events[0]!.endAt).toBe(Date.parse('2026-09-02T00:00:00.000Z'));
+
+    const result = await getEvent(events[0]!.id);
+    expect(result.isError).toBeFalsy();
+    const detail = result.structuredContent as EventDetail;
+    expect(detail.isAllDay).toBe(true);
+    expect(detail.startAt).toBe(Date.parse('2026-08-30T00:00:00.000Z'));
+    expect(detail.endAt).toBe(Date.parse('2026-09-02T00:00:00.000Z'));
+  });
+});
+
 /** US3 scenario 1 (spec.md) — organizer address differs only in case from the tracked person's stored address. */
 function pricingReviewCaseDiffOrganizer(): SeedEvent {
   return {
