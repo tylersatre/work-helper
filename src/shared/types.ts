@@ -142,6 +142,7 @@ export interface TaskDetail extends Task {
   tags: Tag[];
   companies: Company[];
   conversations: LinkedConversationSummary[];
+  lanes: string[];
 }
 
 export interface Tag {

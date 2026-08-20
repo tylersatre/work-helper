@@ -30,7 +30,7 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       reply.status(404);
       return { error: { message: 'Task not found' } };
     }
-    return task;
+    return { ...task, lanes: app.lanes };
   });
 
   app.put('/api/tasks/:id/placement', async (request, reply) => {
