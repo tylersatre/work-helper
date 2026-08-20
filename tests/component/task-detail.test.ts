@@ -735,8 +735,39 @@ describe('TaskDetailPage', () => {
       await flushPromises();
 
       expect(router.currentRoute.value.fullPath).toBe('/tasks/1');
-      expect(screen.getByTestId('delete-card-dialog')).toBeTruthy();
-      expect(screen.getByRole('alert').textContent).toContain('Something went wrong');
+      const dialog = screen.getByTestId('delete-card-dialog');
+      expect(within(dialog).getByRole('alert').textContent).toContain('Something went wrong');
+    });
+
+    it('cancelling after a failed confirm clears the error so it does not persist on the page', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/tasks/1' && !options) {
+          return Promise.resolve({ ok: true, json: async () => taskDetailPayload() });
+        }
+        if (url === '/api/tasks/1' && options?.method === 'DELETE') {
+          return Promise.resolve({ ok: false, status: 500, json: async () => ({ error: { message: 'Something went wrong' } }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const router = makeRouter('/tasks/1');
+      await router.isReady();
+      render(TaskDetailPage, { global: { plugins: [router] } });
+      await flushPromises();
+      await screen.findByText('Follow up with Sam');
+
+      await fireEvent.click(screen.getByTestId('delete-card-button'));
+      await flushPromises();
+      await fireEvent.click(within(screen.getByTestId('delete-card-dialog')).getByRole('button', { name: /^delete$/i }));
+      await flushPromises();
+      expect(within(screen.getByTestId('delete-card-dialog')).getByRole('alert')).toBeTruthy();
+
+      await fireEvent.click(within(screen.getByTestId('delete-card-dialog')).getByRole('button', { name: /^cancel$/i }));
+      await flushPromises();
+
+      expect(screen.queryByTestId('delete-card-dialog')).toBeNull();
+      expect(screen.queryByRole('alert')).toBeNull();
     });
   });
 });

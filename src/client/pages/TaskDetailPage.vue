@@ -117,10 +117,12 @@ async function detachTag(tag: Tag): Promise<void> {
 }
 
 function requestDelete(): void {
+  deleteError.value = '';
   isConfirmingDelete.value = true;
 }
 
 function cancelDelete(): void {
+  deleteError.value = '';
   isConfirmingDelete.value = false;
 }
 
@@ -173,8 +175,7 @@ onMounted(fetchTask);
       </button>
     </div>
     <p v-if="laneError" role="alert" class="lane-error">{{ laneError }}</p>
-    <p v-if="deleteError" role="alert" class="delete-card-error">{{ deleteError }}</p>
-    <DeleteCardConfirm v-if="isConfirmingDelete" :title="task.title" :on-confirm="confirmDelete" @cancel="cancelDelete" />
+    <DeleteCardConfirm v-if="isConfirmingDelete" :title="task.title" :error="deleteError" :on-confirm="confirmDelete" @cancel="cancelDelete" />
     <div class="task-detail-section">
       <h3>People</h3>
       <LinkedPeople :task-id="task.id" :people="task.people" @update:people="onUpdatePeople" />
@@ -230,12 +231,6 @@ onMounted(fetchTask);
   background: var(--wh-surface);
   color: var(--wh-error);
   cursor: pointer;
-}
-
-.delete-card-error {
-  margin: 0.4rem 0 0;
-  color: var(--wh-error);
-  font-size: 0.8rem;
 }
 
 .lane-pills {

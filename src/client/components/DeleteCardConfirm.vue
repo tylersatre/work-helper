@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { NModal } from 'naive-ui';
+import { palette } from '../palette.js';
 
-const props = defineProps<{ title: string; onConfirm: () => Promise<boolean> }>();
+const props = defineProps<{ title: string; error?: string; onConfirm: () => Promise<boolean> }>();
 
 const emit = defineEmits<{ cancel: [] }>();
 
@@ -19,11 +20,19 @@ function onDialogShowChange(show: boolean): void {
     display-directive="if"
     preset="dialog"
     title="Delete this card?"
-    :content="`“${props.title}” will be permanently deleted. This can't be undone.`"
     positive-text="Delete"
     negative-text="Cancel"
     @positive-click="props.onConfirm"
     @negative-click="emit('cancel')"
     @update:show="onDialogShowChange"
-  />
+  >
+    <p>&#8220;{{ props.title }}&#8221; will be permanently deleted. This can't be undone.</p>
+    <p v-if="props.error" role="alert" class="delete-card-confirm-error" :style="{ color: palette.error }">{{ props.error }}</p>
+  </NModal>
 </template>
+
+<style scoped>
+.delete-card-confirm-error {
+  margin: 0.5rem 0 0;
+}
+</style>
