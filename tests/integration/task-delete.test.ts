@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { eq } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { FastifyInstance } from 'fastify';
@@ -163,11 +162,19 @@ describe('US3: MCP visibility of a deleted card', () => {
     const boardAfter = after.structuredContent as { lanes: { tasks: { title: string }[] }[] };
     expect(boardAfter.lanes.flatMap((lane) => lane.tasks.map((t) => t.title))).not.toContain('Prep board deck');
   });
-});
 
-describe('FR-009: no MCP tool can delete a task', () => {
-  it('src/server/mcp/tools.ts registers no delete-task tool', () => {
-    const source = readFileSync(new URL('../../src/server/mcp/tools.ts', import.meta.url), 'utf-8');
-    expect(source).not.toMatch(/'delete-task'/);
+  it('registers no MCP tool that deletes a task (FR-009)', async () => {
+    const { tools } = await client.listTools();
+    const names = tools.map((tool) => tool.name);
+
+    expect(names).toContain('list-board');
+    expect(names).toContain('get-task');
+
+    expect(names).not.toContain('delete-task');
+    expect(names).not.toContain('delete_task');
+    expect(names).not.toContain('remove-task');
+    expect(names).not.toContain('delete-card');
+    expect(names).not.toContain('archive-task');
+    expect(names.filter((n) => /(delete|remove|destroy|archive)[-_](task|card)/.test(n))).toEqual([]);
   });
 });
