@@ -13,7 +13,6 @@ const route = useRoute();
 const task = ref<TaskDetail | null>(null);
 const tagError = ref('');
 const laneError = ref('');
-let latestLaneMoveRequestId = 0;
 let laneMoveChain: Promise<void> = Promise.resolve();
 
 async function fetchTask(): Promise<void> {
@@ -23,7 +22,6 @@ async function fetchTask(): Promise<void> {
 
 async function moveToLane(targetLane: string): Promise<void> {
   if (!task.value || targetLane === task.value.lane) return;
-  const requestId = ++latestLaneMoveRequestId;
   laneMoveChain = laneMoveChain.then(async () => {
     try {
       const response = await fetch(`/api/tasks/${task.value!.id}/placement`, {
@@ -32,7 +30,6 @@ async function moveToLane(targetLane: string): Promise<void> {
         body: JSON.stringify({ lane: targetLane, index: Number.MAX_SAFE_INTEGER }),
       });
       const body = await response.json();
-      if (requestId !== latestLaneMoveRequestId) return;
       if (!response.ok) {
         laneError.value = body.error.message;
         return;
@@ -43,7 +40,6 @@ async function moveToLane(targetLane: string): Promise<void> {
         task.value.position = body.position;
       }
     } catch {
-      if (requestId !== latestLaneMoveRequestId) return;
       laneError.value = "Couldn't move that card — please try again.";
     }
   });

@@ -83,9 +83,11 @@ describe('TaskDetailPage', () => {
 
     const currentPill = screen.getByRole('button', { name: 'Waiting' });
     expect((currentPill as HTMLButtonElement).disabled).toBe(true);
+    expect(currentPill.getAttribute('aria-current')).toBe('true');
 
     const otherPill = screen.getByRole('button', { name: 'To Do' });
     expect((otherPill as HTMLButtonElement).disabled).toBe(false);
+    expect(otherPill.getAttribute('aria-current')).toBeNull();
 
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockClear();
@@ -192,6 +194,50 @@ describe('TaskDetailPage', () => {
     expect(placementCalls).toEqual(['In Progress', 'Done']);
     expect((screen.getByRole('button', { name: 'Done' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'In Progress' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('keeps the server-committed lane current when an earlier queued move succeeds and a later one fails (succeed-then-fail interleaving)', async () => {
+    let resolveFirst: (() => void) | undefined;
+    const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+      if (url === '/api/tasks/1' && !options) {
+        return Promise.resolve({ ok: true, json: async () => taskDetailPayload() });
+      }
+      if (url === '/api/tasks/1/placement' && options?.method === 'PUT') {
+        const body = JSON.parse(options.body as string) as { lane: string };
+        if (body.lane === 'In Progress') {
+          return new Promise((resolve) => {
+            resolveFirst = () =>
+              resolve({ ok: true, json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'In Progress', position: 2, createdAt: 1 }) });
+          });
+        }
+        return Promise.resolve({ ok: false, json: async () => ({ error: { message: 'Unknown lane' } }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => [] });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const router = makeRouter('/tasks/1');
+    await router.isReady();
+    render(TaskDetailPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    // Fire both clicks while In Progress's placement request is deliberately held open, so Done's
+    // requestId is issued before In Progress's response is processed — reproducing the interleaving
+    // where a later click's requestId makes the earlier, server-committed response look stale.
+    const inProgressPill = screen.getByRole('button', { name: 'In Progress' });
+    const donePill = screen.getByRole('button', { name: 'Done' });
+    await fireEvent.click(inProgressPill);
+    await fireEvent.click(donePill);
+    await flushPromises();
+
+    resolveFirst?.();
+    await flushPromises();
+    await flushPromises();
+
+    expect((screen.getByRole('button', { name: 'In Progress' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Waiting' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'Done' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByRole('alert').textContent).toContain('Unknown lane');
   });
 
   it('shows an inline error and leaves the last-saved lane current when the move request itself fails (network error)', async () => {
