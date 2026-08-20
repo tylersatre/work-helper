@@ -12,10 +12,42 @@ import TaskNotes from '../components/TaskNotes.vue';
 const route = useRoute();
 const task = ref<TaskDetail | null>(null);
 const tagError = ref('');
+const laneError = ref('');
+let laneMoveChain: Promise<void> = Promise.resolve();
+let queuedLane: string | null = null;
 
 async function fetchTask(): Promise<void> {
   const response = await fetch(`/api/tasks/${route.params.id}`);
   task.value = await response.json();
+}
+
+async function moveToLane(targetLane: string): Promise<void> {
+  if (!task.value || targetLane === (queuedLane ?? task.value.lane)) return;
+  queuedLane = targetLane;
+  laneMoveChain = laneMoveChain.then(async () => {
+    try {
+      const response = await fetch(`/api/tasks/${task.value!.id}/placement`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ lane: targetLane, index: Number.MAX_SAFE_INTEGER }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        laneError.value = body.error.message;
+        return;
+      }
+      laneError.value = '';
+      if (task.value) {
+        task.value.lane = body.lane;
+        task.value.position = body.position;
+      }
+    } catch {
+      laneError.value = "Couldn't move that card — please try again.";
+    } finally {
+      if (queuedLane === targetLane) queuedLane = null;
+    }
+  });
+  await laneMoveChain;
 }
 
 function onUpdatePeople(people: LinkedPerson[]): void {
@@ -86,7 +118,22 @@ onMounted(fetchTask);
 <template>
   <section v-if="task" class="task-detail">
     <h2 class="task-title">{{ task.title }}</h2>
-    <p class="task-lane" data-testid="task-lane">Lane: {{ task.lane }}</p>
+    <div class="lane-pills" role="group" aria-label="Lane">
+      <button
+        v-for="lane in task.lanes"
+        :key="lane"
+        type="button"
+        class="lane-pill"
+        :class="{ 'lane-pill-current': lane === task.lane }"
+        data-testid="lane-pill"
+        :aria-current="lane === task.lane ? 'true' : undefined"
+        :disabled="lane === task.lane"
+        @click="moveToLane(lane)"
+      >
+        {{ lane }}
+      </button>
+    </div>
+    <p v-if="laneError" role="alert" class="lane-error">{{ laneError }}</p>
     <div class="task-detail-section">
       <h3>People</h3>
       <LinkedPeople :task-id="task.id" :people="task.people" @update:people="onUpdatePeople" />
@@ -126,9 +173,34 @@ onMounted(fetchTask);
   word-break: break-word;
 }
 
-.task-lane {
+.lane-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.lane-pill {
   font-size: 0.8rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+  border: 1px solid var(--wh-border-subtle);
+  background: var(--wh-surface);
   color: var(--wh-text-secondary);
+  cursor: pointer;
+}
+
+.lane-pill:disabled {
+  cursor: default;
+  border-color: transparent;
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--wh-link-hover);
+}
+
+.lane-error {
+  margin: 0.4rem 0 0;
+  color: var(--wh-error);
+  font-size: 0.8rem;
 }
 
 .task-detail-section {
