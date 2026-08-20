@@ -229,6 +229,19 @@ export function linkPerson(db: AppDb, taskId: number, personId: number): LinkPer
   return { ok: true, task: getTaskDetail(db, taskId)! };
 }
 
+export type DeleteTaskResult = { ok: true } | { ok: false; error: 'task-not-found' };
+
+export function deleteTask(db: AppDb, id: number): DeleteTaskResult {
+  const [task] = db.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, id)).limit(1).all();
+  if (!task) {
+    return { ok: false, error: 'task-not-found' };
+  }
+
+  db.delete(tasks).where(eq(tasks.id, id)).run();
+
+  return { ok: true };
+}
+
 export type UnlinkPersonResult = { ok: true; task: NonNullable<ReturnType<typeof getTaskDetail>> } | { ok: false; error: 'task-not-found' };
 
 export function unlinkPerson(db: AppDb, taskId: number, personId: number): UnlinkPersonResult {

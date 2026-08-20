@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { ZodError, z } from 'zod';
-import { addNote, createTask, deleteNote, getTaskDetail, linkPerson, moveTask, unlinkPerson } from '../services/tasks.js';
+import { addNote, createTask, deleteNote, deleteTask, getTaskDetail, linkPerson, moveTask, unlinkPerson } from '../services/tasks.js';
 import { attachTagToTask, detachTagFromTask, type AttachInput } from '../services/tags.js';
 import { linkCompanyToTask, unlinkCompanyFromTask } from '../services/companies.js';
 
@@ -31,6 +31,18 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       return { error: { message: 'Task not found' } };
     }
     return { ...task, lanes: app.lanes };
+  });
+
+  app.delete('/api/tasks/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    const result = deleteTask(app.db, Number(id));
+    if (!result.ok) {
+      reply.status(404);
+      return { error: { message: 'Task not found' } };
+    }
+
+    return { ok: true };
   });
 
   app.put('/api/tasks/:id/placement', async (request, reply) => {

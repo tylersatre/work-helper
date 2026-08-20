@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import type { Company, LinkedPerson, Note, Tag, TaskDetail } from '../../shared/types.js';
+import DeleteCardConfirm from '../components/DeleteCardConfirm.vue';
 import LinkedCompanies from '../components/LinkedCompanies.vue';
 import LinkedConversations from '../components/LinkedConversations.vue';
 import LinkedPeople from '../components/LinkedPeople.vue';
@@ -10,9 +11,12 @@ import TagInput from '../components/TagInput.vue';
 import TaskNotes from '../components/TaskNotes.vue';
 
 const route = useRoute();
+const router = useRouter();
 const task = ref<TaskDetail | null>(null);
 const tagError = ref('');
 const laneError = ref('');
+const deleteError = ref('');
+const isConfirmingDelete = ref(false);
 let laneMoveChain: Promise<void> = Promise.resolve();
 let queuedLane: string | null = null;
 
@@ -112,12 +116,47 @@ async function detachTag(tag: Tag): Promise<void> {
   task.value.tags = body.tags;
 }
 
+function requestDelete(): void {
+  isConfirmingDelete.value = true;
+}
+
+function cancelDelete(): void {
+  isConfirmingDelete.value = false;
+}
+
+/**
+ * Returns whether the modal should close (naive-ui's NModal only auto-closes on
+ * positive-click when the handler resolves to a non-`false` value — returning `false`
+ * on failure keeps it open so the inline error is visible, per contracts/http-api.md).
+ */
+async function confirmDelete(): Promise<boolean> {
+  if (!task.value) return false;
+  try {
+    const response = await fetch(`/api/tasks/${task.value.id}`, { method: 'DELETE' });
+    if (!response.ok && response.status !== 404) {
+      const body = await response.json();
+      deleteError.value = body.error.message;
+      return false;
+    }
+    deleteError.value = '';
+    isConfirmingDelete.value = false;
+    await router.push('/');
+    return true;
+  } catch {
+    deleteError.value = "Couldn't delete that card — please try again.";
+    return false;
+  }
+}
+
 onMounted(fetchTask);
 </script>
 
 <template>
   <section v-if="task" class="task-detail">
-    <h2 class="task-title">{{ task.title }}</h2>
+    <div class="task-detail-header">
+      <h2 class="task-title">{{ task.title }}</h2>
+      <button type="button" class="delete-card-button" data-testid="delete-card-button" @click="requestDelete">Delete</button>
+    </div>
     <div class="lane-pills" role="group" aria-label="Lane">
       <button
         v-for="lane in task.lanes"
@@ -134,6 +173,8 @@ onMounted(fetchTask);
       </button>
     </div>
     <p v-if="laneError" role="alert" class="lane-error">{{ laneError }}</p>
+    <p v-if="deleteError" role="alert" class="delete-card-error">{{ deleteError }}</p>
+    <DeleteCardConfirm v-if="isConfirmingDelete" :title="task.title" :on-confirm="confirmDelete" @cancel="cancelDelete" />
     <div class="task-detail-section">
       <h3>People</h3>
       <LinkedPeople :task-id="task.id" :people="task.people" @update:people="onUpdatePeople" />
@@ -168,9 +209,33 @@ onMounted(fetchTask);
   padding: 1rem;
 }
 
+.task-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
 .task-title {
   overflow-wrap: break-word;
   word-break: break-word;
+}
+
+.delete-card-button {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+  border: 1px solid var(--wh-border-subtle);
+  background: var(--wh-surface);
+  color: var(--wh-error);
+  cursor: pointer;
+}
+
+.delete-card-error {
+  margin: 0.4rem 0 0;
+  color: var(--wh-error);
+  font-size: 0.8rem;
 }
 
 .lane-pills {
