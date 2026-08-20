@@ -14,6 +14,7 @@ const task = ref<TaskDetail | null>(null);
 const tagError = ref('');
 const laneError = ref('');
 let laneMoveChain: Promise<void> = Promise.resolve();
+let queuedLane: string | null = null;
 
 async function fetchTask(): Promise<void> {
   const response = await fetch(`/api/tasks/${route.params.id}`);
@@ -21,7 +22,8 @@ async function fetchTask(): Promise<void> {
 }
 
 async function moveToLane(targetLane: string): Promise<void> {
-  if (!task.value || targetLane === task.value.lane) return;
+  if (!task.value || targetLane === (queuedLane ?? task.value.lane)) return;
+  queuedLane = targetLane;
   laneMoveChain = laneMoveChain.then(async () => {
     try {
       const response = await fetch(`/api/tasks/${task.value!.id}/placement`, {
@@ -41,6 +43,8 @@ async function moveToLane(targetLane: string): Promise<void> {
       }
     } catch {
       laneError.value = "Couldn't move that card — please try again.";
+    } finally {
+      if (queuedLane === targetLane) queuedLane = null;
     }
   });
   await laneMoveChain;

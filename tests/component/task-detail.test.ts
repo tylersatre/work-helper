@@ -128,6 +128,42 @@ describe('TaskDetailPage', () => {
     expect((screen.getByRole('button', { name: 'Waiting' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it('a repeat click on the same still-in-flight destination pill does not queue a duplicate placement request', async () => {
+    let resolveFirst: (() => void) | undefined;
+    const placementCalls: string[] = [];
+    const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+      if (url === '/api/tasks/1' && !options) {
+        return Promise.resolve({ ok: true, json: async () => taskDetailPayload() });
+      }
+      if (url === '/api/tasks/1/placement' && options?.method === 'PUT') {
+        const body = JSON.parse(options.body as string) as { lane: string };
+        placementCalls.push(body.lane);
+        return new Promise((resolve) => {
+          resolveFirst = () =>
+            resolve({ ok: true, json: async () => ({ id: 1, title: 'Follow up with Sam', lane: 'In Progress', position: 2, createdAt: 1 }) });
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => [] });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const router = makeRouter('/tasks/1');
+    await router.isReady();
+    render(TaskDetailPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    const inProgressPill = screen.getByRole('button', { name: 'In Progress' });
+    await fireEvent.click(inProgressPill);
+    await fireEvent.click(inProgressPill);
+    await flushPromises();
+
+    resolveFirst?.();
+    await flushPromises();
+    await flushPromises();
+
+    expect(placementCalls).toEqual(['In Progress']);
+  });
+
   it('keeps the last-saved lane current and shows an inline error when a move fails to save (spec edge case 2)', async () => {
     const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
       if (url === '/api/tasks/1' && !options) {
@@ -153,7 +189,7 @@ describe('TaskDetailPage', () => {
     expect(screen.getByRole('alert').textContent).toContain('Unknown lane');
   });
 
-  it('does not dispatch a second move until the first settles, and applies only the response matching the most recently issued move (spec edge case 3)', async () => {
+  it('serializes concurrent pill clicks and settles on the last-clicked lane (spec edge case 3)', async () => {
     let resolveFirst: (() => void) | undefined;
     const placementCalls: string[] = [];
     const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
@@ -221,9 +257,9 @@ describe('TaskDetailPage', () => {
     render(TaskDetailPage, { global: { plugins: [router] } });
     await flushPromises();
 
-    // Fire both clicks while In Progress's placement request is deliberately held open, so Done's
-    // requestId is issued before In Progress's response is processed — reproducing the interleaving
-    // where a later click's requestId makes the earlier, server-committed response look stale.
+    // Both clicks are queued while In Progress's placement request is deliberately held open. In
+    // Progress then commits server-side and Done fails, so the row must end on the server-committed
+    // lane (In Progress), not silently fall back to the pre-click lane.
     const inProgressPill = screen.getByRole('button', { name: 'In Progress' });
     const donePill = screen.getByRole('button', { name: 'Done' });
     await fireEvent.click(inProgressPill);

@@ -67,7 +67,7 @@ src/
 ├── server/
 │   └── routes/tasks.ts                 # MODIFIED: GET /api/tasks/:id merges `lanes: app.lanes` into the response (mirrors routes/board.ts:6-9); PUT .../placement UNCHANGED
 └── client/
-    └── pages/TaskDetailPage.vue        # MODIFIED: replaces `<p data-testid="task-lane">Lane: {{ task.lane }}</p>` with a lane-pill row; new placement-request logic (await response, apply on success, inline error + stale-response guard on failure/race)
+    └── pages/TaskDetailPage.vue        # MODIFIED: replaces `<p data-testid="task-lane">Lane: {{ task.lane }}</p>` with a lane-pill row; new placement-request logic (requests serialized through a promise chain, apply every response, inline error on failure)
 
 tests/
 ├── integration/

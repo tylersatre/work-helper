@@ -41,7 +41,7 @@ Existing placement behavior, unchanged — re-run to confirm the reused endpoint
 npx vitest run tests/integration/tasks.test.ts
 ```
 
-UI — pill row renders all configured lanes in order under the title with no section header, current lane is marked and non-interactive, clicking another pill moves the card immediately with no confirmation, the pill row updates from the response, and a failed/superseded move leaves the last-saved lane displayed with an inline error (User Story 1; FR-001–FR-003, FR-005, FR-007; edge cases 1–3):
+UI — pill row renders all configured lanes in order under the title with no section header, current lane is marked and non-interactive, clicking another pill moves the card immediately with no confirmation, the pill row updates from the response, concurrent clicks are serialized and settle on the last-clicked lane, and a failed move leaves the last-saved lane displayed with an inline error (User Story 1; FR-001–FR-003, FR-005, FR-007; edge cases 1–3):
 
 ```bash
 npx vitest run tests/component/task-detail.test.ts
