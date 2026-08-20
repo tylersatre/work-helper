@@ -326,7 +326,7 @@ describe('US1: sync-emails', () => {
     const dir = mkdtempSync(join(tmpdir(), 'mailbox-auth-'));
     try {
       const auth = new FakeMailboxAuth({ statePath: join(dir, 'state.json') });
-      buildTestApp(new GraphMailProvider({ getAccessToken: () => auth.getAccessToken() }));
+      buildTestApp(new GraphMailProvider({ getAccessToken: () => auth.getAccessToken(), getWriteAccessToken: () => auth.getWriteAccessToken() }));
       await startAndConnect();
 
       const result = await syncEmails('2026-07-01', '2026-07-31');
@@ -345,7 +345,7 @@ describe('US1: sync-emails', () => {
     try {
       const auth = new FakeMailboxAuth({ statePath: join(dir, 'state.json') });
       auth.seedState({ status: 'expired', account: 'tyler@example.com', expiredDetail: 'AADSTS70008: expired refresh token' });
-      buildTestApp(new GraphMailProvider({ getAccessToken: () => auth.getAccessToken() }));
+      buildTestApp(new GraphMailProvider({ getAccessToken: () => auth.getAccessToken(), getWriteAccessToken: () => auth.getWriteAccessToken() }));
       await startAndConnect();
 
       const result = await syncEmails('2026-07-01', '2026-07-31');
@@ -434,6 +434,12 @@ describe('US1: sync-emails records run history through the shared coordinator', 
 
       async fetchAttachmentMetadata() {
         return [];
+      }
+
+      async verifyWriteAccess(): Promise<void> {}
+
+      async setMessageReadState(): Promise<'updated' | 'not-found'> {
+        return 'updated';
       }
     }
     buildTestApp(new GatedProvider());

@@ -45,6 +45,8 @@ All your data lives in `./data/` on the host, outside the container, so it survi
 cp -a data "data.backup-$(date +%Y%m%d)"
 ```
 
+**Updating to the release that adds `set-email-read-state`** (agents marking mail read/unread): before deploying, add the delegated Microsoft Graph `Mail.ReadWrite` permission to the Entra app registration (Overview → API permissions), the same registration named in [Email sync mailbox sign-in](#email-sync-mailbox-sign-in). Device-code sign-in now requests `Mail.ReadWrite` alongside the existing scopes, so a registration that hasn't been granted it first will fail the *entire* sign-in (including a plain reconnect for sync) with an AADSTS consent error, not just the new tool. Existing sign-ins keep syncing untouched until you reconnect; do that once on the Sync page after the registration is updated.
+
 ## Fronting with Caddy
 
 If you already run Caddy on your server, front work-helper with it instead of exposing `WORK_HELPER_PORT` directly. (If Authentik provides SSO on your server, use [Fronting with Caddy and Authentik](#fronting-with-caddy-and-authentik) below instead — the Caddy snippet is different.) Add this to your Caddyfile, substituting your real hostname for the placeholder — that's the only edit:
@@ -127,7 +129,7 @@ Email sync (the `sync-emails` MCP tool and friends) needs a one-time interactive
 MS_CLIENT_ID=<application-client-id> MS_TENANT_ID=<directory-tenant-id> npm run mail:signin
 ```
 
-Both GUIDs come from the app registration's Overview page in the Entra portal — "Application (client) ID" and "Directory (tenant) ID". The registration needs "Allow public client flows" enabled (Authentication → Advanced settings) and the delegated Microsoft Graph `Mail.Read` permission; it does not need to be multi-tenant, because sign-in targets your tenant directly rather than the `/common` endpoint.
+Both GUIDs come from the app registration's Overview page in the Entra portal — "Application (client) ID" and "Directory (tenant) ID". The registration needs "Allow public client flows" enabled (Authentication → Advanced settings) and the delegated Microsoft Graph `Mail.Read`, `Mail.ReadWrite`, and `Calendars.Read` permissions; it does not need to be multi-tenant, because sign-in targets your tenant directly rather than the `/common` endpoint. A mailbox connected before `Mail.ReadWrite` was added keeps syncing on its existing sign-in, but needs one reconnect on the Sync page before the `set-email-read-state` MCP tool can change mail.
 
 This writes `./data/mail-token-cache.json` — the same path the container reads by default. Then set `MS_CLIENT_ID` and `MS_TENANT_ID` in `.env` and restart the stack:
 

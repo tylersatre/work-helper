@@ -253,7 +253,7 @@ describe('US3 — failure recovery and disconnect', () => {
     // Matches production wiring (index.ts): a configured mailboxAuth always backs a real
     // mailProvider, so a pending attempt fails via getAccessToken()'s never-signed-in throw,
     // not via a fully-undefined provider (that path only fires when mail is unconfigured).
-    const provider = new GraphMailProvider({ getAccessToken: () => fake.getAccessToken() });
+    const provider = new GraphMailProvider({ getAccessToken: () => fake.getAccessToken(), getWriteAccessToken: () => fake.getWriteAccessToken() });
     const outcome = await app.syncCoordinator.trigger({
       startDate: '2026-08-01',
       endDate: '2026-08-08',

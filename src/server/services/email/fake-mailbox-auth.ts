@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { MailboxNotConnectedError, type ConnectionVerification, type MailboxAuth } from './graph-auth.js';
+import { MailWritePermissionError, MailboxNotConnectedError, type ConnectionVerification, type MailboxAuth } from './graph-auth.js';
 
 const DEVICE_CODE_EXPIRY_MS = 15 * 60 * 1000;
 
@@ -8,6 +8,8 @@ interface FakeMailboxState {
   status: 'not-connected' | 'connected' | 'expired';
   account?: string;
   expiredDetail?: string;
+  /** Test-only: when true, a connected state's getWriteAccessToken() rejects as a pre-feature sign-in lacking Mail.ReadWrite consent. */
+  noWritePermission?: boolean;
 }
 
 export interface FakeMailboxAuthAutoOutcome {
@@ -50,6 +52,20 @@ export class FakeMailboxAuth implements MailboxAuth {
     const state = this.readState();
     if (state.status === 'connected' && state.account) {
       return `fake-token-${state.account}`;
+    }
+    if (state.status === 'expired') {
+      throw new MailboxNotConnectedError('expired', state.expiredDetail ?? 'Fake sign-in expired');
+    }
+    throw new MailboxNotConnectedError('never-signed-in');
+  }
+
+  async getWriteAccessToken(): Promise<string> {
+    const state = this.readState();
+    if (state.status === 'connected' && state.account) {
+      if (state.noWritePermission) {
+        throw new MailWritePermissionError();
+      }
+      return `fake-write-token-${state.account}`;
     }
     if (state.status === 'expired') {
       throw new MailboxNotConnectedError('expired', state.expiredDetail ?? 'Fake sign-in expired');

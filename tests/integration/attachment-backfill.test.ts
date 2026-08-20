@@ -61,6 +61,12 @@ class CountingProvider implements MailProvider {
     this.calls += 1;
     return this.inner.fetchAttachmentMetadata(...args);
   }
+  verifyWriteAccess(): Promise<void> {
+    return this.inner.verifyWriteAccess();
+  }
+  setMessageReadState(...args: Parameters<MailProvider['setMessageReadState']>): Promise<'updated' | 'not-found'> {
+    return this.inner.setMessageReadState(...args);
+  }
 }
 
 class FlakyProvider implements MailProvider {
@@ -75,6 +81,10 @@ class FlakyProvider implements MailProvider {
       return [{ name: 'quote.pdf', contentType: 'application/pdf', sizeBytes: 53248, isInline: true }];
     }
     throw new Error('mailbox unreachable');
+  }
+  async verifyWriteAccess(): Promise<void> {}
+  async setMessageReadState(): Promise<'updated' | 'not-found'> {
+    return 'updated';
   }
 }
 

@@ -14,6 +14,10 @@ class DeferredCodeAuth implements MailboxAuth {
     throw new Error('not implemented');
   }
 
+  async getWriteAccessToken(): Promise<string> {
+    throw new Error('not implemented');
+  }
+
   async verifyConnection(): Promise<ConnectionVerification> {
     return { connected: false, reason: 'never-signed-in' };
   }
@@ -34,6 +38,10 @@ class DeferredCodeAuth implements MailboxAuth {
 /** Resolves beginSignIn successfully without ever invoking onCode — an ill-behaved MailboxAuth (violates the interface contract), used to prove connect() doesn't hang forever on it. */
 class NeverCodesAuth implements MailboxAuth {
   async getAccessToken(): Promise<string> {
+    throw new Error('not implemented');
+  }
+
+  async getWriteAccessToken(): Promise<string> {
     throw new Error('not implemented');
   }
 

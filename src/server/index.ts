@@ -88,7 +88,11 @@ const mailboxAuth = resolveMailboxAuth();
 const mailboxMissingSettings = process.env.MAIL_AUTH
   ? []
   : [!msClientId && 'MS_CLIENT_ID', !msTenantId && 'MS_TENANT_ID'].filter((v): v is string => Boolean(v));
-const mailProvider = devMailProvider ?? (mailboxAuth ? new GraphMailProvider({ getAccessToken: () => mailboxAuth.getAccessToken() }) : undefined);
+const mailProvider =
+  devMailProvider ??
+  (mailboxAuth
+    ? new GraphMailProvider({ getAccessToken: () => mailboxAuth.getAccessToken(), getWriteAccessToken: () => mailboxAuth.getWriteAccessToken() })
+    : undefined);
 const calendarProvider =
   devCalendarProvider ?? (mailboxAuth ? new GraphCalendarProvider({ getAccessToken: () => mailboxAuth.getAccessToken() }) : undefined);
 

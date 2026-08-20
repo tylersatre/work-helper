@@ -1,3 +1,4 @@
+import { MailWritePermissionError, MailboxNotConnectedError } from './graph-auth.js';
 import type {
   MailAttachmentMeta,
   MailFlagStatus,
@@ -57,6 +58,17 @@ export interface FakeMailProviderOptions {
   failImmediately?: boolean;
   /** Throws once this many messages (across all folders/pages, cumulative for this provider instance) have already been yielded — simulates a connection drop mid-run. */
   throwAfterMessageCount?: number;
+  /** Drives verifyWriteAccess()/setMessageReadState() connection state (research R8). Defaults to 'ok'. */
+  writeAccess?: 'ok' | 'not-connected' | 'expired' | 'no-write-permission';
+  /** Graph ids treated as gone from the mailbox — setMessageReadState resolves 'not-found' for these. */
+  deletedGraphMessageIds?: Iterable<string>;
+  /** Graph ids whose setMessageReadState() call throws — simulates a mid-list mailbox rejection. */
+  failWriteGraphMessageIds?: Iterable<string>;
+}
+
+export interface RecordedWrite {
+  graphMessageId: string;
+  isRead: boolean;
 }
 
 interface ResolvedFolder {
@@ -90,7 +102,7 @@ function toRecipient(recipient: SeedRecipient): MailRecipient {
   return { address: recipient.address, name: recipient.name ?? '' };
 }
 
-function toMailMessage(seed: SeedMessage): MailMessage {
+function toMailMessage(seed: SeedMessage, isRead: boolean): MailMessage {
   const attachments = seed.attachments ?? [];
   return {
     id: seed.id,
@@ -103,7 +115,7 @@ function toMailMessage(seed: SeedMessage): MailMessage {
     toRecipients: seed.toRecipients.map(toRecipient),
     ccRecipients: seed.ccRecipients.map(toRecipient),
     bccRecipients: seed.bccRecipients.map(toRecipient),
-    isRead: seed.isRead ?? false,
+    isRead,
     importance: seed.importance ?? 'normal',
     flagStatus: seed.flagStatus ?? 'notFlagged',
     categories: seed.categories ?? [],
@@ -116,6 +128,10 @@ function toMailMessage(seed: SeedMessage): MailMessage {
 export class FakeMailProvider implements MailProvider {
   private yieldedCount = 0;
   private readonly folders: Map<string, ResolvedFolder>;
+  private readonly readState: Map<string, boolean>;
+  private readonly deletedGraphMessageIds: Set<string>;
+  private readonly failWriteGraphMessageIds: Set<string>;
+  private readonly writes: RecordedWrite[] = [];
 
   constructor(
     private readonly seeded: SeedMessage[],
@@ -126,6 +142,44 @@ export class FakeMailProvider implements MailProvider {
       const resolved = resolveFolder(seed.folder);
       this.folders.set(resolved.id, resolved);
     }
+    this.readState = new Map(seeded.map((seed) => [seed.id, seed.isRead ?? false]));
+    this.deletedGraphMessageIds = new Set(options.deletedGraphMessageIds ?? []);
+    this.failWriteGraphMessageIds = new Set(options.failWriteGraphMessageIds ?? []);
+  }
+
+  async verifyWriteAccess(): Promise<void> {
+    switch (this.options.writeAccess ?? 'ok') {
+      case 'ok':
+        return;
+      case 'not-connected':
+        throw new MailboxNotConnectedError('never-signed-in');
+      case 'expired':
+        throw new MailboxNotConnectedError('expired', 'Fake sign-in expired');
+      case 'no-write-permission':
+        throw new MailWritePermissionError();
+    }
+  }
+
+  async setMessageReadState(graphMessageId: string, isRead: boolean): Promise<'updated' | 'not-found'> {
+    if (this.deletedGraphMessageIds.has(graphMessageId)) {
+      return 'not-found';
+    }
+    if (this.failWriteGraphMessageIds.has(graphMessageId)) {
+      throw new Error(`Mailbox rejected the write for ${graphMessageId}`);
+    }
+    this.readState.set(graphMessageId, isRead);
+    this.writes.push({ graphMessageId, isRead });
+    return 'updated';
+  }
+
+  /** Test-only: the mailbox's current read state for a message, or undefined if it was never seeded. */
+  readStateOf(graphMessageId: string): boolean | undefined {
+    return this.readState.get(graphMessageId);
+  }
+
+  /** Test-only: every setMessageReadState() write accepted by the mailbox, in call order. */
+  get recordedWrites(): readonly RecordedWrite[] {
+    return this.writes;
   }
 
   async listFolders(): Promise<MailFolderNode[]> {
@@ -161,7 +215,7 @@ export class FakeMailProvider implements MailProvider {
 
     for (let i = 0; i < matching.length; i += pageSize) {
       const chunk = matching.slice(i, i + pageSize);
-      yield chunk.map(toMailMessage);
+      yield chunk.map((seed) => toMailMessage(seed, this.readState.get(seed.id) ?? seed.isRead ?? false));
 
       this.yieldedCount += chunk.length;
       if (this.options.throwAfterMessageCount !== undefined && this.yieldedCount >= this.options.throwAfterMessageCount) {

@@ -95,6 +95,12 @@ class GatedMailProvider implements MailProvider {
   async fetchAttachmentMetadata() {
     return [];
   }
+
+  async verifyWriteAccess(): Promise<void> {}
+
+  async setMessageReadState(): Promise<'updated' | 'not-found'> {
+    return 'updated';
+  }
 }
 
 let app: FastifyInstance;
