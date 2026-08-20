@@ -47,7 +47,7 @@ One new tool, registered on the existing `work-helper` McpServer in `src/server/
 | malformed input (non-numeric id, wrong types) | SDK-level zod rejection at the tool boundary (before the handler runs) |
 | mailbox never signed in / not configured | `The mailbox is not connected — connect the mailbox on the Sync page.` |
 | mailbox sign-in expired | `The mailbox sign-in has expired (<detail>) — reconnect the mailbox on the Sync page.` |
-| sign-in predates this feature (no mail-write permission) | `The mailbox sign-in predates read-state changes and lacks permission to change mail — reconnect the mailbox on the Sync page to grant it.` |
+| sign-in predates this feature (no mail-write permission) | `The mailbox sign-in predates read-state changes and lacks permission to change mail — add delegated Mail.ReadWrite to the Entra app registration, then reconnect the mailbox on the Sync page to grant it.` |
 
 ### Per-message outcome semantics
 

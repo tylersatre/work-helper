@@ -61,7 +61,9 @@ export class MailboxNotConnectedError extends Error {
 /** Thrown by getWriteAccessToken() when the sign-in is alive but predates this feature — it never consented to Mail.ReadWrite. */
 export class MailWritePermissionError extends Error {
   constructor() {
-    super('The mailbox sign-in predates read-state changes and lacks permission to change mail — reconnect the mailbox on the Sync page to grant it.');
+    super(
+      'The mailbox sign-in predates read-state changes and lacks permission to change mail — add delegated Mail.ReadWrite to the Entra app registration, then reconnect the mailbox on the Sync page to grant it.',
+    );
     this.name = 'MailWritePermissionError';
   }
 }
@@ -123,19 +125,18 @@ export function createGraphAuth(options: GraphAuthOptions): MailboxAuth {
         return result.accessToken;
       } catch {
         // Write-scope acquisition failed — probe read-scope to classify: alive-but-unconsented vs. actually expired.
+        let readOk = false;
         try {
           const readResult = await pca.acquireTokenSilent({ account, scopes: READ_SCOPES });
-          if (!readResult?.accessToken) {
-            throw new Error('Silent token acquisition returned no access token');
-          }
-          throw new MailWritePermissionError();
+          readOk = Boolean(readResult?.accessToken);
         } catch (readError) {
-          if (readError instanceof MailWritePermissionError) {
-            throw readError;
-          }
           const detail = readError instanceof Error ? readError.message : String(readError);
           throw new MailboxNotConnectedError('expired', detail);
         }
+        if (readOk) {
+          throw new MailWritePermissionError();
+        }
+        throw new MailboxNotConnectedError('expired', 'Silent token acquisition returned no access token');
       }
     },
     async verifyConnection() {

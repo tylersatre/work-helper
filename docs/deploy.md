@@ -45,6 +45,8 @@ All your data lives in `./data/` on the host, outside the container, so it survi
 cp -a data "data.backup-$(date +%Y%m%d)"
 ```
 
+**Updating to the release that adds `set-email-read-state`** (agents marking mail read/unread): before deploying, add the delegated Microsoft Graph `Mail.ReadWrite` permission to the Entra app registration (Overview → API permissions), the same registration named in [Email sync mailbox sign-in](#email-sync-mailbox-sign-in). Device-code sign-in now requests `Mail.ReadWrite` alongside the existing scopes, so a registration that hasn't been granted it first will fail the *entire* sign-in (including a plain reconnect for sync) with an AADSTS consent error, not just the new tool. Existing sign-ins keep syncing untouched until you reconnect; do that once on the Sync page after the registration is updated.
+
 ## Fronting with Caddy
 
 If you already run Caddy on your server, front work-helper with it instead of exposing `WORK_HELPER_PORT` directly. (If Authentik provides SSO on your server, use [Fronting with Caddy and Authentik](#fronting-with-caddy-and-authentik) below instead — the Caddy snippet is different.) Add this to your Caddyfile, substituting your real hostname for the placeholder — that's the only edit:

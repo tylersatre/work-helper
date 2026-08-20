@@ -425,6 +425,10 @@ describe('US2: agent marks many messages in one call with an outcome per message
     expect(content.outcomes[2]).toEqual({ messageId: lunchMessageId, status: 'marked' });
     expect(mailProvider.readStateOf('msg-pricing-question')).toBe(true);
     expect(mailProvider.readStateOf('msg-lunch-1')).toBe(true);
+
+    // FR-006: the rejected message's stored state is untouched.
+    const pricing = (await getConversation(pricingConversationId)).structuredContent as { messages: { id: number; isRead: boolean }[] };
+    expect(pricing.messages.find((m) => m.id === followUpId)!.isRead).toBe(false);
   });
 
   it('the same id listed twice in one call: first occurrence marked, second already-in-state (batch edge case)', async () => {
@@ -493,7 +497,7 @@ describe('US5: a call the mailbox cannot take fails with nothing changed', () =>
     expect(result.isError).toBe(true);
     expect(result.structuredContent).toBeUndefined();
     expect(JSON.stringify(result.content)).toContain(
-      'The mailbox sign-in predates read-state changes and lacks permission to change mail — reconnect the mailbox on the Sync page to grant it.',
+      'The mailbox sign-in predates read-state changes and lacks permission to change mail — add delegated Mail.ReadWrite to the Entra app registration, then reconnect the mailbox on the Sync page to grant it.',
     );
     expect(mailProvider.readStateOf('msg-quote-1')).toBe(false);
   });
