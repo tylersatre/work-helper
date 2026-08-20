@@ -127,7 +127,7 @@ Email sync (the `sync-emails` MCP tool and friends) needs a one-time interactive
 MS_CLIENT_ID=<application-client-id> MS_TENANT_ID=<directory-tenant-id> npm run mail:signin
 ```
 
-Both GUIDs come from the app registration's Overview page in the Entra portal — "Application (client) ID" and "Directory (tenant) ID". The registration needs "Allow public client flows" enabled (Authentication → Advanced settings) and the delegated Microsoft Graph `Mail.Read` permission; it does not need to be multi-tenant, because sign-in targets your tenant directly rather than the `/common` endpoint.
+Both GUIDs come from the app registration's Overview page in the Entra portal — "Application (client) ID" and "Directory (tenant) ID". The registration needs "Allow public client flows" enabled (Authentication → Advanced settings) and the delegated Microsoft Graph `Mail.Read`, `Mail.ReadWrite`, and `Calendars.Read` permissions; it does not need to be multi-tenant, because sign-in targets your tenant directly rather than the `/common` endpoint. A mailbox connected before `Mail.ReadWrite` was added keeps syncing on its existing sign-in, but needs one reconnect on the Sync page before the `set-email-read-state` MCP tool can change mail.
 
 This writes `./data/mail-token-cache.json` — the same path the container reads by default. Then set `MS_CLIENT_ID` and `MS_TENANT_ID` in `.env` and restart the stack:
 

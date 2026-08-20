@@ -1,0 +1,88 @@
+# Research: MCP Mark Emails Read
+
+No NEEDS CLARIFICATION items remained in the Technical Context after codebase exploration. The spec deliberately deferred four decisions to this phase — tool name, response field shapes, permission mechanics, and the mailbox-simulation mechanism — and research resolved all four plus the seams they touch.
+
+## R1: Tool name — `set-email-read-state`
+
+**Decision**: One new tool named `set-email-read-state`, registered in `src/server/mcp/tools.ts` alongside the existing 32 tools.
+
+**Rationale**: The registry's convention is lowercase kebab-case, verb-first for actions (`move-task`, `mark-contact-primary`, `link-conversation-to-task`). The tool sets a caller-chosen state in either direction, so "set…state" is accurate where "mark…read" would misdescribe the unread direction. "email" disambiguates from any future calendar/task read concepts.
+
+**Alternatives considered**: `mark-emails-read` — rejected: wrong for `state: unread`. `mark-email-read-state` — rejected: "mark…state" is not idiomatic. Two tools (`mark-emails-read` / `mark-emails-unread`) — rejected: the spec models one tool with a `state` input, and one registration keeps validation and outcomes in one place.
+
+## R2: Permission mechanics — split scope sets, classify by silent-acquisition probe
+
+**Decision**: Split the single `SCOPES` list in `src/server/services/email/graph-auth.ts:5` into three: `SIGN_IN_SCOPES = ['Mail.Read', 'Mail.ReadWrite', 'Calendars.Read', 'offline_access']` (device-code flow — what a new Connect grants), `READ_SCOPES = ['Mail.Read', 'Calendars.Read', 'offline_access']` (used by the existing `getAccessToken()` and `verifyConnection()`, unchanged behavior), and `WRITE_SCOPES = ['Mail.ReadWrite']` (a new `getWriteAccessToken()` on the `MailboxAuth` interface). When write-scope `acquireTokenSilent` fails, classify by probing read-scope acquisition: read succeeds ⇒ the sign-in is alive but predates this feature ⇒ new `MailWritePermissionError` (missing-permission branch of FR-008); read also fails ⇒ existing `MailboxNotConnectedError('expired', detail)`; no cached account ⇒ existing `MailboxNotConnectedError('never-signed-in')`.
+
+**Rationale**: This is the load-bearing design point. A naive "add `Mail.ReadWrite` to the one `SCOPES` list" would make `acquireTokenSilent` request an unconsented scope for pre-feature sign-ins, failing token acquisition everywhere — breaking email/calendar **sync** and the Sync page's connected status until reconnect, which the spec forbids (sync behavior is explicitly unchanged; only the new tool fails until reconnect). Keeping read paths on `READ_SCOPES` means a pre-feature sign-in keeps syncing exactly as today. The two-step probe gives the spec's "two states distinguishable in the error detail" without parsing MSAL/AADSTS error strings, which are not stable contract. Requesting both `Mail.Read` and `Mail.ReadWrite` at sign-in keeps the read-scope probe unambiguous for post-feature accounts and costs nothing. This matches the calendar-sync precedent as the spec describes it (one reconnect grants the new permission) while avoiding the part of that precedent the spec doesn't want (everything failing until reconnect).
+
+**Alternatives considered**: Persisting granted scopes (from `AuthenticationResult.scopes`) at sign-in — rejected: no scope storage exists today (verified — the token response's scope field is never read or persisted), so this needs a new store beside the MSAL cache plus a backfill story for the already-connected production mailbox; the probe derives the same answer from the source of truth (the identity platform) with zero new state. Detecting missing permission via Graph 403 on the first PATCH — rejected: the spec requires whole-call failure with **no per-message outcomes**, so the check must precede the loop; a preflight probe does that cleanly. A new `Mail.ReadWrite`-only silent path with error-string sniffing to separate consent errors from expiry — rejected: brittle against MSAL/AAD message changes.
+
+## R3: Graph write — `PATCH /me/messages/{graphMessageId}` with `{ isRead }`
+
+**Decision**: Extend the `MailProvider` interface (`src/server/services/email/provider.ts:60`) with two members: `verifyWriteAccess(): Promise<void>` (throws the R2 error types; the whole-call preflight) and `setMessageReadState(graphMessageId: string, isRead: boolean): Promise<'updated' | 'not-found'>`. `GraphMailProvider` implements the write as `PATCH ${GRAPH_BASE}/me/messages/${graphMessageId}` with body `{ isRead }`, `Content-Type: application/json`, the existing `Prefer: IdType="ImmutableId"` header (stored ids are immutable ids), and a bearer token from the injected `getWriteAccessToken`. HTTP 404 maps to `'not-found'` (the spec's "mailbox no longer has that message"); 401/403 and network errors throw and become that message's `failed` outcome; nothing else in the request body, so nothing else about the message can change (FR-007).
+
+**Rationale**: `isRead` is a writable Outlook message property and a single-property PATCH is the minimal sanctioned write. The provider interface is the established seam both the real and fake mailbox implement — putting the write there is what makes the spec's simulated-mailbox criteria (R8) possible. `authorizedFetch` (`graph-provider.ts:121-148`) currently hardcodes `method: 'GET'`; it is widened to accept method/body/token (or gains a sibling), reusing its existing error mapping. The current mail provider conflates 401/403 into one "expired or not authorized" plain `Error`; the write path does not rely on that string because connection/permission classification already happened in the R2 preflight — an in-loop auth failure is just a per-message `failed` (the spec's "Outlook rejection partway through is reported per message").
+
+**Alternatives considered**: Graph JSON `$batch` for up to 50 PATCHes — rejected: `$batch` caps at 20 requests, no batch infrastructure exists in the repo, and a single-user mailbox gains nothing worth the new failure-decoding complexity; sequential PATCHes also make "successes stand, later failures don't undo them" trivially true. The `@microsoft/microsoft-graph-client` SDK — rejected: the repo deliberately uses bare `fetch` for Graph. Marking via a dedicated Graph action endpoint — none exists for read state; property PATCH is the documented mechanism.
+
+## R4: Batch semantics — sequential, store-state short-circuit, mailbox-first per message
+
+**Decision**: A new service `setEmailReadState(db, provider, messageIds, state)` in `src/server/services/email/read-state.ts` processes ids sequentially in input order after the R2 preflight. Per id: (1) load `id`, `graphMessageId`, `isRead` from `email_messages` — missing row ⇒ outcome `not-found`; (2) stored `isRead` already equals the requested state ⇒ outcome `already-in-state`, no Graph call, no store write; (3) otherwise `provider.setMessageReadState(...)` — `'updated'` ⇒ update that row's `isRead` (only that column) and outcome `marked`; `'not-found'` ⇒ outcome `failed` with a "mailbox no longer has this message" reason, store untouched; thrown error ⇒ outcome `failed` with the error's message as reason, store untouched, loop continues. The local row is updated only after the mailbox accepted the change (FR-003's Graph-first ordering), one row at a time — deliberately no wrapping transaction, because per-message autonomy (FR-006) is the requirement, not atomicity.
+
+**Rationale**: Judging "already in the requested state" by the stored snapshot means a no-op call touches neither system, exactly as the spec's already-read scenario demands ("nothing changes in the mailbox or the store"); it also makes duplicate ids in one list naturally harmless — the second occurrence sees the just-updated store and reports `already-in-state` (spec edge case). Sequential processing keeps outcome order aligned with input order and avoids concurrent-write throttling concerns with Graph.
+
+**Alternatives considered**: Consulting the mailbox to decide "already read" — rejected: doubles Graph traffic and the store is the state work-helper reasons about; a store/mailbox divergence is sync's territory (the spec's out-of-scope list). Parallel PATCHes — rejected: no perf need at ≤50 messages, and interleaved failures complicate the no-rollback story for zero user benefit. Deduplicating ids up front — rejected: extra semantics to document when the natural behavior is already correct.
+
+## R5: Thin tool, service owns orchestration
+
+**Decision**: The MCP tool handler validates input, maps R2 preflight errors to whole-call `toolError(...)` sentences, calls `setEmailReadState`, and formats the response. No drizzle in the tool beyond what exists today; `McpToolsContext` is unchanged — the tool uses `context.mailProvider` (already present, optional) and `context.db`. An absent `mailProvider` is treated as the not-connected branch of FR-008.
+
+**Rationale**: Matches the repo's layering (tools call services; `moveTask` precedent from 021). Putting `verifyWriteAccess` on the provider (R3) rather than on a new context member avoids widening `McpToolsContext` and `src/server/mcp/routes.ts` for one tool — the provider already carries the auth closure, and the fake provider can simulate every connection state without touching real MSAL.
+
+**Alternatives considered**: Adding `mailboxAuth` to `McpToolsContext` and preflighting in the tool — workable, but spreads mailbox-auth knowledge into the MCP layer and forces the integration harness to fake MSAL instead of the provider; rejected. Orchestrating in the tool handler directly — rejected: the sequential loop with store writes is service-shaped logic the web layer might someday reuse, and it must be unit-testable without MCP transport.
+
+## R6: Input validation — hand-validated in the handler for exact wording
+
+**Decision**: `inputSchema` declares `messageIds: z.array(z.number().int().positive())` and `state: z.string()`, and the handler validates the spec's three rules imperatively, returning `toolError` with the spec's own words: "At most 50 messages per call", "At least one message id is required", "State must be read or unread". Element-type violations (non-numeric ids, wrong shapes) stay declarative and are rejected by the SDK before the handler runs.
+
+**Rationale**: The spec pins the three validation messages' content (FR-002 and the validation scenario). SDK-level zod rejection wording is zod's, not ours — the `sync-emails` tool (`tools.ts:468`) is the in-repo precedent for loosening the declared schema precisely to own the sentence. Element-level type errors carry no spec'd wording, so the free SDK rejection suffices there.
+
+**Alternatives considered**: Fully declarative `z.array(...).min(1).max(50)` + `z.enum(['read','unread'])` with custom zod messages — rejected: whether the SDK surfaces custom issue messages verbatim is an SDK implementation detail; hand-validation removes the dependency. Fully manual validation including element types — rejected: needless duplication of what the SDK does well.
+
+## R7: Whole-call error wording — three distinguishable reconnect sentences
+
+**Decision**: The R2 preflight failures map to three `toolError` sentences styled after `sync-emails`' existing mailbox error: never signed in (or no provider configured) ⇒ `The mailbox is not connected — connect the mailbox on the Sync page.`; expired ⇒ `The mailbox sign-in has expired (<detail>) — reconnect the mailbox on the Sync page.`; missing write permission ⇒ `The mailbox sign-in predates read-state changes and lacks permission to change mail — reconnect the mailbox on the Sync page to grant it.` These are returned before any per-message work, so no outcomes accompany them and nothing is touched.
+
+**Rationale**: FR-008 requires "connect (or reconnect) … on the Sync page" phrasing with the no-connection/expired state distinguishable from missing permission; three distinct sentences over-deliver distinguishability safely and reuse the wording agents already see from `sync-emails` (`Could not reach the mailbox … — connect the mailbox on the Sync page.`).
+
+**Alternatives considered**: One sentence with a structured `reason` field — rejected: errors in this codebase are plain-text `toolError` results with no `structuredContent`; keeping that convention matters more than machine-parsable reasons for a human-adjacent recovery action.
+
+## R8: Simulated mailbox — extend `FakeMailProvider` + seeded read-state map
+
+**Decision**: The spec's simulated mailbox is the existing injected-provider seam. `FakeMailProvider` (`src/server/services/email/fake-provider.ts`) gains: a mutable per-message read-state map seeded from the existing `SeedMessage.isRead`; an implementation of `setMessageReadState` that mutates the map (honoring new knobs: a set of graph ids to treat as deleted ⇒ `'not-found'`, and a set of graph ids whose write throws ⇒ mid-list rejection); an implementation of `verifyWriteAccess` driven by a `writeAccess: 'ok' | 'not-connected' | 'expired' | 'no-write-permission'` knob throwing the same typed errors as the real path; a read accessor so tests assert "the message is now read **in the mailbox**"; and `fetchMessages` serving `isRead` from the mutable map so a subsequent sync sees the post-mark mailbox (US4's "sync confirms the mark").
+
+**Rationale**: Every integration test already builds the app with `FakeMailProvider` and seeds mail by running the real sync (`tests/integration/email-read-tools.test.ts` even seeds the very conversations this spec names — "Pricing question", "Lunch Thursday"). Because both `GraphMailProvider` and the fake implement the same widened `MailProvider` interface, the criteria run against the simulation while the real path is covered by unit tests at the fetch level (`vi.stubGlobal('fetch', ...)`, the `tests/unit/email-graph-provider.test.ts` pattern) — the two established mechanisms, each at its right altitude.
+
+**Alternatives considered**: HTTP-level Graph mocking (msw/nock) for integration tests — rejected: neither library is in the repo; the provider interface is the sanctioned fake seam. A standalone in-memory "Outlook simulator" module — rejected: `FakeMailProvider` already is one; a second would drift.
+
+## R9: No sync-run involvement; sync interplay accepted as-is
+
+**Decision**: `setEmailReadState` never touches `SyncCoordinator` — no `sync_runs` row is written (FR-011) and the tool does not take the coordinator's single-flight lock. Sync code is entirely unchanged: `ingestMessage`'s existing refresh (`sync.ts:161-176`) re-reads `isRead` from the mailbox, which — because the tool wrote the mailbox first — confirms the mark (FR-012). A sync overlapping a mark call in real time could theoretically write back a read-state snapshot fetched moments before the PATCH; this is accepted: single-user deployment, seconds-wide window, self-healing on the next sync, and the spec runs its criteria sequentially.
+
+**Rationale**: The spec's assumption "the tool's writes are not sync runs" maps directly to bypassing the coordinator; taking its lock would couple the tool to sync availability ("A sync is already running" failures the spec never mentions).
+
+**Alternatives considered**: Serializing marks against syncs via the coordinator's single-flight flag — rejected: introduces a spec'd-nowhere failure mode and solves a race the spec doesn't recognize.
+
+## R10: Test approach
+
+**Decision**: Primary coverage is a new `tests/integration/mcp-mark-read-tools.test.ts` modeled on `email-read-tools.test.ts`: real Fastify app on an ephemeral port, `:memory:` SQLite, stub identity provider, real `@modelcontextprotocol/sdk` client over StreamableHTTP, mail seeded through `FakeMailProvider` + the `sync-emails` tool using the spec's own conversations ("Quote attached", "Pricing question", "Lunch Thursday"). Assertions run through every surface the spec names: the tool's per-message outcomes, `get-conversation`/`list-conversations` MCP responses, `GET /api/emails/conversations` (the web pages' data source), the fake mailbox's read-state accessor, and `GET /api/email-sync/runs` (asserted unchanged). US4 runs `sync-emails` after a mark and asserts the state survived. Unit tests extend `tests/unit/email-graph-provider.test.ts` (PATCH request shape, 200/404/401/network mapping via stubbed fetch) and `tests/unit/email-graph-auth.test.ts` (scope-set split, write-token acquisition, probe classification, device-code sign-in scopes). Browser evidence for the "after a page reload" clauses (US1/US3, SC-001) comes from the `browser-tester` agent at implementation time into `docs/evidence/022-mcp-mark-emails-read/`.
+
+**Rationale**: The full-transport integration pattern is the repo's established MCP evidence (auth, zod schemas, and serialization exercised as a real agent would); asserting through the REST endpoints proves web-surface parity without a browser in the fast loop, with the browser-tester supplying the UI-facing Definition-of-Done evidence per the constitution.
+
+**Alternatives considered**: In-process server unit tests only — rejected: repo precedent and the auth gate come free with the transport tests. Testing the real Graph PATCH against a live mailbox in CI — rejected: Tyler's manual acceptance pass covers the real mailbox once, deliberately outside the automated loop.
+
+## Documentation touchpoints (no decision needed, recorded for tasks)
+
+- `docs/deploy.md:130` and `.env.example:14` mention the delegated scopes — both gain `Mail.ReadWrite` and a sentence about the one-time reconnect.
+- The spec's superseded-wording assumption: older feature docs are historical records and are not edited.

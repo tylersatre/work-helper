@@ -36,6 +36,12 @@ class StubProvider implements MailProvider {
   async fetchAttachmentMetadata(): Promise<MailAttachmentMeta[]> {
     return this.attachments;
   }
+
+  async verifyWriteAccess(): Promise<void> {}
+
+  async setMessageReadState(): Promise<'updated' | 'not-found'> {
+    return 'updated';
+  }
 }
 
 function baseMessage(): MailMessage {

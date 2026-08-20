@@ -58,7 +58,7 @@ describe('GraphMailProvider', () => {
 
   it('builds the inbox URL filtering/ordering on receivedDateTime, with $select/$top and the ImmutableId header', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ value: [fixtureMessage()] }));
-    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
 
     const pages = await drain(provider, INBOX_FOLDER, WINDOW);
 
@@ -83,7 +83,7 @@ describe('GraphMailProvider', () => {
 
   it('builds the sent-items URL filtering/ordering on sentDateTime', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ value: [] }));
-    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
 
     await drain(provider, SENTITEMS_FOLDER, WINDOW);
 
@@ -96,7 +96,7 @@ describe('GraphMailProvider', () => {
 
   it('filters/orders a custom (non-well-known) folder by receivedDateTime (R6)', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ value: [] }));
-    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
 
     await drain(provider, { id: 'id-projects', wellKnown: null }, WINDOW);
 
@@ -116,7 +116,7 @@ describe('GraphMailProvider', () => {
         }),
       )
       .mockResolvedValueOnce(jsonResponse({ value: [fixtureMessage({ id: 'm2' })] }));
-    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
 
     const pages = await drain(provider, INBOX_FOLDER, WINDOW);
 
@@ -133,7 +133,7 @@ describe('GraphMailProvider', () => {
         value: [fixtureMessage({ from: null, toRecipients: undefined, ccRecipients: undefined, bccRecipients: undefined })],
       }),
     );
-    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
 
     const [page] = await drain(provider, INBOX_FOLDER, WINDOW);
 
@@ -164,7 +164,7 @@ describe('GraphMailProvider', () => {
         value: [fixtureMessage({ toRecipients: [{ emailAddress: { address: 'tyler@example.com' } }] })],
       }),
     );
-    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
 
     const [page] = await drain(provider, INBOX_FOLDER, WINDOW);
 
@@ -190,7 +190,7 @@ describe('GraphMailProvider', () => {
         ],
       }),
     );
-    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
 
     const [page] = await drain(provider, INBOX_FOLDER, WINDOW);
 
@@ -207,7 +207,7 @@ describe('GraphMailProvider', () => {
 
   it('defaults a missing flag object to notFlagged', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ value: [fixtureMessage({ flag: undefined })] }));
-    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
 
     const [page] = await drain(provider, INBOX_FOLDER, WINDOW);
 
@@ -216,7 +216,7 @@ describe('GraphMailProvider', () => {
 
   it('never sends a non-GET request', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ value: [] }));
-    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
 
     await drain(provider, INBOX_FOLDER, WINDOW);
 
@@ -227,14 +227,14 @@ describe('GraphMailProvider', () => {
 
   it('maps a 401 response to a clear connection/sign-in error before yielding anything', async () => {
     fetchMock.mockResolvedValueOnce(new Response('unauthorized', { status: 401 }));
-    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
 
     await expect(drain(provider, INBOX_FOLDER, WINDOW)).rejects.toThrow(/sign-in|connection/i);
   });
 
   it('maps a 401/403 mid-sync response to reconnect-on-Sync-page copy, never mentioning the CLI (FR-010)', async () => {
     fetchMock.mockResolvedValueOnce(new Response('unauthorized', { status: 401 }));
-    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
 
     let error: Error | undefined;
     try {
@@ -248,7 +248,7 @@ describe('GraphMailProvider', () => {
 
   it('maps a thrown network error to a clear connection error', async () => {
     fetchMock.mockRejectedValueOnce(new Error('ECONNREFUSED'));
-    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
 
     await expect(drain(provider, INBOX_FOLDER, WINDOW)).rejects.toThrow(/connection|unreachable/i);
   });
@@ -267,7 +267,7 @@ describe('GraphMailProvider', () => {
     it('resolves well-known folder ids via GET /me/mailFolders/{name}?$select=id for all six categories', async () => {
       mockWellKnownResolutions();
       fetchMock.mockResolvedValueOnce(jsonResponse({ value: [] }));
-      const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+      const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
 
       await provider.listFolders();
 
@@ -296,7 +296,7 @@ describe('GraphMailProvider', () => {
         )
         .mockResolvedValueOnce(jsonResponse({ value: [] }))
         .mockResolvedValueOnce(jsonResponse({ value: [] }));
-      const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+      const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
 
       const tree = await provider.listFolders();
 
@@ -326,7 +326,7 @@ describe('GraphMailProvider', () => {
         .mockResolvedValueOnce(jsonResponse({ value: [] }))
         .mockResolvedValueOnce(jsonResponse({ value: [{ id: 'id-b', displayName: 'B' }] }))
         .mockResolvedValueOnce(jsonResponse({ value: [] }));
-      const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+      const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
 
       const tree = await provider.listFolders();
 
@@ -344,7 +344,7 @@ describe('GraphMailProvider', () => {
         .mockResolvedValueOnce(jsonResponse({ id: 'id-drafts' }))
         .mockResolvedValueOnce(jsonResponse({ value: [{ id: 'id-inbox', displayName: 'Inbox' }] }))
         .mockResolvedValueOnce(jsonResponse({ value: [] }));
-      const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+      const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
 
       const tree = await provider.listFolders();
 
@@ -353,7 +353,7 @@ describe('GraphMailProvider', () => {
 
     it('still throws on a 401 during well-known folder resolution', async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'id-inbox' })).mockResolvedValueOnce(new Response('unauthorized', { status: 401 }));
-      const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+      const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
 
       await expect(provider.listFolders()).rejects.toThrow(/sign-in|connection/i);
     });
@@ -369,7 +369,7 @@ describe('GraphMailProvider', () => {
           ],
         }),
       );
-      const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+      const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
 
       const attachments = await provider.fetchAttachmentMetadata('AAMk-immutable-1');
 
@@ -387,11 +387,90 @@ describe('GraphMailProvider', () => {
 
     it('returns null when allowNotFound is set and the message is gone (404)', async () => {
       fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
-      const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123' });
+      const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
 
       const attachments = await provider.fetchAttachmentMetadata('AAMk-gone-1', { allowNotFound: true });
 
       expect(attachments).toBeNull();
+    });
+  });
+
+  describe('setMessageReadState (research R3)', () => {
+    function writeProvider(getWriteAccessToken: () => Promise<string> = async () => 'write-token-123') {
+      return new GraphMailProvider({ getAccessToken: async () => 'read-token-123', getWriteAccessToken });
+    }
+
+    it('issues PATCH /me/messages/{graphMessageId} with body { isRead } only, JSON content-type, the ImmutableId Prefer header, and the write token', async () => {
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }));
+      const provider = writeProvider();
+
+      await provider.setMessageReadState('AAMk-immutable-1', true);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0]!;
+      expect(url).toBe('https://graph.microsoft.com/v1.0/me/messages/AAMk-immutable-1');
+      const requestInit = init as RequestInit;
+      expect(requestInit.method).toBe('PATCH');
+      expect(JSON.parse(requestInit.body as string)).toEqual({ isRead: true });
+      const headers = new Headers(requestInit.headers);
+      expect(headers.get('Content-Type')).toBe('application/json');
+      expect(headers.get('Prefer')).toBe('IdType="ImmutableId"');
+      expect(headers.get('Authorization')).toBe('Bearer write-token-123');
+    });
+
+    it("resolves 'updated' on HTTP 200", async () => {
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }));
+      const provider = writeProvider();
+
+      await expect(provider.setMessageReadState('AAMk-immutable-1', false)).resolves.toBe('updated');
+    });
+
+    it("resolves 'not-found' on HTTP 404", async () => {
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
+      const provider = writeProvider();
+
+      await expect(provider.setMessageReadState('AAMk-gone-1', true)).resolves.toBe('not-found');
+    });
+
+    it('throws on HTTP 401', async () => {
+      fetchMock.mockResolvedValueOnce(new Response('unauthorized', { status: 401 }));
+      const provider = writeProvider();
+
+      await expect(provider.setMessageReadState('AAMk-immutable-1', true)).rejects.toThrow();
+    });
+
+    it('throws on HTTP 403', async () => {
+      fetchMock.mockResolvedValueOnce(new Response('forbidden', { status: 403 }));
+      const provider = writeProvider();
+
+      await expect(provider.setMessageReadState('AAMk-immutable-1', true)).rejects.toThrow();
+    });
+
+    it('throws on a network error', async () => {
+      fetchMock.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+      const provider = writeProvider();
+
+      await expect(provider.setMessageReadState('AAMk-immutable-1', true)).rejects.toThrow();
+    });
+  });
+
+  describe('verifyWriteAccess (research R3)', () => {
+    it('calls getWriteAccessToken and resolves when a token is returned', async () => {
+      const getWriteAccessToken = vi.fn(async () => 'write-token-123');
+      const provider = new GraphMailProvider({ getAccessToken: async () => 'read-token-123', getWriteAccessToken });
+
+      await expect(provider.verifyWriteAccess()).resolves.toBeUndefined();
+      expect(getWriteAccessToken).toHaveBeenCalledTimes(1);
+    });
+
+    it('propagates a typed error thrown by getWriteAccessToken', async () => {
+      const typedError = new Error('typed-write-permission-error');
+      const getWriteAccessToken = vi.fn(async () => {
+        throw typedError;
+      });
+      const provider = new GraphMailProvider({ getAccessToken: async () => 'read-token-123', getWriteAccessToken });
+
+      await expect(provider.verifyWriteAccess()).rejects.toBe(typedError);
     });
   });
 });

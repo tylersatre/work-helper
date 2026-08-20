@@ -20,6 +20,8 @@ import type * as schema from '../db/schema.js';
 import type { CalendarProvider } from '../services/calendar/provider.js';
 import { eventsForPerson, getEvent, listEvents } from '../services/calendar/queries.js';
 import type { MailProvider } from '../services/email/provider.js';
+import { MailWritePermissionError, MailboxNotConnectedError } from '../services/email/graph-auth.js';
+import { setEmailReadState } from '../services/email/read-state.js';
 import { computeSyncWindow } from '../services/email/sync.js';
 import type { SyncCoordinator } from '../services/email/sync-coordinator.js';
 import { conversationSubject, emailsForPerson, getConversation, listConversations, listUnlinkedAddresses } from '../services/email/queries.js';
@@ -1175,6 +1177,71 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         content: [{ type: 'text', text: `Moved task "${task.title}" to lane "${task.lane}" at position ${landedPosition}.` }],
         structuredContent,
       };
+    },
+  );
+
+  server.registerTool(
+    'set-email-read-state',
+    {
+      description:
+        'Marks up to 50 synced email messages read or unread. Writes each change to the connected Outlook mailbox first, then updates work-helper\'s stored state, and reports an outcome per message. Individual message ids only (from get-conversation messages[].id or emails-for-person emails[].messageId) — to mark a whole thread, fetch it with get-conversation and pass its message ids. This is the only mailbox-modifying tool in work-helper, and read/unread state is the only thing it changes.',
+      inputSchema: { messageIds: z.array(z.number().int().positive()), state: z.string() },
+      outputSchema: {
+        state: z.enum(['read', 'unread']),
+        outcomes: z.array(
+          z.object({
+            messageId: z.number(),
+            status: z.enum(['marked', 'already-in-state', 'not-found', 'failed']),
+            reason: z.string().optional(),
+          }),
+        ),
+        markedCount: z.number(),
+        alreadyCount: z.number(),
+        notFoundCount: z.number(),
+        failedCount: z.number(),
+      },
+    },
+    async ({ messageIds, state }) => {
+      if (messageIds.length > 50) {
+        return toolError('At most 50 messages per call');
+      }
+      if (messageIds.length < 1) {
+        return toolError('At least one message id is required');
+      }
+      if (state !== 'read' && state !== 'unread') {
+        return toolError('State must be read or unread');
+      }
+      if (!context.mailProvider) {
+        return toolError('The mailbox is not connected — connect the mailbox on the Sync page.');
+      }
+
+      let result;
+      try {
+        result = await setEmailReadState(context.db, context.mailProvider, messageIds, state);
+      } catch (error) {
+        if (error instanceof MailboxNotConnectedError) {
+          return toolError(
+            error.reason === 'never-signed-in'
+              ? 'The mailbox is not connected — connect the mailbox on the Sync page.'
+              : `The mailbox sign-in has expired (${error.detail}) — reconnect the mailbox on the Sync page.`,
+          );
+        }
+        if (error instanceof MailWritePermissionError) {
+          return toolError(error.message);
+        }
+        throw error;
+      }
+
+      const { outcomes, markedCount, alreadyCount, notFoundCount, failedCount } = result;
+      const clauses: string[] = [];
+      if (alreadyCount > 0) clauses.push(`${alreadyCount} already ${state}`);
+      if (notFoundCount > 0) clauses.push(`${notFoundCount} not found`);
+      if (failedCount > 0) clauses.push(`${failedCount} failed`);
+      const base = `Marked ${markedCount} message${markedCount === 1 ? '' : 's'} ${state}`;
+      const text = clauses.length > 0 ? `${base} (${clauses.join(', ')}).` : `${base}.`;
+
+      const structuredContent = { state, outcomes, markedCount, alreadyCount, notFoundCount, failedCount };
+      return { content: [{ type: 'text', text }], structuredContent };
     },
   );
 

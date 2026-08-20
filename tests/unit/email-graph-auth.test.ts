@@ -2,7 +2,12 @@ import { mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MailboxNotConnectedError, createGraphAuth, fileCachePlugin } from '../../src/server/services/email/graph-auth.js';
+import {
+  MailWritePermissionError,
+  MailboxNotConnectedError,
+  createGraphAuth,
+  fileCachePlugin,
+} from '../../src/server/services/email/graph-auth.js';
 
 const msalConstructorConfigs: { auth?: { clientId?: string; authority?: string } }[] = [];
 const acquireTokenByDeviceCode = vi.fn();
@@ -213,6 +218,87 @@ describe('createGraphAuth', () => {
         error = caught as Error;
       }
       expect(error?.message).not.toMatch(/mail:signin/i);
+    });
+  });
+
+  describe('scope split (research R2)', () => {
+    it('beginSignIn requests SIGN_IN_SCOPES: Mail.Read, Mail.ReadWrite, Calendars.Read, offline_access', async () => {
+      acquireTokenByDeviceCode.mockImplementation(async (request: { deviceCodeCallback: (response: unknown) => void }) => {
+        request.deviceCodeCallback({ verificationUri: 'https://login.microsoft.com/device', userCode: 'ABC123', expiresIn: 900 });
+        return { account: { username: 'tyler@example.com' } };
+      });
+
+      await createGraphAuth(options).beginSignIn(() => {});
+
+      expect(acquireTokenByDeviceCode).toHaveBeenCalledWith(
+        expect.objectContaining({ scopes: ['Mail.Read', 'Mail.ReadWrite', 'Calendars.Read', 'offline_access'] }),
+      );
+    });
+
+    it('getAccessToken still acquires with READ_SCOPES (Mail.Read, Calendars.Read, offline_access) — pre-feature sign-ins keep syncing', async () => {
+      mockAccounts = [{ username: 'tyler@example.com' }];
+      acquireTokenSilent.mockResolvedValue({ accessToken: 'token-abc' });
+
+      await createGraphAuth(options).getAccessToken();
+
+      expect(acquireTokenSilent).toHaveBeenCalledWith(expect.objectContaining({ scopes: ['Mail.Read', 'Calendars.Read', 'offline_access'] }));
+    });
+
+    it('verifyConnection still acquires with READ_SCOPES', async () => {
+      mockAccounts = [{ username: 'tyler@example.com' }];
+      acquireTokenSilent.mockResolvedValue({ accessToken: 'token-abc' });
+
+      await createGraphAuth(options).verifyConnection();
+
+      expect(acquireTokenSilent).toHaveBeenCalledWith(expect.objectContaining({ scopes: ['Mail.Read', 'Calendars.Read', 'offline_access'] }));
+    });
+  });
+
+  describe('getWriteAccessToken (research R2)', () => {
+    function mockScopedSilent(outcomes: { write: 'ok' | 'fail'; read: 'ok' | 'fail' }) {
+      acquireTokenSilent.mockImplementation(async (request: { scopes: string[] }) => {
+        const isWriteRequest = request.scopes.includes('Mail.ReadWrite');
+        const result = isWriteRequest ? outcomes.write : outcomes.read;
+        if (result === 'fail') {
+          throw new Error(isWriteRequest ? 'AADSTS65001: no consent for Mail.ReadWrite' : 'AADSTS70008: expired refresh token');
+        }
+        return { accessToken: isWriteRequest ? 'write-token-abc' : 'read-token-abc' };
+      });
+    }
+
+    it('acquires silently with WRITE_SCOPES = [Mail.ReadWrite] and returns the token when it succeeds', async () => {
+      mockAccounts = [{ username: 'tyler@example.com' }];
+      mockScopedSilent({ write: 'ok', read: 'ok' });
+
+      const token = await createGraphAuth(options).getWriteAccessToken();
+
+      expect(token).toBe('write-token-abc');
+      expect(acquireTokenSilent).toHaveBeenCalledWith(expect.objectContaining({ scopes: ['Mail.ReadWrite'] }));
+    });
+
+    it('throws MailWritePermissionError when write-scope acquisition fails but read-scope succeeds (pre-feature sign-in)', async () => {
+      mockAccounts = [{ username: 'tyler@example.com' }];
+      mockScopedSilent({ write: 'fail', read: 'ok' });
+
+      await expect(createGraphAuth(options).getWriteAccessToken()).rejects.toThrow(MailWritePermissionError);
+    });
+
+    it('throws MailboxNotConnectedError(expired) when both write- and read-scope acquisition fail', async () => {
+      mockAccounts = [{ username: 'tyler@example.com' }];
+      mockScopedSilent({ write: 'fail', read: 'fail' });
+
+      const auth = createGraphAuth(options);
+      await expect(auth.getWriteAccessToken()).rejects.toThrow(MailboxNotConnectedError);
+      await expect(createGraphAuth(options).getWriteAccessToken()).rejects.toMatchObject({
+        reason: 'expired',
+        detail: 'AADSTS70008: expired refresh token',
+      });
+    });
+
+    it('throws MailboxNotConnectedError(never-signed-in) when no account is cached', async () => {
+      mockAccounts = [];
+
+      await expect(createGraphAuth(options).getWriteAccessToken()).rejects.toMatchObject({ reason: 'never-signed-in' });
     });
   });
 });

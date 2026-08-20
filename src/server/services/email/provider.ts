@@ -69,4 +69,8 @@ export interface MailProvider {
    * without options, 404 throws a connection error exactly like today.
    */
   fetchAttachmentMetadata(messageId: string, options?: { allowNotFound?: boolean }): Promise<MailAttachmentMeta[] | null>;
+  /** Whole-call preflight for set-email-read-state: throws a typed error (never-signed-in/expired/no-write-permission) if the mailbox can't take writes right now. */
+  verifyWriteAccess(): Promise<void>;
+  /** Sets a message's read/unread state via the mailbox's minimal single-property write. 'not-found' when the mailbox no longer has the message (e.g. deleted); other failures throw. */
+  setMessageReadState(graphMessageId: string, isRead: boolean): Promise<'updated' | 'not-found'>;
 }

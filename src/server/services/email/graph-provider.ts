@@ -27,6 +27,7 @@ const WELL_KNOWN_NAMES: Record<WellKnownFolder, string> = {
 
 export interface GraphMailProviderOptions {
   getAccessToken: () => Promise<string>;
+  getWriteAccessToken: () => Promise<string>;
 }
 
 interface GraphRecipient {
@@ -118,17 +119,10 @@ function firstPageUrl(folder: MailFolderRef, window: MailWindow): string {
 export class GraphMailProvider implements MailProvider {
   constructor(private readonly options: GraphMailProviderOptions) {}
 
-  private async authorizedFetch(url: string, options: { allowNotFound: true }): Promise<Response | null>;
-  private async authorizedFetch(url: string, options?: { allowNotFound?: false }): Promise<Response>;
-  private async authorizedFetch(url: string, options?: { allowNotFound?: boolean }): Promise<Response | null> {
-    const token = await this.options.getAccessToken();
-
+  private async send(url: string, init: RequestInit): Promise<Response> {
     let response: Response;
     try {
-      response = await fetch(url, {
-        method: 'GET',
-        headers: { Authorization: `Bearer ${token}`, Prefer: 'IdType="ImmutableId"' },
-      });
+      response = await fetch(url, init);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       throw new Error(`Could not reach the mailbox — connection failed (${detail})`);
@@ -137,6 +131,19 @@ export class GraphMailProvider implements MailProvider {
     if (response.status === 401 || response.status === 403) {
       throw new Error('Mailbox sign-in has expired or is not authorized — reconnect the mailbox on the Sync page.');
     }
+    return response;
+  }
+
+  private async authorizedFetch(url: string, options: { allowNotFound: true }): Promise<Response | null>;
+  private async authorizedFetch(url: string, options?: { allowNotFound?: false }): Promise<Response>;
+  private async authorizedFetch(url: string, options?: { allowNotFound?: boolean }): Promise<Response | null> {
+    const token = await this.options.getAccessToken();
+
+    const response = await this.send(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}`, Prefer: 'IdType="ImmutableId"' },
+    });
+
     if (response.status === 404 && options?.allowNotFound) {
       return null;
     }
@@ -145,6 +152,28 @@ export class GraphMailProvider implements MailProvider {
     }
 
     return response;
+  }
+
+  async verifyWriteAccess(): Promise<void> {
+    await this.options.getWriteAccessToken();
+  }
+
+  async setMessageReadState(graphMessageId: string, isRead: boolean): Promise<'updated' | 'not-found'> {
+    const token = await this.options.getWriteAccessToken();
+
+    const response = await this.send(`${GRAPH_BASE}/me/messages/${graphMessageId}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, Prefer: 'IdType="ImmutableId"', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isRead }),
+    });
+
+    if (response.status === 404) {
+      return 'not-found';
+    }
+    if (!response.ok) {
+      throw new Error(`Mailbox request failed with a connection error (HTTP ${response.status})`);
+    }
+    return 'updated';
   }
 
   async *fetchMessages(folder: MailFolderRef, window: MailWindow): AsyncIterable<MailMessage[]> {

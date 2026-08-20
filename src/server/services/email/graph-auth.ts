@@ -2,7 +2,12 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'n
 import { dirname } from 'node:path';
 import { PublicClientApplication, type AccountInfo, type ICachePlugin } from '@azure/msal-node';
 
-const SCOPES = ['Mail.Read', 'Calendars.Read', 'offline_access'];
+/** Requested at sign-in (device-code flow) — includes Mail.ReadWrite so a new Connect grants read-state changes up front. */
+const SIGN_IN_SCOPES = ['Mail.Read', 'Mail.ReadWrite', 'Calendars.Read', 'offline_access'];
+/** Used by getAccessToken()/verifyConnection() — unchanged from before this feature, so a pre-feature sign-in keeps syncing untouched. */
+const READ_SCOPES = ['Mail.Read', 'Calendars.Read', 'offline_access'];
+/** Used only by getWriteAccessToken() — requesting it in isolation lets probe classification tell "no consent yet" apart from "sign-in expired". */
+const WRITE_SCOPES = ['Mail.ReadWrite'];
 const DEVICE_CODE_REJECTED =
   'Microsoft rejected the device-code request before issuing a sign-in code. Check that MS_TENANT_ID matches the app registration\'s Directory (tenant) ID, MS_CLIENT_ID matches its Application (client) ID, and "Allow public client flows" is enabled under Authentication.';
 
@@ -53,9 +58,22 @@ export class MailboxNotConnectedError extends Error {
   }
 }
 
+/** Thrown by getWriteAccessToken() when the sign-in is alive but predates this feature — it never consented to Mail.ReadWrite. */
+export class MailWritePermissionError extends Error {
+  constructor() {
+    super('The mailbox sign-in predates read-state changes and lacks permission to change mail — reconnect the mailbox on the Sync page to grant it.');
+    this.name = 'MailWritePermissionError';
+  }
+}
+
 export interface MailboxAuth {
   /** Silently acquires an access token from the cached refresh token; throws MailboxNotConnectedError if none is cached or valid. */
   getAccessToken: () => Promise<string>;
+  /**
+   * Silently acquires a Mail.ReadWrite-scoped access token; throws MailWritePermissionError if the sign-in is alive
+   * but never consented to it (pre-feature sign-in), MailboxNotConnectedError otherwise (expired/never-signed-in).
+   */
+  getWriteAccessToken: () => Promise<string>;
   /** Proves connection state right now via silent token acquisition — never cached (FR-007). */
   verifyConnection: () => Promise<ConnectionVerification>;
   /** Runs the interactive device-code flow, invoking `onCode` with the verification URL, user code, and code expiry to show; resolves the signed-in account's username. */
@@ -82,7 +100,7 @@ export function createGraphAuth(options: GraphAuthOptions): MailboxAuth {
         throw new MailboxNotConnectedError('never-signed-in');
       }
       try {
-        const result = await pca.acquireTokenSilent({ account, scopes: SCOPES });
+        const result = await pca.acquireTokenSilent({ account, scopes: READ_SCOPES });
         if (!result?.accessToken) {
           throw new Error('Silent token acquisition returned no access token');
         }
@@ -92,13 +110,41 @@ export function createGraphAuth(options: GraphAuthOptions): MailboxAuth {
         throw new MailboxNotConnectedError('expired', detail);
       }
     },
+    async getWriteAccessToken() {
+      const account = await currentAccount();
+      if (!account) {
+        throw new MailboxNotConnectedError('never-signed-in');
+      }
+      try {
+        const result = await pca.acquireTokenSilent({ account, scopes: WRITE_SCOPES });
+        if (!result?.accessToken) {
+          throw new Error('Silent token acquisition returned no access token');
+        }
+        return result.accessToken;
+      } catch {
+        // Write-scope acquisition failed — probe read-scope to classify: alive-but-unconsented vs. actually expired.
+        try {
+          const readResult = await pca.acquireTokenSilent({ account, scopes: READ_SCOPES });
+          if (!readResult?.accessToken) {
+            throw new Error('Silent token acquisition returned no access token');
+          }
+          throw new MailWritePermissionError();
+        } catch (readError) {
+          if (readError instanceof MailWritePermissionError) {
+            throw readError;
+          }
+          const detail = readError instanceof Error ? readError.message : String(readError);
+          throw new MailboxNotConnectedError('expired', detail);
+        }
+      }
+    },
     async verifyConnection() {
       const account = await currentAccount();
       if (!account) {
         return { connected: false, reason: 'never-signed-in' };
       }
       try {
-        const result = await pca.acquireTokenSilent({ account, scopes: SCOPES });
+        const result = await pca.acquireTokenSilent({ account, scopes: READ_SCOPES });
         if (!result?.accessToken) {
           throw new Error('Silent token acquisition returned no access token');
         }
@@ -110,7 +156,7 @@ export function createGraphAuth(options: GraphAuthOptions): MailboxAuth {
     },
     async beginSignIn(onCode) {
       const result = await pca.acquireTokenByDeviceCode({
-        scopes: SCOPES,
+        scopes: SIGN_IN_SCOPES,
         deviceCodeCallback: (response) => {
           // msal-node destructures Microsoft's response without checking for an error body,
           // so a rejected request arrives here with every field undefined. Throwing rejects
