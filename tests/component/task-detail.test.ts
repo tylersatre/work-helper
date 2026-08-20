@@ -151,14 +151,16 @@ describe('TaskDetailPage', () => {
     expect(screen.getByRole('alert').textContent).toContain('Unknown lane');
   });
 
-  it('applies only the response matching the most recently issued move when a second click fires before the first resolves (spec edge case 3)', async () => {
+  it('does not dispatch a second move until the first settles, and applies only the response matching the most recently issued move (spec edge case 3)', async () => {
     let resolveFirst: (() => void) | undefined;
+    const placementCalls: string[] = [];
     const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
       if (url === '/api/tasks/1' && !options) {
         return Promise.resolve({ ok: true, json: async () => taskDetailPayload() });
       }
       if (url === '/api/tasks/1/placement' && options?.method === 'PUT') {
         const body = JSON.parse(options.body as string) as { lane: string };
+        placementCalls.push(body.lane);
         if (body.lane === 'In Progress') {
           return new Promise((resolve) => {
             resolveFirst = () =>
@@ -180,13 +182,41 @@ describe('TaskDetailPage', () => {
     await fireEvent.click(await screen.findByRole('button', { name: 'Done' }));
     await flushPromises();
 
-    expect((screen.getByRole('button', { name: 'Done' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(placementCalls).toEqual(['In Progress']);
+    expect((screen.getByRole('button', { name: 'Waiting' }) as HTMLButtonElement).disabled).toBe(true);
 
     resolveFirst?.();
     await flushPromises();
+    await flushPromises();
 
+    expect(placementCalls).toEqual(['In Progress', 'Done']);
     expect((screen.getByRole('button', { name: 'Done' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'In Progress' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('shows an inline error and leaves the last-saved lane current when the move request itself fails (network error)', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+      if (url === '/api/tasks/1' && !options) {
+        return Promise.resolve({ ok: true, json: async () => taskDetailPayload() });
+      }
+      if (url === '/api/tasks/1/placement' && options?.method === 'PUT') {
+        return Promise.reject(new Error('offline'));
+      }
+      return Promise.resolve({ ok: true, json: async () => [] });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const router = makeRouter('/tasks/1');
+    await router.isReady();
+    render(TaskDetailPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    await fireEvent.click(await screen.findByRole('button', { name: 'In Progress' }));
+    await flushPromises();
+
+    expect((screen.getByRole('button', { name: 'Waiting' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'In Progress' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByRole('alert').textContent).toBeTruthy();
   });
 
   it('search results show each person name and email; selecting a result links them', async () => {
