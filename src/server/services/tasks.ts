@@ -1,9 +1,9 @@
-import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { noteTextSchema, titleSchema } from '../../shared/validation.js';
-import { companies, people, emailAddresses, personPhones, taskCompanies, taskNotes, taskPeople, tasks } from '../db/schema.js';
+import { companies, people, emailAddresses, personPhones, tags as tagsTable, taskCompanies, taskNotes, taskPeople, taskTags, tasks } from '../db/schema.js';
 import { conversationsForTask } from './task-conversations.js';
-import { getTagsForTask } from './tags.js';
+import { getTagsForTask, type TagRecord } from './tags.js';
 import type * as schema from '../db/schema.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
@@ -55,6 +55,69 @@ export function createTask(
 
 export function listTasksByLane(db: AppDb, lane: string) {
   return db.select().from(tasks).where(eq(tasks.lane, lane)).orderBy(asc(tasks.position), asc(tasks.id)).all();
+}
+
+function groupByTaskId<T extends { taskId: number }>(rows: T[]): Map<number, T[]> {
+  const byTaskId = new Map<number, T[]>();
+  for (const row of rows) {
+    const list = byTaskId.get(row.taskId);
+    if (list) {
+      list.push(row);
+    } else {
+      byTaskId.set(row.taskId, [row]);
+    }
+  }
+  return byTaskId;
+}
+
+export function listBoardTasksByLane(db: AppDb, lane: string) {
+  const laneTasks = listTasksByLane(db, lane);
+  if (laneTasks.length === 0) {
+    return [];
+  }
+  const taskIds = laneTasks.map((task) => task.id);
+
+  const notesByTask = groupByTaskId(
+    db.select({ taskId: taskNotes.taskId, text: taskNotes.text }).from(taskNotes).where(inArray(taskNotes.taskId, taskIds)).all(),
+  );
+
+  const peopleByTask = groupByTaskId(
+    db
+      .select({ taskId: taskPeople.taskId, firstName: people.firstName, lastName: people.lastName })
+      .from(taskPeople)
+      .innerJoin(people, eq(taskPeople.personId, people.id))
+      .where(inArray(taskPeople.taskId, taskIds))
+      .all(),
+  );
+
+  const companiesByTask = groupByTaskId(
+    db
+      .select({ taskId: taskCompanies.taskId, name: companies.name })
+      .from(taskCompanies)
+      .innerJoin(companies, eq(taskCompanies.companyId, companies.id))
+      .where(inArray(taskCompanies.taskId, taskIds))
+      .all(),
+  );
+
+  const tagsByTask = groupByTaskId(
+    db
+      .select({ taskId: taskTags.taskId, id: tagsTable.id, name: tagsTable.name, color: tagsTable.color })
+      .from(taskTags)
+      .innerJoin(tagsTable, eq(taskTags.tagId, tagsTable.id))
+      .where(inArray(taskTags.taskId, taskIds))
+      .orderBy(asc(sql`${tagsTable.name} COLLATE NOCASE`))
+      .all(),
+  );
+
+  return laneTasks.map((task) => {
+    const noteTexts = (notesByTask.get(task.id) ?? []).map((row) => row.text);
+    const personNames = (peopleByTask.get(task.id) ?? []).map((row) => `${row.firstName} ${row.lastName}`.trim());
+    const companyNames = (companiesByTask.get(task.id) ?? []).map((row) => row.name);
+    const tags: TagRecord[] = (tagsByTask.get(task.id) ?? []).map(({ id, name, color }) => ({ id, name, color }));
+    const searchText = [task.title, ...noteTexts, ...personNames, ...companyNames].join('\n').toLowerCase();
+
+    return { ...task, tags, searchText };
+  });
 }
 
 export type MoveTaskResult =

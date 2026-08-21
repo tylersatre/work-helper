@@ -6,13 +6,23 @@ export interface Task {
   createdAt: number;
 }
 
+export interface BoardTask extends Task {
+  tags: Tag[];
+  searchText: string;
+}
+
 export interface BoardLane {
   name: string;
-  tasks: Task[];
+  tasks: BoardTask[];
 }
 
 export interface BoardView {
   lanes: BoardLane[];
+}
+
+export interface BoardFilter {
+  text: string;
+  tagIds: number[];
 }
 
 export interface ContactEntry {

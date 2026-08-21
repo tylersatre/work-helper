@@ -5,7 +5,7 @@ import type { Task } from '../../shared/types.js';
 import { computeDropIndex } from '../utils/drop-index.js';
 import TaskCard from './TaskCard.vue';
 
-const props = defineProps<{ name: string; tasks: Task[]; draggedTaskId: number | null }>();
+const props = defineProps<{ name: string; tasks: Task[]; draggedTaskId: number | null; filterActive: boolean }>();
 const emit = defineEmits<{
   drop: [taskId: number, laneName: string, index: number];
   'card-dragstart': [taskId: number];
@@ -37,6 +37,10 @@ function displayIndex(finalIndex: number): number {
 
 function onDragOver(event: DragEvent): void {
   event.preventDefault();
+  if (props.filterActive) {
+    // Filtered rendering can't tell the user where within the lane they'd land — no indicator.
+    return;
+  }
   dropIndex.value = computeDropIndex(event.clientY, otherCardMidpoints());
 }
 
@@ -47,11 +51,24 @@ function onDragLeave(): void {
 function onDrop(event: DragEvent): void {
   event.preventDefault();
   const taskId = Number(event.dataTransfer?.getData('text/plain'));
-  const index = dropIndex.value ?? computeDropIndex(event.clientY, otherCardMidpoints());
-  dropIndex.value = null;
   if (!Number.isInteger(taskId) || taskId <= 0) {
+    dropIndex.value = null;
     return;
   }
+
+  if (props.filterActive) {
+    dropIndex.value = null;
+    const alreadyInThisLane = props.tasks.some((task) => task.id === taskId);
+    if (alreadyInThisLane) {
+      // A hidden card's manual position must never be disturbed while filtered (FR-016).
+      return;
+    }
+    emit('drop', taskId, props.name, 0);
+    return;
+  }
+
+  const index = dropIndex.value ?? computeDropIndex(event.clientY, otherCardMidpoints());
+  dropIndex.value = null;
   emit('drop', taskId, props.name, index);
 }
 

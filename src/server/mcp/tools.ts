@@ -13,9 +13,10 @@ import {
   unlinkCompanyFromTask,
 } from '../services/companies.js';
 import { createPerson, getPerson, listPeople, updatePerson as updatePersonService, type PersonRecord } from '../services/people.js';
-import { addNote, createTask, getTaskDetail, InvalidLaneError, linkPerson, listTasksByLane, moveTask, unlinkPerson } from '../services/tasks.js';
+import { addNote, createTask, getTaskDetail, InvalidLaneError, linkPerson, listBoardTasksByLane, moveTask, unlinkPerson } from '../services/tasks.js';
 import { linkConversationToTask, unlinkConversationFromTask } from '../services/task-conversations.js';
-import { emailAddresses, personPhones } from '../db/schema.js';
+import { emailAddresses, personPhones, tags as tagsTable } from '../db/schema.js';
+import { matchesBoardFilter } from '../../shared/board-filter.js';
 import type * as schema from '../db/schema.js';
 import type { CalendarProvider } from '../services/calendar/provider.js';
 import { eventsForPerson, getEvent, listEvents } from '../services/calendar/queries.js';
@@ -162,13 +163,36 @@ export function createMcpServer(context: McpToolsContext): McpServer {
   server.registerTool(
     'list-board',
     {
-      description: "Lists the board's lanes and the tasks in each, in configured lane order.",
+      description:
+        "Lists the board's lanes and the tasks in each, in configured lane order. Optionally narrows the board to cards matching a case-insensitive text search (over card title, note text, and linked person/company names) and/or carrying any of the given tags.",
+      inputSchema: { search: z.string().optional(), tags: z.array(z.string()).optional() },
       outputSchema: { lanes: z.array(z.object({ name: z.string(), tasks: z.array(z.object(taskSummarySchema)) })) },
     },
-    async () => {
-      const lanes = context.lanes.map((name) => ({ name, tasks: listTasksByLane(context.db, name) }));
+    async ({ search, tags: tagNames }) => {
+      const requestedTagNames = tagNames ?? [];
+      const allTags = context.db.select({ id: tagsTable.id, name: tagsTable.name }).from(tagsTable).all();
+      const resolvedTagIds = requestedTagNames.flatMap((name) => {
+        const match = allTags.find((tag) => tag.name.toLowerCase() === name.toLowerCase());
+        return match ? [match.id] : [];
+      });
+      // Tag names were supplied but none resolved to a real tag: the filter must match nothing,
+      // not fall back to "no tag filter" — matchesBoardFilter treats an empty tagIds as
+      // unfiltered, so an impossible id keeps that contract intact for this one case (M5, FR-017).
+      const tagIds = requestedTagNames.length > 0 && resolvedTagIds.length === 0 ? [-1] : resolvedTagIds;
+      const filter = { text: search ?? '', tagIds };
+
+      const lanes = context.lanes.map((name) => ({
+        name,
+        tasks: listBoardTasksByLane(context.db, name)
+          .filter((task) => matchesBoardFilter(task, filter))
+          .map(({ id, title, lane, position, createdAt }) => ({ id, title, lane, position, createdAt })),
+      }));
+      const matchCount = lanes.reduce((sum, lane) => sum + lane.tasks.length, 0);
       const structuredContent = { lanes };
-      return { content: [{ type: 'text', text: `The board has ${lanes.length} lanes.` }], structuredContent };
+      return {
+        content: [{ type: 'text', text: `The board has ${lanes.length} lanes with ${matchCount} matching card${matchCount === 1 ? '' : 's'}.` }],
+        structuredContent,
+      };
     },
   );
 
