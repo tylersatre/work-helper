@@ -16,6 +16,15 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
     }) as MediaQueryList;
 }
 
+// jsdom has no scrollTo implementation; Naive UI's NSelect calls it on the scrollbar/list
+// elements when scrolling a selected option into view.
+if (typeof Element !== 'undefined' && !Element.prototype.scrollTo) {
+  Element.prototype.scrollTo = () => {};
+}
+
 afterEach(() => {
   cleanup();
+  if (typeof window !== 'undefined') {
+    window.localStorage.clear();
+  }
 });

@@ -57,6 +57,38 @@ export function listTasksByLane(db: AppDb, lane: string) {
   return db.select().from(tasks).where(eq(tasks.lane, lane)).orderBy(asc(tasks.position), asc(tasks.id)).all();
 }
 
+export function listBoardTasksByLane(db: AppDb, lane: string) {
+  return listTasksByLane(db, lane).map((task) => {
+    const noteTexts = db
+      .select({ text: taskNotes.text })
+      .from(taskNotes)
+      .where(eq(taskNotes.taskId, task.id))
+      .all()
+      .map((row) => row.text);
+
+    const personNames = db
+      .select({ firstName: people.firstName, lastName: people.lastName })
+      .from(taskPeople)
+      .innerJoin(people, eq(taskPeople.personId, people.id))
+      .where(eq(taskPeople.taskId, task.id))
+      .all()
+      .map((row) => `${row.firstName} ${row.lastName}`.trim());
+
+    const companyNames = db
+      .select({ name: companies.name })
+      .from(taskCompanies)
+      .innerJoin(companies, eq(taskCompanies.companyId, companies.id))
+      .where(eq(taskCompanies.taskId, task.id))
+      .all()
+      .map((row) => row.name);
+
+    const tags = getTagsForTask(db, task.id);
+    const searchText = [task.title, ...noteTexts, ...personNames, ...companyNames].join('\n').toLowerCase();
+
+    return { ...task, tags, searchText };
+  });
+}
+
 export type MoveTaskResult =
   | { ok: true; task: typeof tasks.$inferSelect }
   | { ok: false; error: 'task-not-found' | 'invalid-lane' };

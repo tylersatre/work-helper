@@ -6,7 +6,7 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
-import { emailAddresses } from '../../src/server/db/schema.js';
+import { emailAddresses, tasks } from '../../src/server/db/schema.js';
 import type * as schema from '../../src/server/db/schema.js';
 import { createIdentityVerifier } from '../../src/server/mcp/auth/identity.js';
 import { connectThroughApproval } from './helpers/oauth-client.js';
@@ -341,5 +341,181 @@ describe('US5 (015-mcp-people-tools): get-person full contact lists, search-peop
     expect(people).toEqual([{ id: sam, name: 'Sam Rivera', email: 'sam.rivera@example.com' }]);
     expect(people[0]).not.toHaveProperty('emails');
     expect(people[0]).not.toHaveProperty('phones');
+  });
+});
+
+describe('US5 (025-board-search-filter): list-board search and tags arguments', () => {
+  beforeEach(async () => {
+    // Reshape the outer fixture's "Follow up with Sam" card into the spec's card of the same name.
+    await app.inject({ method: 'POST', url: `/api/tasks/${followUpTaskId}/notes`, payload: { text: 'Kickoff call went well' } });
+    await app.inject({ method: 'POST', url: `/api/tasks/${followUpTaskId}/people`, payload: { personId: sam } });
+    const vipTag = await app.inject({ method: 'POST', url: '/api/tags', payload: { name: 'VIP' } });
+    await app.inject({ method: 'POST', url: `/api/tasks/${followUpTaskId}/tags`, payload: { tagId: vipTag.json().id } });
+
+    // Remove the outer fixture's stray note/link from "Prep board deck" so it doesn't collide with
+    // "rivera" and note-text assertions below, then reshape it into the spec's Done-lane card.
+    await app.inject({ method: 'DELETE', url: `/api/tasks/${prepDeckTaskId}/people/${sam}` });
+    const prepDetail = await app.inject({ method: 'GET', url: `/api/tasks/${prepDeckTaskId}` });
+    for (const note of prepDetail.json().notes as { id: number }[]) {
+      await app.inject({ method: 'DELETE', url: `/api/tasks/${prepDeckTaskId}/notes/${note.id}` });
+    }
+    await app.inject({ method: 'PUT', url: `/api/tasks/${prepDeckTaskId}/placement`, payload: { lane: 'Done', index: 0 } });
+    const q3Tag = await app.inject({ method: 'POST', url: '/api/tags', payload: { name: 'Q3' } });
+    const q3TagId = q3Tag.json().id;
+    await app.inject({ method: 'POST', url: `/api/tasks/${prepDeckTaskId}/tags`, payload: { tagId: q3TagId } });
+
+    const writeProposal = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: { title: 'Write proposal', note: 'Waiting on budget numbers' },
+    });
+    const writeProposalId = writeProposal.json().id;
+    await app.inject({ method: 'PUT', url: `/api/tasks/${writeProposalId}/placement`, payload: { lane: 'In Progress', index: 0 } });
+    await app.inject({ method: 'POST', url: `/api/tasks/${writeProposalId}/tags`, payload: { tagId: q3TagId } });
+
+    const reviewBudget = await app.inject({ method: 'POST', url: '/api/tasks', payload: { title: 'Review budget' } });
+    await app.inject({
+      method: 'PUT',
+      url: `/api/tasks/${reviewBudget.json().id}/placement`,
+      payload: { lane: 'In Progress', index: 1 },
+    });
+
+    const companyResponse = await app.inject({ method: 'POST', url: '/api/companies', payload: { name: 'Acme Inc' } });
+    const acme = companyResponse.json().id;
+    const bookVenue = await app.inject({ method: 'POST', url: '/api/tasks', payload: { title: 'Book venue' } });
+    const bookVenueId = bookVenue.json().id;
+    await app.inject({ method: 'PUT', url: `/api/tasks/${bookVenueId}/placement`, payload: { lane: 'Waiting', index: 0 } });
+    await app.inject({ method: 'POST', url: `/api/tasks/${bookVenueId}/companies`, payload: { companyId: acme } });
+
+    const sendRecap = await app.inject({ method: 'POST', url: '/api/tasks', payload: { title: 'Send recap' } });
+    const sendRecapId = sendRecap.json().id;
+    await app.inject({ method: 'PUT', url: `/api/tasks/${sendRecapId}/placement`, payload: { lane: 'Done', index: 1 } });
+    await app.inject({ method: 'POST', url: `/api/tasks/${sendRecapId}/tags`, payload: { tagId: q3TagId } });
+
+    // "Prospect" is attached to Sam Rivera the person only — no card carries it.
+    const prospectTag = await app.inject({ method: 'POST', url: '/api/tags', payload: { name: 'Prospect' } });
+    await app.inject({ method: 'POST', url: `/api/people/${sam}/tags`, payload: { tagId: prospectTag.json().id } });
+  });
+
+  function laneTasks(board: { lanes: { name: string; tasks: { title: string }[] }[] }, laneName: string): string[] {
+    return board.lanes.find((lane) => lane.name === laneName)!.tasks.map((t) => t.title);
+  }
+
+  it('search:"budget" returns exactly Write proposal and Review budget, grouped under In Progress in board order', async () => {
+    const result = await client.callTool({ name: 'list-board', arguments: { search: 'budget' } });
+    expect(result.isError).toBeFalsy();
+
+    const board = result.structuredContent as { lanes: { name: string; tasks: { title: string }[] }[] };
+    expect(board.lanes.map((lane) => lane.name)).toEqual(LANES);
+    expect(laneTasks(board, 'In Progress')).toEqual(['Write proposal', 'Review budget']);
+    expect(laneTasks(board, 'To Do')).not.toContain('Write proposal');
+    expect(laneTasks(board, 'Done')).not.toContain('Review budget');
+  });
+
+  it('tags:["Q3"] returns exactly Write proposal, Prep board deck, Send recap, grouped by lane', async () => {
+    const result = await client.callTool({ name: 'list-board', arguments: { tags: ['Q3'] } });
+    expect(result.isError).toBeFalsy();
+
+    const board = result.structuredContent as { lanes: { name: string; tasks: { title: string }[] }[] };
+    expect(laneTasks(board, 'In Progress')).toEqual(['Write proposal']);
+    expect(laneTasks(board, 'Done')).toEqual(['Prep board deck', 'Send recap']);
+  });
+
+  it('search:"budget" and tags:["Q3"] together return exactly Write proposal', async () => {
+    const result = await client.callTool({ name: 'list-board', arguments: { search: 'budget', tags: ['Q3'] } });
+    expect(result.isError).toBeFalsy();
+
+    const board = result.structuredContent as { lanes: { name: string; tasks: { title: string }[] }[] };
+    expect(laneTasks(board, 'In Progress')).toEqual(['Write proposal']);
+    expect(laneTasks(board, 'Done')).toEqual([]);
+  });
+
+  it('with neither argument, the whole board is returned unchanged, including every seeded card', async () => {
+    const result = await client.callTool({ name: 'list-board', arguments: {} });
+    expect(result.isError).toBeFalsy();
+
+    const board = result.structuredContent as { lanes: { name: string; tasks: { title: string }[] }[] };
+    expect(board.lanes.map((lane) => lane.name)).toEqual(LANES);
+    expect(laneTasks(board, 'To Do')).toContain('Follow up with Sam');
+    expect(laneTasks(board, 'In Progress')).toEqual(expect.arrayContaining(['Write proposal', 'Review budget']));
+    expect(laneTasks(board, 'Waiting')).toContain('Book venue');
+    expect(laneTasks(board, 'Done')).toEqual(expect.arrayContaining(['Prep board deck', 'Send recap']));
+  });
+
+  it('search omitted, empty, or whitespace-only behaves as no filter (M1)', async () => {
+    const omitted = await client.callTool({ name: 'list-board', arguments: {} });
+    const whitespace = await client.callTool({ name: 'list-board', arguments: { search: '   ' } });
+
+    const omittedBoard = omitted.structuredContent as { lanes: { name: string; tasks: { title: string }[] }[] };
+    const whitespaceBoard = whitespace.structuredContent as { lanes: { name: string; tasks: { title: string }[] }[] };
+    expect(whitespaceBoard).toEqual(omittedBoard);
+  });
+
+  it('leading/trailing whitespace is trimmed from search before matching', async () => {
+    const padded = await client.callTool({ name: 'list-board', arguments: { search: '  budget  ' } });
+    const bare = await client.callTool({ name: 'list-board', arguments: { search: 'budget' } });
+
+    expect(padded.structuredContent).toEqual(bare.structuredContent);
+  });
+
+  it('search:"rivera" matches only on a linked person\'s name (M2)', async () => {
+    const result = await client.callTool({ name: 'list-board', arguments: { search: 'rivera' } });
+    expect(result.isError).toBeFalsy();
+
+    const board = result.structuredContent as { lanes: { name: string; tasks: { title: string }[] }[] };
+    expect(laneTasks(board, 'To Do')).toEqual(['Follow up with Sam']);
+    expect(laneTasks(board, 'Done')).toEqual([]);
+    expect(laneTasks(board, 'In Progress')).toEqual([]);
+    expect(laneTasks(board, 'Waiting')).toEqual([]);
+  });
+
+  it('tag names resolve case-insensitively (M4)', async () => {
+    const lower = await client.callTool({ name: 'list-board', arguments: { tags: ['q3'] } });
+    const proper = await client.callTool({ name: 'list-board', arguments: { tags: ['Q3'] } });
+
+    expect(lower.structuredContent).toEqual(proper.structuredContent);
+  });
+
+  it('a tag that exists but carries no card is not an error and returns no cards for that condition (M5)', async () => {
+    const result = await client.callTool({ name: 'list-board', arguments: { tags: ['Prospect'] } });
+    expect(result.isError).toBeFalsy();
+
+    const board = result.structuredContent as { lanes: { name: string; tasks: unknown[] }[] };
+    for (const lane of board.lanes) {
+      expect(lane.tasks).toEqual([]);
+    }
+  });
+
+  it('a tag name matching no existing tag at all is not an error and returns no cards — not the whole board (M5, FR-017)', async () => {
+    const result = await client.callTool({ name: 'list-board', arguments: { tags: ['NoSuchTagAtAll'] } });
+    expect(result.isError).toBeFalsy();
+
+    const board = result.structuredContent as { lanes: { name: string; tasks: unknown[] }[] };
+    for (const lane of board.lanes) {
+      expect(lane.tasks).toEqual([]);
+    }
+  });
+
+  it('the output shape is unchanged — no tags or searchText leak into the task summary (output-schema contract)', async () => {
+    const result = await client.callTool({ name: 'list-board', arguments: { search: 'budget' } });
+    const board = result.structuredContent as { lanes: { tasks: Record<string, unknown>[] }[] };
+    const task = board.lanes.flatMap((lane) => lane.tasks)[0]!;
+
+    expect(Object.keys(task).sort()).toEqual(['createdAt', 'id', 'lane', 'position', 'title'].sort());
+  });
+
+  it('performs no writes (M10)', async () => {
+    const before = db.select().from(tasks).all();
+
+    await client.callTool({ name: 'list-board', arguments: { search: 'budget', tags: ['Q3'] } });
+
+    const after = db.select().from(tasks).all();
+    expect(after).toEqual(before);
+  });
+
+  it('the text summary reports the number of matching cards', async () => {
+    const result = await client.callTool({ name: 'list-board', arguments: { tags: ['Q3'] } });
+    const text = (result.content as { type: string; text: string }[])[0]!.text;
+    expect(text).toContain('3');
   });
 });

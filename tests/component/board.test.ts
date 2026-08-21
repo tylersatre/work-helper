@@ -54,6 +54,133 @@ function laneChildOrder(lane: HTMLElement): string[] {
   );
 }
 
+const VIP_TAG = { id: 101, name: 'VIP', color: '#f59e0b' };
+const Q3_TAG = { id: 102, name: 'Q3', color: '#3b82f6' };
+
+function seededBoard() {
+  return {
+    lanes: [
+      {
+        name: 'To Do',
+        tasks: [
+          {
+            id: 1,
+            title: 'Follow up with Sam',
+            lane: 'To Do',
+            position: 0,
+            createdAt: 1,
+            tags: [VIP_TAG],
+            searchText: 'follow up with sam\nkickoff call went well\nsam rivera',
+          },
+        ],
+      },
+      {
+        name: 'In Progress',
+        tasks: [
+          {
+            id: 2,
+            title: 'Write proposal',
+            lane: 'In Progress',
+            position: 0,
+            createdAt: 2,
+            tags: [Q3_TAG],
+            searchText: 'write proposal\nwaiting on budget numbers',
+          },
+          {
+            id: 3,
+            title: 'Review budget',
+            lane: 'In Progress',
+            position: 1,
+            createdAt: 3,
+            tags: [],
+            searchText: 'review budget',
+          },
+        ],
+      },
+      {
+        name: 'Waiting',
+        tasks: [
+          {
+            id: 4,
+            title: 'Book venue',
+            lane: 'Waiting',
+            position: 0,
+            createdAt: 4,
+            tags: [],
+            searchText: 'book venue\nacme inc',
+          },
+        ],
+      },
+      {
+        name: 'Done',
+        tasks: [
+          {
+            id: 5,
+            title: 'Prep board deck',
+            lane: 'Done',
+            position: 0,
+            createdAt: 5,
+            tags: [Q3_TAG],
+            searchText: 'prep board deck',
+          },
+          {
+            id: 6,
+            title: 'Send recap',
+            lane: 'Done',
+            position: 1,
+            createdAt: 6,
+            tags: [Q3_TAG],
+            searchText: 'send recap',
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function stubBoardFetch(board: ReturnType<typeof seededBoard> = seededBoard()) {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => board });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+async function renderSeededBoard(fetchMock = stubBoardFetch()) {
+  render(Board);
+  await screen.findByRole('heading', { level: 2, name: 'To Do' });
+  await flushPromises();
+  return fetchMock;
+}
+
+async function typeSearch(value: string): Promise<void> {
+  await fireEvent.update(screen.getByTestId('board-search-input'), value);
+  await flushPromises();
+}
+
+function tagOptionElements(): HTMLElement[] {
+  return Array.from(document.querySelectorAll<HTMLElement>('.n-base-select-option'));
+}
+
+async function openTagFilter(): Promise<void> {
+  const container = screen.getByTestId('board-tag-filter');
+  const trigger = container.querySelector('.n-base-selection') as HTMLElement;
+  await fireEvent.click(trigger);
+  await flushPromises();
+}
+
+function tagOptionLabels(): string[] {
+  return tagOptionElements().map((el) => el.textContent ?? '');
+}
+
+async function selectTag(name: string): Promise<void> {
+  await openTagFilter();
+  const option = tagOptionElements().find((el) => el.textContent === name);
+  if (!option) {
+    throw new Error(`No tag option "${name}" found among [${tagOptionLabels().join(', ')}]`);
+  }
+  await fireEvent.click(option);
+  await flushPromises();
+}
+
 describe('Board', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -91,8 +218,8 @@ describe('Board', () => {
             {
               name: 'To Do',
               tasks: [
-                { id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1 },
-                { id: 2, title: 'Draft Q3 goals', lane: 'To Do', createdAt: 2 },
+                { id: 1, title: 'Follow up with Sam', lane: 'To Do', createdAt: 1, tags: [], searchText: '' },
+                { id: 2, title: 'Draft Q3 goals', lane: 'To Do', createdAt: 2, tags: [], searchText: '' },
               ],
             },
             { name: 'In Progress', tasks: [] },
@@ -120,7 +247,7 @@ describe('Board', () => {
         ok: true,
         json: async () => ({
           lanes: [
-            { name: 'To Do', tasks: [{ id: 1, title: longTitle, lane: 'To Do', createdAt: 1 }] },
+            { name: 'To Do', tasks: [{ id: 1, title: longTitle, lane: 'To Do', createdAt: 1, tags: [], searchText: '' }] },
             { name: 'In Progress', tasks: [] },
             { name: 'Waiting', tasks: [] },
             { name: 'Done', tasks: [] },
@@ -146,7 +273,7 @@ describe('Board', () => {
           ok: true,
           json: async () => ({
             lanes: [
-              { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 }] },
+              { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1, tags: [], searchText: '' }] },
               { name: 'In Progress', tasks: [] },
               { name: 'Waiting', tasks: [] },
               { name: 'Done', tasks: [] },
@@ -156,7 +283,7 @@ describe('Board', () => {
       }
       if (options?.method === 'PUT') {
         putCalls.push({ url, body: JSON.parse(options.body!) });
-        return Promise.resolve({ ok: true, json: async () => ({ id: 1, title: 'A', lane: 'In Progress', position: 0, createdAt: 1 }) });
+        return Promise.resolve({ ok: true, json: async () => ({ id: 1, title: 'A', lane: 'In Progress', position: 0, createdAt: 1, tags: [], searchText: '' }) });
       }
       return Promise.resolve({ ok: true, json: async () => ({}) });
     });
@@ -178,7 +305,7 @@ describe('Board', () => {
   it('a failed save reverts the board via refetch and shows a dismissible error banner', async () => {
     const served = {
       lanes: [
-        { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 }] },
+        { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1, tags: [], searchText: '' }] },
         { name: 'In Progress', tasks: [] },
         { name: 'Waiting', tasks: [] },
         { name: 'Done', tasks: [] },
@@ -213,7 +340,7 @@ describe('Board', () => {
   it('the error banner clears on the next successful move', async () => {
     const served = {
       lanes: [
-        { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 }] },
+        { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1, tags: [], searchText: '' }] },
         { name: 'In Progress', tasks: [] },
         { name: 'Waiting', tasks: [] },
         { name: 'Done', tasks: [] },
@@ -230,7 +357,7 @@ describe('Board', () => {
         return Promise.resolve(
           failed
             ? { ok: false, json: async () => ({ error: { message: 'boom' } }) }
-            : { ok: true, json: async () => ({ id: 1, title: 'A', lane: 'Done', position: 0, createdAt: 1 }) },
+            : { ok: true, json: async () => ({ id: 1, title: 'A', lane: 'Done', position: 0, createdAt: 1, tags: [], searchText: '' }) },
         );
       }
       return Promise.resolve({ ok: true, json: async () => ({}) });
@@ -256,8 +383,8 @@ describe('Board', () => {
         {
           name: 'To Do',
           tasks: [
-            { id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 },
-            { id: 2, title: 'B', lane: 'To Do', position: 1, createdAt: 2 },
+            { id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1, tags: [], searchText: '' },
+            { id: 2, title: 'B', lane: 'To Do', position: 1, createdAt: 2, tags: [], searchText: '' },
           ],
         },
         { name: 'In Progress', tasks: [] },
@@ -309,7 +436,7 @@ describe('Board', () => {
   it('a failed save does not discard a later queued move — the board reconciles to true server state, not a stale mid-chain revert', async () => {
     let served = {
       lanes: [
-        { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 }] },
+        { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1, tags: [], searchText: '' }] },
         { name: 'In Progress', tasks: [] },
         { name: 'Waiting', tasks: [] },
         { name: 'Done', tasks: [] },
@@ -333,10 +460,10 @@ describe('Board', () => {
             { name: 'To Do', tasks: [] },
             { name: 'In Progress', tasks: [] },
             { name: 'Waiting', tasks: [] },
-            { name: 'Done', tasks: [{ id: 1, title: 'A', lane: 'Done', position: 0, createdAt: 1 }] },
+            { name: 'Done', tasks: [{ id: 1, title: 'A', lane: 'Done', position: 0, createdAt: 1, tags: [], searchText: '' }] },
           ],
         };
-        return Promise.resolve({ ok: true, json: async () => ({ id: 1, title: 'A', lane: 'Done', position: 0, createdAt: 1 }) });
+        return Promise.resolve({ ok: true, json: async () => ({ id: 1, title: 'A', lane: 'Done', position: 0, createdAt: 1, tags: [], searchText: '' }) });
       }
       return Promise.resolve({ ok: true, json: async () => ({}) });
     });
@@ -365,7 +492,7 @@ describe('Board', () => {
         ok: true,
         json: async () => ({
           lanes: [
-            { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 }] },
+            { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1, tags: [], searchText: '' }] },
             { name: 'In Progress', tasks: [] },
             { name: 'Waiting', tasks: [] },
             { name: 'Done', tasks: [] },
@@ -394,7 +521,7 @@ describe('Board', () => {
           ok: true,
           json: async () => ({
             lanes: [
-              { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 }] },
+              { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1, tags: [], searchText: '' }] },
               { name: 'In Progress', tasks: [] },
               { name: 'Waiting', tasks: [] },
               { name: 'Done', tasks: [] },
@@ -429,12 +556,12 @@ describe('Board', () => {
           ok: true,
           json: async () => ({
             lanes: [
-              { name: 'To Do', tasks: [{ id: 10, title: 'D', lane: 'To Do', position: 0, createdAt: 1 }] },
+              { name: 'To Do', tasks: [{ id: 10, title: 'D', lane: 'To Do', position: 0, createdAt: 1, tags: [], searchText: '' }] },
               {
                 name: 'In Progress',
                 tasks: [
-                  { id: 1, title: 'X0', lane: 'In Progress', position: 0, createdAt: 2 },
-                  { id: 2, title: 'X1', lane: 'In Progress', position: 1, createdAt: 3 },
+                  { id: 1, title: 'X0', lane: 'In Progress', position: 0, createdAt: 2, tags: [], searchText: '' },
+                  { id: 2, title: 'X1', lane: 'In Progress', position: 1, createdAt: 3, tags: [], searchText: '' },
                 ],
               },
               { name: 'Waiting', tasks: [] },
@@ -481,9 +608,9 @@ describe('Board', () => {
               {
                 name: 'To Do',
                 tasks: [
-                  { id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 },
-                  { id: 2, title: 'B', lane: 'To Do', position: 1, createdAt: 2 },
-                  { id: 3, title: 'C', lane: 'To Do', position: 2, createdAt: 3 },
+                  { id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1, tags: [], searchText: '' },
+                  { id: 2, title: 'B', lane: 'To Do', position: 1, createdAt: 2, tags: [], searchText: '' },
+                  { id: 3, title: 'C', lane: 'To Do', position: 2, createdAt: 3, tags: [], searchText: '' },
                 ],
               },
               { name: 'In Progress', tasks: [] },
@@ -529,9 +656,9 @@ describe('Board', () => {
               {
                 name: 'To Do',
                 tasks: [
-                  { id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 },
-                  { id: 2, title: 'B', lane: 'To Do', position: 1, createdAt: 2 },
-                  { id: 3, title: 'C', lane: 'To Do', position: 2, createdAt: 3 },
+                  { id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1, tags: [], searchText: '' },
+                  { id: 2, title: 'B', lane: 'To Do', position: 1, createdAt: 2, tags: [], searchText: '' },
+                  { id: 3, title: 'C', lane: 'To Do', position: 2, createdAt: 3, tags: [], searchText: '' },
                 ],
               },
               { name: 'In Progress', tasks: [] },
@@ -576,8 +703,8 @@ describe('Board', () => {
             {
               name: 'To Do',
               tasks: [
-                { id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 },
-                { id: 2, title: 'B', lane: 'To Do', position: 1, createdAt: 2 },
+                { id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1, tags: [], searchText: '' },
+                { id: 2, title: 'B', lane: 'To Do', position: 1, createdAt: 2, tags: [], searchText: '' },
               ],
             },
             { name: 'In Progress', tasks: [] },
@@ -612,8 +739,8 @@ describe('Board', () => {
         {
           name: 'To Do',
           tasks: [
-            { id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 },
-            { id: 2, title: 'C', lane: 'To Do', position: 1, createdAt: 2 },
+            { id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1, tags: [], searchText: '' },
+            { id: 2, title: 'C', lane: 'To Do', position: 1, createdAt: 2, tags: [], searchText: '' },
           ],
         },
         { name: 'In Progress', tasks: [] },
@@ -640,13 +767,13 @@ describe('Board', () => {
       if (options?.method === 'PUT' && url === '/api/tasks/2/placement') {
         served = {
           lanes: [
-            { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 }] },
+            { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1, tags: [], searchText: '' }] },
             { name: 'In Progress', tasks: [] },
             { name: 'Waiting', tasks: [] },
-            { name: 'Done', tasks: [{ id: 2, title: 'C', lane: 'Done', position: 0, createdAt: 2 }] },
+            { name: 'Done', tasks: [{ id: 2, title: 'C', lane: 'Done', position: 0, createdAt: 2, tags: [], searchText: '' }] },
           ],
         };
-        return Promise.resolve({ ok: true, json: async () => ({ id: 2, title: 'C', lane: 'Done', position: 0, createdAt: 2 }) });
+        return Promise.resolve({ ok: true, json: async () => ({ id: 2, title: 'C', lane: 'Done', position: 0, createdAt: 2, tags: [], searchText: '' }) });
       }
       return Promise.resolve({ ok: true, json: async () => ({}) });
     });
@@ -674,8 +801,8 @@ describe('Board', () => {
           {
             name: 'To Do',
             tasks: [
-              { id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 },
-              { id: 2, title: 'C', lane: 'To Do', position: 1, createdAt: 2 },
+              { id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1, tags: [], searchText: '' },
+              { id: 2, title: 'C', lane: 'To Do', position: 1, createdAt: 2, tags: [], searchText: '' },
             ],
           },
           { name: 'In Progress', tasks: [] },
@@ -699,7 +826,7 @@ describe('Board', () => {
         ok: true,
         json: async () => ({
           lanes: [
-            { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 }] },
+            { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1, tags: [], searchText: '' }] },
             { name: 'In Progress', tasks: [] },
             { name: 'Waiting', tasks: [] },
             { name: 'Done', tasks: [] },
@@ -722,7 +849,7 @@ describe('Board', () => {
         ok: true,
         json: async () => ({
           lanes: [
-            { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 }] },
+            { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1, tags: [], searchText: '' }] },
             { name: 'In Progress', tasks: [] },
             { name: 'Waiting', tasks: [] },
             { name: 'Done', tasks: [] },
@@ -748,7 +875,7 @@ describe('Board', () => {
         ok: true,
         json: async () => ({
           lanes: [
-            { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1 }] },
+            { name: 'To Do', tasks: [{ id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1, tags: [], searchText: '' }] },
             { name: 'In Progress', tasks: [] },
             { name: 'Waiting', tasks: [] },
             { name: 'Done', tasks: [] },
@@ -783,5 +910,266 @@ describe('Board', () => {
     await flushPromises();
 
     await expect(wrapper.vm.fetchBoard()).rejects.toThrow();
+  });
+});
+
+describe('Board filtering - US1: find a card by typing', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('with no filter applied, shows all six cards, the filter bar, an empty search input, and neither indicator nor clear control (scenario 1)', async () => {
+    await renderSeededBoard();
+
+    expect(screen.getByTestId('board-filter-bar')).toBeTruthy();
+    expect((screen.getByTestId('board-search-input') as HTMLInputElement).value).toBe('');
+    expect(cardTitles(laneByName('To Do'))).toEqual(['Follow up with Sam']);
+    expect(cardTitles(laneByName('In Progress'))).toEqual(['Write proposal', 'Review budget']);
+    expect(cardTitles(laneByName('Waiting'))).toEqual(['Book venue']);
+    expect(cardTitles(laneByName('Done'))).toEqual(['Prep board deck', 'Send recap']);
+    expect(screen.queryByTestId('board-filter-indicator')).toBeNull();
+    expect(screen.queryByTestId('board-clear-filters')).toBeNull();
+  });
+
+  it('typing "SAM" narrows live on the input event with no fetch and no button press, showing the indicator and clear control (scenario 2)', async () => {
+    const fetchMock = await renderSeededBoard();
+    const callsBeforeTyping = fetchMock.mock.calls.length;
+
+    await typeSearch('SAM');
+
+    expect(fetchMock.mock.calls.length).toBe(callsBeforeTyping);
+    expect(cardTitles(laneByName('To Do'))).toEqual(['Follow up with Sam']);
+    expect(within(laneByName('In Progress')).queryByTestId('lane-empty')).not.toBeNull();
+    expect(within(laneByName('Waiting')).queryByTestId('lane-empty')).not.toBeNull();
+    expect(within(laneByName('Done')).queryByTestId('lane-empty')).not.toBeNull();
+    expect(screen.getByTestId('board-filter-indicator').textContent).toContain('1 of 6 cards');
+    expect(screen.getByTestId('board-clear-filters')).toBeTruthy();
+  });
+
+  it('searching "budget" matches note text and title, leaving the other three lanes empty (scenario 3)', async () => {
+    await renderSeededBoard();
+
+    await typeSearch('budget');
+
+    expect(cardTitles(laneByName('In Progress'))).toEqual(['Write proposal', 'Review budget']);
+    expect(within(laneByName('To Do')).queryByTestId('lane-empty')).not.toBeNull();
+    expect(within(laneByName('Waiting')).queryByTestId('lane-empty')).not.toBeNull();
+    expect(within(laneByName('Done')).queryByTestId('lane-empty')).not.toBeNull();
+  });
+
+  it('"rivera" matches only on a linked person\'s name; "acme" matches only on a linked company\'s name (scenario 4)', async () => {
+    await renderSeededBoard();
+
+    await typeSearch('rivera');
+    expect(cardTitles(laneByName('To Do'))).toEqual(['Follow up with Sam']);
+    expect(cardTitles(laneByName('Waiting'))).toEqual([]);
+
+    await typeSearch('acme');
+    expect(cardTitles(laneByName('To Do'))).toEqual([]);
+    expect(cardTitles(laneByName('Waiting'))).toEqual(['Book venue']);
+  });
+
+  it('"zebra" shows four empty lanes, the "No cards match" message, and "0 of 6 cards" (scenario 5)', async () => {
+    await renderSeededBoard();
+
+    await typeSearch('zebra');
+
+    expect(within(laneByName('To Do')).queryByTestId('lane-empty')).not.toBeNull();
+    expect(within(laneByName('In Progress')).queryByTestId('lane-empty')).not.toBeNull();
+    expect(within(laneByName('Waiting')).queryByTestId('lane-empty')).not.toBeNull();
+    expect(within(laneByName('Done')).queryByTestId('lane-empty')).not.toBeNull();
+    expect(screen.getByTestId('board-no-matches')).toBeTruthy();
+    expect(screen.getByTestId('board-filter-indicator').textContent).toContain('0 of 6 cards');
+  });
+
+  it('a whitespace-only search counts as no filter, and " budget " matches the same cards as "budget" (FR-004)', async () => {
+    await renderSeededBoard();
+
+    await typeSearch('   ');
+    expect(cardTitles(laneByName('To Do'))).toEqual(['Follow up with Sam']);
+    expect(screen.queryByTestId('board-filter-indicator')).toBeNull();
+    expect(screen.queryByTestId('board-clear-filters')).toBeNull();
+
+    await typeSearch(' budget ');
+    expect(cardTitles(laneByName('In Progress'))).toEqual(['Write proposal', 'Review budget']);
+  });
+});
+
+describe('Board filtering - US2: narrow the board by tag', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('the tag selector offers exactly Q3 and VIP, alphabetically, with nothing selected (scenario 1)', async () => {
+    await renderSeededBoard();
+
+    await openTagFilter();
+
+    expect(tagOptionLabels()).toEqual(['Q3', 'VIP']);
+  });
+
+  it('selecting Q3 shows exactly its three cards; adding VIP unions to four with the indicator reading "4 of 6 cards" (scenario 2)', async () => {
+    await renderSeededBoard();
+
+    await selectTag('Q3');
+
+    expect(cardTitles(laneByName('In Progress'))).toEqual(['Write proposal']);
+    expect(cardTitles(laneByName('Done'))).toEqual(['Prep board deck', 'Send recap']);
+    expect(cardTitles(laneByName('To Do'))).toEqual([]);
+    expect(cardTitles(laneByName('Waiting'))).toEqual([]);
+
+    await selectTag('VIP');
+
+    expect(cardTitles(laneByName('To Do'))).toEqual(['Follow up with Sam']);
+    expect(screen.getByTestId('board-filter-indicator').textContent).toContain('4 of 6 cards');
+  });
+
+  it('with Q3 selected, typing "budget" leaves only "Write proposal" visible (intersection, scenario 3)', async () => {
+    await renderSeededBoard();
+
+    await selectTag('Q3');
+    await typeSearch('budget');
+
+    expect(cardTitles(laneByName('In Progress'))).toEqual(['Write proposal']);
+    expect(cardTitles(laneByName('Done'))).toEqual([]);
+  });
+
+  it('a tag that stops being used on any card stays selected and listed rather than vanishing (FR-007)', async () => {
+    const fetchMock = stubBoardFetch();
+    const wrapper = mount(Board, { attachTo: document.body });
+    await flushPromises();
+
+    await selectTag('Q3');
+    expect(cardTitles(laneByName('In Progress'))).toEqual(['Write proposal']);
+
+    const boardWithoutQ3 = seededBoard();
+    boardWithoutQ3.lanes[1]!.tasks = boardWithoutQ3.lanes[1]!.tasks.map((task) => ({ ...task, tags: [] }));
+    boardWithoutQ3.lanes[3]!.tasks = boardWithoutQ3.lanes[3]!.tasks.map((task) => ({ ...task, tags: [] }));
+    fetchMock.mockResolvedValue({ ok: true, json: async () => boardWithoutQ3 });
+
+    await wrapper.vm.fetchBoard();
+    await flushPromises();
+
+    expect(tagOptionLabels()).toContain('Q3');
+    expect(cardTitles(laneByName('In Progress'))).toEqual([]);
+    expect(cardTitles(laneByName('Done'))).toEqual([]);
+
+    wrapper.unmount();
+  });
+});
+
+describe('Board filtering - US3: the filter sticks until cleared', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('a stored filter restores the search input, tag selection, and narrowed board on mount (scenario 1)', async () => {
+    window.localStorage.setItem('wh.board.filter', JSON.stringify({ text: 'budget', tagIds: [Q3_TAG.id] }));
+
+    await renderSeededBoard();
+
+    expect((screen.getByTestId('board-search-input') as HTMLInputElement).value).toBe('budget');
+    expect(cardTitles(laneByName('In Progress'))).toEqual(['Write proposal']);
+    expect(cardTitles(laneByName('Done'))).toEqual([]);
+    expect(screen.getByTestId('board-filter-indicator')).toBeTruthy();
+  });
+
+  it('the clear control empties the text, deselects every tag, removes the storage key, and restores all six cards (scenario 2)', async () => {
+    window.localStorage.setItem('wh.board.filter', JSON.stringify({ text: 'budget', tagIds: [Q3_TAG.id] }));
+
+    await renderSeededBoard();
+    await fireEvent.click(screen.getByTestId('board-clear-filters'));
+    await flushPromises();
+
+    expect((screen.getByTestId('board-search-input') as HTMLInputElement).value).toBe('');
+    expect(cardTitles(laneByName('To Do'))).toEqual(['Follow up with Sam']);
+    expect(cardTitles(laneByName('In Progress'))).toEqual(['Write proposal', 'Review budget']);
+    expect(cardTitles(laneByName('Waiting'))).toEqual(['Book venue']);
+    expect(cardTitles(laneByName('Done'))).toEqual(['Prep board deck', 'Send recap']);
+    expect(screen.queryByTestId('board-filter-indicator')).toBeNull();
+    expect(window.localStorage.getItem('wh.board.filter')).toBeNull();
+  });
+});
+
+describe('Board filtering - US4: dragging while filtered', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function putCallsFrom(fetchMock: ReturnType<typeof stubBoardFetch>): { url: string; body: unknown }[] {
+    return fetchMock.mock.calls
+      .map((call) => call as [string, { method?: string; body?: string } | undefined])
+      .filter(([, options]) => options?.method === 'PUT')
+      .map(([url, options]) => ({ url, body: JSON.parse(options!.body!) }));
+  }
+
+  it('a filtered cross-lane drop appends at the destination lane\'s unfiltered task count, not the filtered/rendered count (scenario 1)', async () => {
+    const fetchMock = stubBoardFetch();
+    // Override the generic fetch stub so PUT requests resolve distinctly from the initial GET.
+    fetchMock.mockImplementation((url: string, options?: { method?: string }) => {
+      if (options?.method === 'PUT') {
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      }
+      return Promise.resolve({ ok: true, json: async () => seededBoard() });
+    });
+    await renderSeededBoard(fetchMock);
+
+    await selectTag('Q3');
+
+    await fireEvent.drop(laneByName('Waiting'), { dataTransfer: makeDataTransfer(2) });
+    await flushPromises();
+
+    const puts = putCallsFrom(fetchMock);
+    expect(puts).toHaveLength(1);
+    expect(puts[0]).toEqual({ url: '/api/tasks/2/placement', body: { lane: 'Waiting', index: 1 } });
+  });
+
+  it('a within-lane drop while filtered issues no placement request at all and leaves board state untouched (scenario 2)', async () => {
+    const fetchMock = stubBoardFetch();
+    fetchMock.mockImplementation((url: string, options?: { method?: string }) => {
+      if (options?.method === 'PUT') {
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      }
+      return Promise.resolve({ ok: true, json: async () => seededBoard() });
+    });
+    await renderSeededBoard(fetchMock);
+
+    await selectTag('Q3');
+
+    const done = laneByName('Done');
+    const [prepDeck, sendRecap] = within(done).getAllByTestId('task-card');
+    stubRect(prepDeck!, 0, 40);
+    stubRect(sendRecap!, 40, 40);
+
+    await fireEvent.dragStart(sendRecap!, { dataTransfer: makeDataTransfer(6) });
+    await fireDragOver(done, 10);
+    await fireDrop(done, makeDataTransfer(6), 10);
+
+    expect(putCallsFrom(fetchMock)).toEqual([]);
+    expect(cardTitles(done)).toEqual(['Prep board deck', 'Send recap']);
+  });
+
+  it('while filtered, no drop indicator is rendered in any lane; unfiltered drag still shows one (U12, non-regression)', async () => {
+    await renderSeededBoard();
+
+    const inProgress = laneByName('In Progress');
+    const [writeProposal] = within(inProgress).getAllByTestId('task-card');
+    stubRect(writeProposal!, 0, 40);
+
+    await fireEvent.dragStart(writeProposal!, { dataTransfer: makeDataTransfer(2) });
+    await fireDragOver(inProgress, 5);
+    expect(within(inProgress).queryByTestId('drop-indicator')).not.toBeNull();
+    await fireEvent.dragEnd(writeProposal!);
+    await flushPromises();
+
+    await selectTag('Q3');
+
+    const doneAfterFilter = laneByName('Done');
+    const [prepDeck] = within(doneAfterFilter).getAllByTestId('task-card');
+    stubRect(prepDeck!, 0, 40);
+    await fireEvent.dragStart(prepDeck!, { dataTransfer: makeDataTransfer(5) });
+    await fireDragOver(doneAfterFilter, 5);
+
+    expect(within(doneAfterFilter).queryByTestId('drop-indicator')).toBeNull();
   });
 });

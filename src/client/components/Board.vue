@@ -1,13 +1,89 @@
 <script setup lang="ts">
 import { NButton } from 'naive-ui';
-import { onMounted, ref } from 'vue';
-import type { BoardView, Task } from '../../shared/types.js';
+import { computed, onMounted, ref, watch } from 'vue';
+import { matchesBoardFilter } from '../../shared/board-filter.js';
+import type { BoardFilter, BoardTask, BoardView } from '../../shared/types.js';
+import { clearFilter as clearStoredFilter, readFilter, writeFilter } from '../utils/board-filter-storage.js';
+import BoardFilterBar from './BoardFilterBar.vue';
 import CreateTaskForm from './CreateTaskForm.vue';
 import Lane from './Lane.vue';
 
 const board = ref<BoardView>({ lanes: [] });
 const draggedTaskId = ref<number | null>(null);
 const errorMessage = ref<string | null>(null);
+const filter = ref<BoardFilter>(readFilter());
+
+watch(
+  filter,
+  (value) => {
+    if (value.text.trim() === '' && value.tagIds.length === 0) {
+      clearStoredFilter();
+    } else {
+      writeFilter(value);
+    }
+  },
+  { deep: true },
+);
+
+// Names of every tag ever seen on this board, so a tag that a still-selected filter refers to
+// keeps a real name in the selector even after the last card carrying it loses it (FR-007).
+const knownTagNames = ref<Map<number, string>>(new Map());
+
+watch(
+  board,
+  (value) => {
+    for (const lane of value.lanes) {
+      for (const task of lane.tasks) {
+        for (const tag of task.tags) {
+          knownTagNames.value.set(tag.id, tag.name);
+        }
+      }
+    }
+  },
+  { immediate: true },
+);
+
+const filterActive = computed(() => filter.value.text.trim() !== '' || filter.value.tagIds.length > 0);
+
+const visibleLanes = computed(() =>
+  board.value.lanes.map((lane) => ({
+    ...lane,
+    tasks: lane.tasks.filter((task) => matchesBoardFilter(task, filter.value)),
+  })),
+);
+
+const totalCount = computed(() => board.value.lanes.reduce((sum, lane) => sum + lane.tasks.length, 0));
+const visibleCount = computed(() => visibleLanes.value.reduce((sum, lane) => sum + lane.tasks.length, 0));
+const noMatches = computed(() => filterActive.value && visibleCount.value === 0);
+
+const availableTags = computed(() => {
+  const byId = new Map<number, { id: number; name: string }>();
+  for (const lane of board.value.lanes) {
+    for (const task of lane.tasks) {
+      for (const tag of task.tags) {
+        byId.set(tag.id, { id: tag.id, name: tag.name });
+      }
+    }
+  }
+  for (const tagId of filter.value.tagIds) {
+    if (!byId.has(tagId)) {
+      byId.set(tagId, { id: tagId, name: knownTagNames.value.get(tagId) ?? String(tagId) });
+    }
+  }
+  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+});
+
+function onFilterTextUpdate(value: string): void {
+  filter.value = { ...filter.value, text: value };
+}
+
+function onFilterTagsUpdate(tagIds: number[]): void {
+  filter.value = { ...filter.value, tagIds };
+}
+
+function clearFilter(): void {
+  filter.value = { text: '', tagIds: [] };
+}
 
 let saveChain: Promise<void> = Promise.resolve();
 let pendingSaves = 0;
@@ -23,7 +99,7 @@ async function fetchBoard(): Promise<void> {
 }
 
 function applyMove(current: BoardView, taskId: number, targetLaneName: string, targetIndex: number): BoardView {
-  let movingTask: Task | undefined;
+  let movingTask: BoardTask | undefined;
   const withoutTask = current.lanes.map((lane) => {
     const index = lane.tasks.findIndex((task) => task.id === taskId);
     if (index === -1) {
@@ -37,7 +113,7 @@ function applyMove(current: BoardView, taskId: number, targetLaneName: string, t
     return current;
   }
 
-  const updatedTask: Task = { ...movingTask, lane: targetLaneName };
+  const updatedTask: BoardTask = { ...movingTask, lane: targetLaneName };
 
   return {
     lanes: withoutTask.map((lane) => {
@@ -53,7 +129,10 @@ function applyMove(current: BoardView, taskId: number, targetLaneName: string, t
 }
 
 function onDrop(taskId: number, laneName: string, index: number): void {
-  board.value = applyMove(board.value, taskId, laneName, index);
+  // A filtered drag can't see the true destination length — always append past the end of the
+  // lane's unfiltered task list, never the rendered/filtered one (FR-015).
+  const targetIndex = filterActive.value ? (board.value.lanes.find((lane) => lane.name === laneName)?.tasks.length ?? index) : index;
+  board.value = applyMove(board.value, taskId, laneName, targetIndex);
   draggedTaskId.value = null;
 
   pendingSaves += 1;
@@ -62,7 +141,7 @@ function onDrop(taskId: number, laneName: string, index: number): void {
       fetch(`/api/tasks/${taskId}/placement`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lane: laneName, index }),
+        body: JSON.stringify({ lane: laneName, index: targetIndex }),
       }),
     )
     .then((response) => {
@@ -139,13 +218,26 @@ onMounted(() => {
       {{ errorMessage }}
       <NButton size="small" @click="dismissError">Dismiss</NButton>
     </div>
+    <BoardFilterBar
+      :text="filter.text"
+      :tag-ids="filter.tagIds"
+      :tag-options="availableTags"
+      :filter-active="filterActive"
+      :visible-count="visibleCount"
+      :total-count="totalCount"
+      @update:text="onFilterTextUpdate"
+      @update:tag-ids="onFilterTagsUpdate"
+      @clear="clearFilter"
+    />
+    <p v-if="noMatches" class="board-no-matches" data-testid="board-no-matches">No cards match</p>
     <div class="board">
       <Lane
-        v-for="(lane, index) in board.lanes"
+        v-for="(lane, index) in visibleLanes"
         :key="lane.name"
         :name="lane.name"
         :tasks="lane.tasks"
         :dragged-task-id="draggedTaskId"
+        :filter-active="filterActive"
         @drop="onDrop"
         @card-dragstart="onCardDragStart"
         @card-dragend="onCardDragEnd"
@@ -173,6 +265,12 @@ onMounted(() => {
   min-height: 0;
   overflow-x: auto;
   padding: 0.75rem;
+}
+
+.board-no-matches {
+  margin: 0.75rem 0.75rem 0;
+  color: var(--wh-text-secondary);
+  font-size: 0.85rem;
 }
 
 .error-banner {
