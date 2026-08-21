@@ -9,6 +9,7 @@ function makeRouter(initialPath: string) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
+      { path: '/', component: { template: '<div>board</div>' } },
       { path: '/tasks/:id', component: TaskDetailPage },
       { path: '/emails/:id', component: { template: '<div>email</div>' } },
     ],
@@ -587,5 +588,186 @@ describe('TaskDetailPage', () => {
     const linked = await screen.findAllByTestId('linked-conversation');
     expect(linked).toHaveLength(1);
     expect(linked[0]?.textContent).toContain('Pricing question');
+  });
+
+  describe('delete card (024-delete-card)', () => {
+    async function renderDetail() {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/tasks/1' && !options) {
+          return Promise.resolve({ ok: true, json: async () => taskDetailPayload() });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const router = makeRouter('/tasks/1');
+      await router.isReady();
+      render(TaskDetailPage, { global: { plugins: [router] } });
+      await flushPromises();
+      await screen.findByText('Follow up with Sam');
+
+      return { router, fetchMock };
+    }
+
+    it('shows a delete control near the title, alongside the lane pills (US1-AS1, FR-001)', async () => {
+      await renderDetail();
+
+      expect(screen.getByTestId('delete-card-button')).toBeTruthy();
+    });
+
+    it('clicking delete opens a confirmation dialog naming the card and warning it cannot be undone, without deleting yet (US1-AS2, FR-002, FR-003)', async () => {
+      const { fetchMock } = await renderDetail();
+      fetchMock.mockClear();
+
+      await fireEvent.click(screen.getByTestId('delete-card-button'));
+      await flushPromises();
+
+      const dialog = screen.getByTestId('delete-card-dialog');
+      expect(dialog.textContent).toContain('Follow up with Sam');
+      expect(dialog.textContent?.toLowerCase()).toContain("can't be undone");
+      expect(fetchMock).not.toHaveBeenCalledWith('/api/tasks/1', expect.objectContaining({ method: 'DELETE' }));
+    });
+
+    it('cancelling the dialog sends no request and leaves the detail view unchanged (US2-AS1, FR-004)', async () => {
+      const { fetchMock } = await renderDetail();
+
+      await fireEvent.click(screen.getByTestId('delete-card-button'));
+      await flushPromises();
+      const dialog = screen.getByTestId('delete-card-dialog');
+      fetchMock.mockClear();
+
+      await fireEvent.click(within(dialog).getByRole('button', { name: /^cancel$/i }));
+      await flushPromises();
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('delete-card-dialog')).toBeNull();
+      expect(await screen.findByText('Follow up with Sam')).toBeTruthy();
+    });
+
+    it('dismissing the dialog with Escape sends no request and does not delete the card', async () => {
+      const { fetchMock } = await renderDetail();
+
+      await fireEvent.click(screen.getByTestId('delete-card-button'));
+      await flushPromises();
+      fetchMock.mockClear();
+
+      await fireEvent.keyDown(document, { key: 'Escape' });
+      await flushPromises();
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(await screen.findByText('Follow up with Sam')).toBeTruthy();
+    });
+
+    it('confirming deletion calls DELETE /api/tasks/:id and navigates back to the board (US1-AS3, FR-005, FR-006)', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/tasks/1' && !options) {
+          return Promise.resolve({ ok: true, json: async () => taskDetailPayload() });
+        }
+        if (url === '/api/tasks/1' && options?.method === 'DELETE') {
+          return Promise.resolve({ ok: true, status: 200, json: async () => ({ ok: true }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const router = makeRouter('/tasks/1');
+      await router.isReady();
+      render(TaskDetailPage, { global: { plugins: [router] } });
+      await flushPromises();
+      await screen.findByText('Follow up with Sam');
+
+      await fireEvent.click(screen.getByTestId('delete-card-button'));
+      await flushPromises();
+      await fireEvent.click(within(screen.getByTestId('delete-card-dialog')).getByRole('button', { name: /^delete$/i }));
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/tasks/1', expect.objectContaining({ method: 'DELETE' }));
+      expect(router.currentRoute.value.fullPath).toBe('/');
+    });
+
+    it('a 404 on confirm (stale tab, already deleted) is treated the same as success and navigates back to the board (edge case)', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/tasks/1' && !options) {
+          return Promise.resolve({ ok: true, json: async () => taskDetailPayload() });
+        }
+        if (url === '/api/tasks/1' && options?.method === 'DELETE') {
+          return Promise.resolve({ ok: false, status: 404, json: async () => ({ error: { message: 'Task not found' } }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const router = makeRouter('/tasks/1');
+      await router.isReady();
+      render(TaskDetailPage, { global: { plugins: [router] } });
+      await flushPromises();
+      await screen.findByText('Follow up with Sam');
+
+      await fireEvent.click(screen.getByTestId('delete-card-button'));
+      await flushPromises();
+      await fireEvent.click(within(screen.getByTestId('delete-card-dialog')).getByRole('button', { name: /^delete$/i }));
+      await flushPromises();
+
+      expect(router.currentRoute.value.fullPath).toBe('/');
+    });
+
+    it('a 500 on confirm keeps the dialog open, shows an alert error, and does not navigate away', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/tasks/1' && !options) {
+          return Promise.resolve({ ok: true, json: async () => taskDetailPayload() });
+        }
+        if (url === '/api/tasks/1' && options?.method === 'DELETE') {
+          return Promise.resolve({ ok: false, status: 500, json: async () => ({ error: { message: 'Something went wrong' } }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const router = makeRouter('/tasks/1');
+      await router.isReady();
+      render(TaskDetailPage, { global: { plugins: [router] } });
+      await flushPromises();
+      await screen.findByText('Follow up with Sam');
+
+      await fireEvent.click(screen.getByTestId('delete-card-button'));
+      await flushPromises();
+      await fireEvent.click(within(screen.getByTestId('delete-card-dialog')).getByRole('button', { name: /^delete$/i }));
+      await flushPromises();
+
+      expect(router.currentRoute.value.fullPath).toBe('/tasks/1');
+      const dialog = screen.getByTestId('delete-card-dialog');
+      expect(within(dialog).getByRole('alert').textContent).toContain('Something went wrong');
+    });
+
+    it('cancelling after a failed confirm clears the error so it does not persist on the page', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/tasks/1' && !options) {
+          return Promise.resolve({ ok: true, json: async () => taskDetailPayload() });
+        }
+        if (url === '/api/tasks/1' && options?.method === 'DELETE') {
+          return Promise.resolve({ ok: false, status: 500, json: async () => ({ error: { message: 'Something went wrong' } }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const router = makeRouter('/tasks/1');
+      await router.isReady();
+      render(TaskDetailPage, { global: { plugins: [router] } });
+      await flushPromises();
+      await screen.findByText('Follow up with Sam');
+
+      await fireEvent.click(screen.getByTestId('delete-card-button'));
+      await flushPromises();
+      await fireEvent.click(within(screen.getByTestId('delete-card-dialog')).getByRole('button', { name: /^delete$/i }));
+      await flushPromises();
+      expect(within(screen.getByTestId('delete-card-dialog')).getByRole('alert')).toBeTruthy();
+
+      await fireEvent.click(within(screen.getByTestId('delete-card-dialog')).getByRole('button', { name: /^cancel$/i }));
+      await flushPromises();
+
+      expect(screen.queryByTestId('delete-card-dialog')).toBeNull();
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
   });
 });
