@@ -37,9 +37,9 @@ function findTagByNameCaseInsensitive(db: AppDb, name: string, excludeId?: numbe
   return row;
 }
 
-export type CreateTagResult = { ok: true; tag: TagRecord } | { ok: false; error: 'name-taken' };
+export type CreateTagResult = { ok: true; tag: TagRecord } | { ok: false; error: 'name-taken' | 'invalid-color' };
 
-export function createTag(db: AppDb, rawName: unknown): CreateTagResult {
+export function createTag(db: AppDb, rawName: unknown, rawColor?: unknown): CreateTagResult {
   const name = tagNameSchema.parse(rawName);
 
   const existing = findTagByNameCaseInsensitive(db, name);
@@ -47,7 +47,17 @@ export function createTag(db: AppDb, rawName: unknown): CreateTagResult {
     return { ok: false, error: 'name-taken' };
   }
 
-  const color = nextTagColor(lastCreatedTagColor(db));
+  let color: string;
+  if (rawColor === undefined) {
+    color = nextTagColor(lastCreatedTagColor(db));
+  } else {
+    const result = tagColorSchema.safeParse(rawColor);
+    if (!result.success) {
+      return { ok: false, error: 'invalid-color' };
+    }
+    color = result.data;
+  }
+
   const [created] = db
     .insert(tags)
     .values({ name, color, createdAt: Date.now() })
@@ -251,4 +261,87 @@ export function deleteTag(db: AppDb, id: number): DeleteTagResult {
   db.delete(tags).where(eq(tags.id, id)).run();
 
   return { ok: true };
+}
+
+export type TagIdentifier = { tagId: number } | { tagName: unknown };
+
+export type ResolveTagResult = { ok: true; tag: TagRecord } | { ok: false; error: 'tag-not-found' | 'invalid-name' };
+
+export function resolveExistingTag(db: AppDb, input: TagIdentifier): ResolveTagResult {
+  if ('tagId' in input) {
+    const [row] = db.select({ id: tags.id, name: tags.name, color: tags.color }).from(tags).where(eq(tags.id, input.tagId)).limit(1).all();
+    if (!row) {
+      return { ok: false, error: 'tag-not-found' };
+    }
+    return { ok: true, tag: row };
+  }
+
+  const parsed = tagNameSchema.safeParse(input.tagName);
+  if (!parsed.success) {
+    return { ok: false, error: 'invalid-name' };
+  }
+
+  const existing = findTagByNameCaseInsensitive(db, parsed.data);
+  if (!existing) {
+    return { ok: false, error: 'tag-not-found' };
+  }
+  return { ok: true, tag: { id: existing.id, name: existing.name, color: existing.color } };
+}
+
+export type DeleteTagByIdentifierResult =
+  | { ok: true; peopleDetached: number; tasksDetached: number }
+  | { ok: false; error: 'tag-not-found' | 'invalid-name' };
+
+export function deleteTagByIdentifier(db: AppDb, input: TagIdentifier): DeleteTagByIdentifierResult {
+  const resolved = resolveExistingTag(db, input);
+  if (!resolved.ok) {
+    return resolved;
+  }
+
+  const [{ peopleDetached }] = db
+    .select({ peopleDetached: sql<number>`count(*)` })
+    .from(personTags)
+    .where(eq(personTags.tagId, resolved.tag.id))
+    .all();
+  const [{ tasksDetached }] = db
+    .select({ tasksDetached: sql<number>`count(*)` })
+    .from(taskTags)
+    .where(eq(taskTags.tagId, resolved.tag.id))
+    .all();
+
+  db.delete(tags).where(eq(tags.id, resolved.tag.id)).run();
+
+  return { ok: true, peopleDetached, tasksDetached };
+}
+
+export type AttachExistingResult = { ok: true; tags: TagRecord[] } | { ok: false; error: 'record-not-found' | 'tag-not-found' | 'invalid-name' };
+
+export function attachExistingTagToTask(db: AppDb, taskId: number, input: TagIdentifier): AttachExistingResult {
+  const [task] = db.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, taskId)).limit(1).all();
+  if (!task) {
+    return { ok: false, error: 'record-not-found' };
+  }
+
+  const resolved = resolveExistingTag(db, input);
+  if (!resolved.ok) {
+    return { ok: false, error: resolved.error };
+  }
+
+  db.insert(taskTags).values({ taskId, tagId: resolved.tag.id }).onConflictDoNothing().run();
+  return { ok: true, tags: getTagsForTask(db, taskId) };
+}
+
+export function attachExistingTagToPerson(db: AppDb, personId: number, input: TagIdentifier): AttachExistingResult {
+  const [person] = db.select({ id: people.id }).from(people).where(eq(people.id, personId)).limit(1).all();
+  if (!person) {
+    return { ok: false, error: 'record-not-found' };
+  }
+
+  const resolved = resolveExistingTag(db, input);
+  if (!resolved.ok) {
+    return { ok: false, error: resolved.error };
+  }
+
+  db.insert(personTags).values({ personId, tagId: resolved.tag.id }).onConflictDoNothing().run();
+  return { ok: true, tags: getTagsForPerson(db, personId) };
 }
