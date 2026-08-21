@@ -167,7 +167,7 @@ Single-package web app per plan.md: `src/client`, `src/server`, `src/shared`, te
 - [X] T039 [P] Record the MCP-only evidence for US5 (no UI surface) with `npx vitest run tests/integration/mcp-read-tools.test.ts --reporter=verbose 2>&1 | tee docs/evidence/board-search-filter/mcp-list-board.txt` (quickstart.md §4)
 - [X] T040 Walk quickstart.md's manual smoke checklist against the seeded board and confirm every line, noting any wording Tyler may want to adjust at acceptance (the "N of M cards" / "No cards match" copy is illustrative per the spec's Assumptions)
 - [X] T041 Dispatch the `verifier` agent with `spec.md`, `quickstart.md`, and `docs/evidence/board-search-filter/`, confirming every FR (FR-001–FR-018) and SC (SC-001–SC-007) has both a passing automated check and surface-appropriate evidence; the verifier re-runs the checks itself rather than trusting a summary (Constitution III)
-- [ ] T042 Open the PR with a Conventional Commits title, noting explicitly that this feature makes **no schema change and adds no migration** (data-model.md), and let the Claude Code CI review run on the diff
+- [X] T042 Open the PR with a Conventional Commits title, noting explicitly that this feature makes **no schema change and adds no migration** (data-model.md), and let the Claude Code CI review run on the diff
 
 ---
 
