@@ -272,6 +272,37 @@ export function deleteNote(db: AppDb, taskId: number, noteId: number): DeleteNot
   return { ok: true };
 }
 
+export type DeleteNoteByIdResult = { ok: true; taskId: number } | { ok: false; error: 'note-not-found' };
+
+export function deleteNoteById(db: AppDb, noteId: number): DeleteNoteByIdResult {
+  const [note] = db.select({ id: taskNotes.id, taskId: taskNotes.taskId }).from(taskNotes).where(eq(taskNotes.id, noteId)).limit(1).all();
+  if (!note) {
+    return { ok: false, error: 'note-not-found' };
+  }
+
+  db.delete(taskNotes).where(eq(taskNotes.id, noteId)).run();
+
+  return { ok: true, taskId: note.taskId };
+}
+
+export type UpdateTaskTitleResult = { ok: true; task: typeof tasks.$inferSelect } | { ok: false; error: 'task-not-found' | 'invalid-title' };
+
+export function updateTaskTitle(db: AppDb, taskId: number, rawTitle: unknown): UpdateTaskTitleResult {
+  const [task] = db.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, taskId)).limit(1).all();
+  if (!task) {
+    return { ok: false, error: 'task-not-found' };
+  }
+
+  const result = titleSchema.safeParse(rawTitle);
+  if (!result.success) {
+    return { ok: false, error: 'invalid-title' };
+  }
+
+  db.update(tasks).set({ title: result.data }).where(eq(tasks.id, taskId)).run();
+  const [updated] = db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).all();
+  return { ok: true, task: updated! };
+}
+
 export type LinkPersonResult =
   | { ok: true; task: NonNullable<ReturnType<typeof getTaskDetail>> }
   | { ok: false; error: 'task-not-found' | 'person-not-found' };

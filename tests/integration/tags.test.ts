@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
+import { tags } from '../../src/server/db/schema.js';
+import { createTag, deleteTagByIdentifier, resolveExistingTag } from '../../src/server/services/tags.js';
 
 const LANES = ['To Do', 'In Progress', 'Waiting', 'Done'];
 
@@ -206,5 +208,128 @@ describe('DELETE /api/tags/:id', () => {
 
     expect(response.statusCode).toBe(404);
     expect(response.json()).toEqual({ error: { message: 'Tag not found' } });
+  });
+});
+
+describe('resolveExistingTag (service)', () => {
+  it('resolves by tagId', () => {
+    const { db } = createDb(':memory:');
+    const created = createTag(db, 'Renewal');
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const result = resolveExistingTag(db, { tagId: created.tag.id });
+
+    expect(result).toEqual({ ok: true, tag: created.tag });
+  });
+
+  it('resolves by tagName case-insensitively', () => {
+    const { db } = createDb(':memory:');
+    const created = createTag(db, 'Renewal');
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const result = resolveExistingTag(db, { tagName: 'renewal' });
+
+    expect(result).toEqual({ ok: true, tag: created.tag });
+  });
+
+  it('returns tag-not-found for an unmatched id', () => {
+    const { db } = createDb(':memory:');
+
+    const result = resolveExistingTag(db, { tagId: 999 });
+
+    expect(result).toEqual({ ok: false, error: 'tag-not-found' });
+  });
+
+  it('returns tag-not-found for an unmatched name', () => {
+    const { db } = createDb(':memory:');
+
+    const result = resolveExistingTag(db, { tagName: 'Ghost' });
+
+    expect(result).toEqual({ ok: false, error: 'tag-not-found' });
+  });
+
+  it('returns invalid-name for an empty/whitespace tagName', () => {
+    const { db } = createDb(':memory:');
+
+    const result = resolveExistingTag(db, { tagName: '   ' });
+
+    expect(result).toEqual({ ok: false, error: 'invalid-name' });
+  });
+});
+
+describe('createTag (service, extended signature)', () => {
+  it('creates with an explicit valid color', () => {
+    const { db } = createDb(':memory:');
+
+    const result = createTag(db, 'Renewal', '#F59E0B');
+
+    expect(result).toEqual({ ok: true, tag: { id: expect.any(Number), name: 'Renewal', color: '#F59E0B' } });
+  });
+
+  it('creates with an auto-assigned color when rawColor is omitted', () => {
+    const { db } = createDb(':memory:');
+
+    const result = createTag(db, 'Overdue');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(typeof result.tag.color).toBe('string');
+    expect(result.tag.color).toMatch(/^#[0-9a-fA-F]{6}$/);
+  });
+
+  it('rejects an empty name', () => {
+    const { db } = createDb(':memory:');
+
+    expect(() => createTag(db, '   ')).toThrow();
+  });
+
+  it('rejects a case-insensitive duplicate name', () => {
+    const { db } = createDb(':memory:');
+    createTag(db, 'Renewal');
+
+    const result = createTag(db, 'renewal');
+
+    expect(result).toEqual({ ok: false, error: 'name-taken' });
+  });
+
+  it('rejects an invalid (non-hex) rawColor with invalid-color', () => {
+    const { db } = createDb(':memory:');
+
+    const result = createTag(db, 'Renewal', 'blue');
+
+    expect(result).toEqual({ ok: false, error: 'invalid-color' });
+  });
+});
+
+describe('deleteTagByIdentifier (service)', () => {
+  it('deletes a tag attached to N people, M tasks, and K companies, cascading the detach and reporting counts', () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    return (async () => {
+      const task = await createTask(app, 'Book venue');
+      const personA = await createPerson(app, 'Jordan', 'Smith');
+      const personB = await createPerson(app, 'Sam', 'Rivera');
+      const company = (await app.inject({ method: 'POST', url: '/api/companies', payload: { name: 'Acme' } })).json();
+      const tag = (await app.inject({ method: 'POST', url: '/api/tags', payload: { name: 'Renewal' } })).json();
+      await app.inject({ method: 'POST', url: `/api/tasks/${task.id}/tags`, payload: { tagId: tag.id } });
+      await app.inject({ method: 'POST', url: `/api/people/${personA.id}/tags`, payload: { tagId: tag.id } });
+      await app.inject({ method: 'POST', url: `/api/people/${personB.id}/tags`, payload: { tagId: tag.id } });
+      await app.inject({ method: 'POST', url: `/api/companies/${company.id}/tags`, payload: { tagId: tag.id } });
+
+      const result = deleteTagByIdentifier(db, { tagId: tag.id });
+
+      expect(result).toEqual({ ok: true, name: 'Renewal', peopleDetached: 2, tasksDetached: 1, companiesDetached: 1 });
+      expect(db.select().from(tags).all()).toEqual([]);
+    })();
+  });
+
+  it('returns tag-not-found for an unknown tag id', () => {
+    const { db } = createDb(':memory:');
+
+    const result = deleteTagByIdentifier(db, { tagId: 999 });
+
+    expect(result).toEqual({ ok: false, error: 'tag-not-found' });
   });
 });

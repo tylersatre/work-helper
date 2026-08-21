@@ -1,8 +1,9 @@
+import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
-import { tasks } from '../../src/server/db/schema.js';
-import { createTask, InvalidLaneError } from '../../src/server/services/tasks.js';
+import { taskNotes, tasks } from '../../src/server/db/schema.js';
+import { createTask, deleteNoteById, InvalidLaneError, updateTaskTitle } from '../../src/server/services/tasks.js';
 
 const LANES = ['To Do', 'In Progress', 'Waiting', 'Done'];
 
@@ -429,5 +430,70 @@ describe('createTask lane targeting (US3)', () => {
 
     const after = db.select().from(tasks).all().length;
     expect(after).toBe(before);
+  });
+});
+
+describe('deleteNoteById (service)', () => {
+  function seedNotes(db: ReturnType<typeof createDb>['db'], taskId: number, texts: string[]) {
+    return texts.map((text, i) => db.insert(taskNotes).values({ taskId, text, source: 'ui', createdAt: i }).returning().all()[0]!);
+  }
+
+  it('deletes the note and returns { ok: true, taskId }, leaving the task\'s other notes untouched', () => {
+    const { db } = createDb(':memory:');
+    const [task] = seed(db, [{ title: 'Draft Q3 goals', lane: 'To Do', position: 0 }]);
+    const [first, second] = seedNotes(db, task!.id, ['First note', 'Second note']);
+
+    const result = deleteNoteById(db, second!.id);
+
+    expect(result).toEqual({ ok: true, taskId: task!.id });
+    const remaining = db.select().from(taskNotes).where(eq(taskNotes.taskId, task!.id)).all();
+    expect(remaining.map((n) => n.id)).toEqual([first!.id]);
+  });
+
+  it('returns note-not-found for an unknown note id', () => {
+    const { db } = createDb(':memory:');
+
+    const result = deleteNoteById(db, 999);
+
+    expect(result).toEqual({ ok: false, error: 'note-not-found' });
+  });
+});
+
+describe('updateTaskTitle (service)', () => {
+  it('updates the title and returns { ok: true, task } with the new title', () => {
+    const { db } = createDb(':memory:');
+    const [task] = seed(db, [{ title: 'Book venue (due Aug 20)', lane: 'To Do', position: 0 }]);
+
+    const result = updateTaskTitle(db, task!.id, 'Book venue (due Sept 5)');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.task.title).toBe('Book venue (due Sept 5)');
+  });
+
+  it('rejects an empty title with invalid-title', () => {
+    const { db } = createDb(':memory:');
+    const [task] = seed(db, [{ title: 'Book venue', lane: 'To Do', position: 0 }]);
+
+    const result = updateTaskTitle(db, task!.id, '');
+
+    expect(result).toEqual({ ok: false, error: 'invalid-title' });
+  });
+
+  it('rejects a whitespace-only title with invalid-title', () => {
+    const { db } = createDb(':memory:');
+    const [task] = seed(db, [{ title: 'Book venue', lane: 'To Do', position: 0 }]);
+
+    const result = updateTaskTitle(db, task!.id, '   ');
+
+    expect(result).toEqual({ ok: false, error: 'invalid-title' });
+  });
+
+  it('returns task-not-found for an unknown task id', () => {
+    const { db } = createDb(':memory:');
+
+    const result = updateTaskTitle(db, 999, 'New title');
+
+    expect(result).toEqual({ ok: false, error: 'task-not-found' });
   });
 });

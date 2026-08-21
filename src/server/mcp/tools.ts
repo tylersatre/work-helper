@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ZodError, z } from 'zod';
+import { eq } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { primaryValue } from '../../shared/contacts.js';
 import { addEntry, markPrimary, removeEntry } from '../services/contact-entries.js';
@@ -13,9 +14,32 @@ import {
   unlinkCompanyFromTask,
 } from '../services/companies.js';
 import { createPerson, getPerson, listPeople, updatePerson as updatePersonService, type PersonRecord } from '../services/people.js';
-import { addNote, createTask, getTaskDetail, InvalidLaneError, linkPerson, listBoardTasksByLane, moveTask, unlinkPerson } from '../services/tasks.js';
+import {
+  addNote,
+  createTask,
+  deleteNoteById,
+  getTaskDetail,
+  InvalidLaneError,
+  linkPerson,
+  listBoardTasksByLane,
+  moveTask,
+  unlinkPerson,
+  updateTaskTitle,
+} from '../services/tasks.js';
 import { linkConversationToTask, unlinkConversationFromTask } from '../services/task-conversations.js';
-import { emailAddresses, personPhones, tags as tagsTable } from '../db/schema.js';
+import {
+  attachExistingTagToPerson,
+  attachExistingTagToTask,
+  createTag as createTagService,
+  deleteTagByIdentifier,
+  detachTagFromPerson,
+  detachTagFromTask,
+  listTags as listTagsService,
+  resolveExistingTag,
+  updateTag as updateTagService,
+  type TagIdentifier,
+} from '../services/tags.js';
+import { emailAddresses, people, personPhones, tags as tagsTable, tasks as tasksTable } from '../db/schema.js';
 import { matchesBoardFilter } from '../../shared/board-filter.js';
 import type * as schema from '../db/schema.js';
 import type { CalendarProvider } from '../services/calendar/provider.js';
@@ -155,6 +179,31 @@ function toContactEntries(entries: { id: number; value: string; isPrimary: boole
 function conflictError(type: 'email' | 'phone', holder: { id: number; name: string } | null): string {
   const label = type === 'email' ? 'email' : 'phone number';
   return holder ? `That ${label} is already in use by ${holder.name}` : `That ${label} is already in use`;
+}
+
+/** Exactly one of tagId/tagName is required to identify a tag; both or neither is a validation error. */
+function tagIdentifierInput(tagId: number | undefined, tagName: string | undefined): { ok: true; input: TagIdentifier } | { ok: false } {
+  if ((tagId === undefined) === (tagName === undefined)) {
+    return { ok: false };
+  }
+  return { ok: true, input: tagId !== undefined ? { tagId } : { tagName } };
+}
+
+/** Exactly one of taskId/personId is required to identify an attach/detach target; both or neither is a validation error. */
+function attachTargetInput(
+  taskId: number | undefined,
+  personId: number | undefined,
+): { ok: true; kind: 'task'; id: number } | { ok: true; kind: 'person'; id: number } | { ok: false } {
+  if ((taskId === undefined) === (personId === undefined)) {
+    return { ok: false };
+  }
+  return taskId !== undefined ? { ok: true, kind: 'task', id: taskId } : { ok: true, kind: 'person', id: personId! };
+}
+
+const tagSummarySchema = { id: z.number(), name: z.string(), color: z.string() };
+
+function tagSummary(tag: { id: number; name: string; color: string }) {
+  return { id: tag.id, name: tag.name, color: tag.color };
 }
 
 export function createMcpServer(context: McpToolsContext): McpServer {
@@ -1269,6 +1318,270 @@ export function createMcpServer(context: McpToolsContext): McpServer {
 
       const structuredContent = { state, outcomes, markedCount, alreadyCount, notFoundCount, failedCount };
       return { content: [{ type: 'text', text }], structuredContent };
+    },
+  );
+
+  server.registerTool(
+    'delete-note',
+    {
+      description: 'Permanently removes one task note by its id.',
+      inputSchema: { noteId: z.number().int().positive() },
+      outputSchema: { deleted: z.boolean(), taskId: z.number() },
+    },
+    async ({ noteId }) => {
+      const result = deleteNoteById(context.db, noteId);
+      if (!result.ok) {
+        return toolError(`Note ${noteId} not found`);
+      }
+      const task = getTaskDetail(context.db, result.taskId)!;
+      const text = `Deleted note ${noteId} from task "${task.title}".`;
+      return { content: [{ type: 'text', text }], structuredContent: { deleted: true, taskId: result.taskId } };
+    },
+  );
+
+  server.registerTool(
+    'update-task',
+    {
+      description: "Renames a task's title. MCP-only — no UI control for this feature.",
+      inputSchema: { taskId: z.number().int().positive(), title: z.string() },
+      outputSchema: taskSummarySchema,
+    },
+    async ({ taskId, title }) => {
+      const result = updateTaskTitle(context.db, taskId, title);
+      if (!result.ok) {
+        if (result.error === 'task-not-found') {
+          return toolError(`Task ${taskId} not found`);
+        }
+        return toolError('Title is required');
+      }
+      const { task } = result;
+      const structuredContent = { id: task.id, title: task.title, lane: task.lane, position: task.position, createdAt: task.createdAt };
+      return { content: [{ type: 'text', text: `Renamed task ${taskId} to "${task.title}".` }], structuredContent };
+    },
+  );
+
+  server.registerTool(
+    'create-tag',
+    {
+      description: 'Creates a tag with a required name and optional color; an omitted color is assigned automatically.',
+      inputSchema: { name: z.string(), color: z.string().optional() },
+      outputSchema: tagSummarySchema,
+    },
+    async ({ name, color }) => {
+      try {
+        const result = createTagService(context.db, name, color);
+        if (!result.ok) {
+          return toolError(result.error === 'name-taken' ? 'That tag name is already in use' : 'A valid color is required');
+        }
+        const structuredContent = tagSummary(result.tag);
+        return { content: [{ type: 'text', text: `Created tag "${result.tag.name}" (${result.tag.color}).` }], structuredContent };
+      } catch (error) {
+        if (error instanceof ZodError) {
+          return toolError('A name is required');
+        }
+        throw error;
+      }
+    },
+  );
+
+  server.registerTool(
+    'rename-tag',
+    {
+      description: 'Changes an existing tag\'s name only; the tag is identified by either its id or its current name (case-insensitive).',
+      inputSchema: { tagId: z.number().int().positive().optional(), tagName: z.string().optional(), name: z.string() },
+      outputSchema: tagSummarySchema,
+    },
+    async ({ tagId, tagName, name }) => {
+      const identifier = tagIdentifierInput(tagId, tagName);
+      if (!identifier.ok) {
+        return toolError('Provide either tagId or tagName, not both');
+      }
+      const resolved = resolveExistingTag(context.db, identifier.input);
+      if (!resolved.ok) {
+        return toolError('Tag not found');
+      }
+      const result = updateTagService(context.db, resolved.tag.id, { name });
+      if (!result.ok) {
+        if (result.error === 'invalid-name') return toolError('A name is required');
+        if (result.error === 'name-taken') return toolError('That tag name is already in use');
+        return toolError('Tag not found');
+      }
+      const structuredContent = tagSummary(result.tag);
+      return { content: [{ type: 'text', text: `Renamed tag to "${result.tag.name}".` }], structuredContent };
+    },
+  );
+
+  server.registerTool(
+    'recolor-tag',
+    {
+      description: "Changes an existing tag's color only; the tag is identified by either its id or its name (case-insensitive).",
+      inputSchema: { tagId: z.number().int().positive().optional(), tagName: z.string().optional(), color: z.string() },
+      outputSchema: tagSummarySchema,
+    },
+    async ({ tagId, tagName, color }) => {
+      const identifier = tagIdentifierInput(tagId, tagName);
+      if (!identifier.ok) {
+        return toolError('Provide either tagId or tagName, not both');
+      }
+      const resolved = resolveExistingTag(context.db, identifier.input);
+      if (!resolved.ok) {
+        return toolError('Tag not found');
+      }
+      const result = updateTagService(context.db, resolved.tag.id, { color });
+      if (!result.ok) {
+        if (result.error === 'invalid-color') return toolError('A valid color is required');
+        return toolError('Tag not found');
+      }
+      const structuredContent = tagSummary(result.tag);
+      return { content: [{ type: 'text', text: `Recolored tag "${result.tag.name}" to ${result.tag.color}.` }], structuredContent };
+    },
+  );
+
+  server.registerTool(
+    'delete-tag',
+    {
+      description:
+        'Permanently deletes a tag, identified by either its id or its name (case-insensitive), detaching it from every person and task it was attached to; no confirmation step.',
+      inputSchema: { tagId: z.number().int().positive().optional(), tagName: z.string().optional() },
+      outputSchema: { deleted: z.boolean(), peopleDetached: z.number(), tasksDetached: z.number(), companiesDetached: z.number() },
+    },
+    async ({ tagId, tagName }) => {
+      const identifier = tagIdentifierInput(tagId, tagName);
+      if (!identifier.ok) {
+        return toolError('Provide either tagId or tagName, not both');
+      }
+      const result = deleteTagByIdentifier(context.db, identifier.input);
+      if (!result.ok) {
+        return toolError('Tag not found');
+      }
+      const { name, peopleDetached, tasksDetached, companiesDetached } = result;
+      const text = `Deleted tag "${name}" — detached from ${peopleDetached} person(s), ${tasksDetached} task(s), and ${companiesDetached} compan${companiesDetached === 1 ? 'y' : 'ies'}.`;
+      return { content: [{ type: 'text', text }], structuredContent: { deleted: true, peopleDetached, tasksDetached, companiesDetached } };
+    },
+  );
+
+  server.registerTool(
+    'list-tags',
+    {
+      description: 'Lists every tag, ordered by total attachments descending then name alphabetically, mirroring the Tags page.',
+      outputSchema: { tags: z.array(z.object({ ...tagSummarySchema, peopleCount: z.number(), tasksCount: z.number() })) },
+    },
+    async () => {
+      const tagsList = listTagsService(context.db);
+      const text = `${tagsList.length} tag${tagsList.length === 1 ? '' : 's'}.`;
+      return { content: [{ type: 'text', text }], structuredContent: { tags: tagsList } };
+    },
+  );
+
+  server.registerTool(
+    'attach-tag',
+    {
+      description:
+        'Links an existing tag, identified by either its id or its name (case-insensitive), to a task or a person; never creates a tag; a no-op if already attached.',
+      inputSchema: {
+        tagId: z.number().int().positive().optional(),
+        tagName: z.string().optional(),
+        taskId: z.number().int().positive().optional(),
+        personId: z.number().int().positive().optional(),
+      },
+      outputSchema: { tags: z.array(z.string()) },
+    },
+    async ({ tagId, tagName, taskId, personId }) => {
+      const identifier = tagIdentifierInput(tagId, tagName);
+      if (!identifier.ok) {
+        return toolError('Provide either tagId or tagName, not both');
+      }
+      const target = attachTargetInput(taskId, personId);
+      if (!target.ok) {
+        return toolError('Provide either taskId or personId, not both');
+      }
+      const resolved = resolveExistingTag(context.db, identifier.input);
+      if (!resolved.ok) {
+        return toolError('No such tag exists — call create-tag first');
+      }
+
+      if (target.kind === 'task') {
+        const [task] = context.db.select({ title: tasksTable.title }).from(tasksTable).where(eq(tasksTable.id, target.id)).limit(1).all();
+        const result = attachExistingTagToTask(context.db, target.id, resolved.tag.id);
+        if (!result.ok) {
+          return toolError(`Task ${target.id} not found`);
+        }
+        return {
+          content: [{ type: 'text', text: `Attached tag "${resolved.tag.name}" to ${task!.title}.` }],
+          structuredContent: { tags: result.tags.map((t) => t.name) },
+        };
+      }
+
+      const [person] = context.db
+        .select({ firstName: people.firstName, lastName: people.lastName })
+        .from(people)
+        .where(eq(people.id, target.id))
+        .limit(1)
+        .all();
+      const result = attachExistingTagToPerson(context.db, target.id, resolved.tag.id);
+      if (!result.ok) {
+        return toolError(`Person ${target.id} not found`);
+      }
+      return {
+        content: [{ type: 'text', text: `Attached tag "${resolved.tag.name}" to ${personName(person!)}.` }],
+        structuredContent: { tags: result.tags.map((t) => t.name) },
+      };
+    },
+  );
+
+  server.registerTool(
+    'detach-tag',
+    {
+      description:
+        'Removes the link between an existing tag, identified by either its id or its name (case-insensitive), and a task or a person; never deletes the tag or touches other attachments.',
+      inputSchema: {
+        tagId: z.number().int().positive().optional(),
+        tagName: z.string().optional(),
+        taskId: z.number().int().positive().optional(),
+        personId: z.number().int().positive().optional(),
+      },
+      outputSchema: { tags: z.array(z.string()) },
+    },
+    async ({ tagId, tagName, taskId, personId }) => {
+      const identifier = tagIdentifierInput(tagId, tagName);
+      if (!identifier.ok) {
+        return toolError('Provide either tagId or tagName, not both');
+      }
+      const target = attachTargetInput(taskId, personId);
+      if (!target.ok) {
+        return toolError('Provide either taskId or personId, not both');
+      }
+      const resolved = resolveExistingTag(context.db, identifier.input);
+      if (!resolved.ok) {
+        return toolError('Tag not found');
+      }
+
+      if (target.kind === 'task') {
+        const [task] = context.db.select({ title: tasksTable.title }).from(tasksTable).where(eq(tasksTable.id, target.id)).limit(1).all();
+        const result = detachTagFromTask(context.db, target.id, resolved.tag.id);
+        if (!result.ok) {
+          return toolError(`Task ${target.id} not found`);
+        }
+        return {
+          content: [{ type: 'text', text: `Detached tag "${resolved.tag.name}" from ${task!.title}.` }],
+          structuredContent: { tags: result.tags.map((t) => t.name) },
+        };
+      }
+
+      const [person] = context.db
+        .select({ firstName: people.firstName, lastName: people.lastName })
+        .from(people)
+        .where(eq(people.id, target.id))
+        .limit(1)
+        .all();
+      const result = detachTagFromPerson(context.db, target.id, resolved.tag.id);
+      if (!result.ok) {
+        return toolError(`Person ${target.id} not found`);
+      }
+      return {
+        content: [{ type: 'text', text: `Detached tag "${resolved.tag.name}" from ${personName(person!)}.` }],
+        structuredContent: { tags: result.tags.map((t) => t.name) },
+      };
     },
   );
 
