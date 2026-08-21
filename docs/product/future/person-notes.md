@@ -16,4 +16,6 @@ Timestamped notes on a person — the same running-history model as task notes, 
 
 ## Notes
 
+Reaffirmed by the 2026-08-21 MCP audit: with no person notes, bio and context about people currently gets stashed in task notes; `company-metadata` (recorded the same day) is the company-side neighbor of the same gap.
+
 No interview has touched this — it exists as a backlog marker only. If picked up, the task-notes decisions (append-only history, delete-only with confirmation, UTC storage with relative + hover-absolute local display, "You"/"via MCP" source labels, basic markdown set) are the natural starting model, but none of that has been confirmed for people. Tyler may also just delete this stub if notes on people aren't wanted.

@@ -17,3 +17,5 @@ None strictly — the track-people field config (extra optional free-text person
 ## Notes
 
 Nothing product-level has been decided. Open questions for the future `/new-feature` interview: an in-app UI for managing the field config (track-people deliberately left it file-edit-only); field types beyond free text (dropdowns, dates, checkboxes — deferred in track-people); custom fields on tasks (nothing exists today); whether custom fields ever appear in list views (track-people kept them off the people list). Tyler may also decide the config-file approach already covers the need and delete this stub.
+
+The 2026-08-21 MCP audit split semantics-bearing native fields into their own stubs — `task-fields` (due/priority/effort on cards) and `company-metadata` (a company domain field) — so if those ship, this stub narrows to the truly flexible per-entity field mechanism.

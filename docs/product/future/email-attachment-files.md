@@ -18,3 +18,4 @@ Download and store the actual attachment files on synced email, not just their m
 
 - Nothing decided beyond the split itself. Interview questions for later: size caps, which attachment types to fetch (skip inline images?), where files live under the self-hosted Docker deployment, and whether the metadata refresh on re-sync should also fetch files that appeared after first sync.
 - The snapshot spirit of email-sync suggests stored files are kept even if the attachment later disappears from the mailbox.
+- The 2026-08-21 MCP audit ranked this later-if-ever: attachment metadata plus the Outlook webLink covers most needs today.
