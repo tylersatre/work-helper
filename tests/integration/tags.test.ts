@@ -304,21 +304,23 @@ describe('createTag (service, extended signature)', () => {
 });
 
 describe('deleteTagByIdentifier (service)', () => {
-  it('deletes a tag attached to N people and M tasks, cascading the detach and reporting counts', () => {
+  it('deletes a tag attached to N people, M tasks, and K companies, cascading the detach and reporting counts', () => {
     const { db } = createDb(':memory:');
     const app = buildApp({ db, lanes: LANES });
     return (async () => {
       const task = await createTask(app, 'Book venue');
       const personA = await createPerson(app, 'Jordan', 'Smith');
       const personB = await createPerson(app, 'Sam', 'Rivera');
+      const company = (await app.inject({ method: 'POST', url: '/api/companies', payload: { name: 'Acme' } })).json();
       const tag = (await app.inject({ method: 'POST', url: '/api/tags', payload: { name: 'Renewal' } })).json();
       await app.inject({ method: 'POST', url: `/api/tasks/${task.id}/tags`, payload: { tagId: tag.id } });
       await app.inject({ method: 'POST', url: `/api/people/${personA.id}/tags`, payload: { tagId: tag.id } });
       await app.inject({ method: 'POST', url: `/api/people/${personB.id}/tags`, payload: { tagId: tag.id } });
+      await app.inject({ method: 'POST', url: `/api/companies/${company.id}/tags`, payload: { tagId: tag.id } });
 
       const result = deleteTagByIdentifier(db, { tagId: tag.id });
 
-      expect(result).toEqual({ ok: true, peopleDetached: 2, tasksDetached: 1 });
+      expect(result).toEqual({ ok: true, name: 'Renewal', peopleDetached: 2, tasksDetached: 1, companiesDetached: 1 });
       expect(db.select().from(tags).all()).toEqual([]);
     })();
   });

@@ -101,11 +101,11 @@ Changes an existing tag's color only (FR-011). Identified by id or name (case-in
 
 ## 6. `delete-tag`
 
-Permanently deletes a tag and detaches it from everything it was attached to, no confirmation step (FR-012, FR-013, FR-014). Identified by id or name (case-insensitive).
+Permanently deletes a tag and detaches it from everything it was attached to, no confirmation step (FR-012, FR-013, FR-014). Identified by id or name (case-insensitive). Also reports companies detached — a tag can be attached to a company (pre-existing `company_tags` table), and the cascade delete removes those links too even though FR-013 only mandates the people/task counts; the response would otherwise silently misreport `0`/`0` for a tag that only had company attachments.
 
 **Input**: `{ tagId?: number, tagName?: string }`
 
-**Output** (`structuredContent`): `{ deleted: true, peopleDetached: number, tasksDetached: number }`
+**Output** (`structuredContent`): `{ deleted: true, peopleDetached: number, tasksDetached: number, companiesDetached: number }`
 
 **Errors**:
 | Condition | Message |
@@ -113,7 +113,7 @@ Permanently deletes a tag and detaches it from everything it was attached to, no
 | Neither or both of `tagId`/`tagName` given | `Provide either tagId or tagName, not both` |
 | Tag identifier resolves to nothing | `Tag not found` |
 
-**Success text**: `` Deleted tag "${name}" — detached from ${peopleDetached} person(s) and ${tasksDetached} task(s). ``
+**Success text**: `` Deleted tag "${name}" — detached from ${peopleDetached} person(s), ${tasksDetached} task(s), and ${companiesDetached} compan${companiesDetached === 1 ? 'y' : 'ies'}. ``
 
 ---
 
@@ -161,7 +161,7 @@ Removes the link between an existing tag and a task or a person; never deletes t
 
 ## 9. `list-tags` (read tool — supporting infrastructure, see research.md R7)
 
-Lists every tag alphabetically by name, mirroring the Tags page.
+Lists every tag ordered by total attachments descending then name alphabetically, mirroring the Tags page.
 
 **Input**: none
 
@@ -169,7 +169,7 @@ Lists every tag alphabetically by name, mirroring the Tags page.
 
 **Errors**: none — always succeeds (possibly with an empty list).
 
-**Success text**: `` ${count} tag(s). ``
+**Success text**: `` ${count} tag${count === 1 ? '' : 's'}. ``
 
 ---
 

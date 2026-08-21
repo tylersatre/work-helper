@@ -289,7 +289,7 @@ export function resolveExistingTag(db: AppDb, input: TagIdentifier): ResolveTagR
 }
 
 export type DeleteTagByIdentifierResult =
-  | { ok: true; peopleDetached: number; tasksDetached: number }
+  | { ok: true; name: string; peopleDetached: number; tasksDetached: number; companiesDetached: number }
   | { ok: false; error: 'tag-not-found' | 'invalid-name' };
 
 export function deleteTagByIdentifier(db: AppDb, input: TagIdentifier): DeleteTagByIdentifierResult {
@@ -308,40 +308,35 @@ export function deleteTagByIdentifier(db: AppDb, input: TagIdentifier): DeleteTa
     .from(taskTags)
     .where(eq(taskTags.tagId, resolved.tag.id))
     .all();
+  const [{ companiesDetached }] = db
+    .select({ companiesDetached: sql<number>`count(*)` })
+    .from(companyTags)
+    .where(eq(companyTags.tagId, resolved.tag.id))
+    .all();
 
   db.delete(tags).where(eq(tags.id, resolved.tag.id)).run();
 
-  return { ok: true, peopleDetached, tasksDetached };
+  return { ok: true, name: resolved.tag.name, peopleDetached, tasksDetached, companiesDetached };
 }
 
-export type AttachExistingResult = { ok: true; tags: TagRecord[] } | { ok: false; error: 'record-not-found' | 'tag-not-found' | 'invalid-name' };
+export type AttachExistingResult = { ok: true; tags: TagRecord[] } | { ok: false; error: 'record-not-found' };
 
-export function attachExistingTagToTask(db: AppDb, taskId: number, input: TagIdentifier): AttachExistingResult {
+export function attachExistingTagToTask(db: AppDb, taskId: number, tagId: number): AttachExistingResult {
   const [task] = db.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, taskId)).limit(1).all();
   if (!task) {
     return { ok: false, error: 'record-not-found' };
   }
 
-  const resolved = resolveExistingTag(db, input);
-  if (!resolved.ok) {
-    return { ok: false, error: resolved.error };
-  }
-
-  db.insert(taskTags).values({ taskId, tagId: resolved.tag.id }).onConflictDoNothing().run();
+  db.insert(taskTags).values({ taskId, tagId }).onConflictDoNothing().run();
   return { ok: true, tags: getTagsForTask(db, taskId) };
 }
 
-export function attachExistingTagToPerson(db: AppDb, personId: number, input: TagIdentifier): AttachExistingResult {
+export function attachExistingTagToPerson(db: AppDb, personId: number, tagId: number): AttachExistingResult {
   const [person] = db.select({ id: people.id }).from(people).where(eq(people.id, personId)).limit(1).all();
   if (!person) {
     return { ok: false, error: 'record-not-found' };
   }
 
-  const resolved = resolveExistingTag(db, input);
-  if (!resolved.ok) {
-    return { ok: false, error: resolved.error };
-  }
-
-  db.insert(personTags).values({ personId, tagId: resolved.tag.id }).onConflictDoNothing().run();
+  db.insert(personTags).values({ personId, tagId }).onConflictDoNothing().run();
   return { ok: true, tags: getTagsForPerson(db, personId) };
 }

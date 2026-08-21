@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ZodError, z } from 'zod';
+import { eq } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { primaryValue } from '../../shared/contacts.js';
 import { addEntry, markPrimary, removeEntry } from '../services/contact-entries.js';
@@ -38,7 +39,7 @@ import {
   updateTag as updateTagService,
   type TagIdentifier,
 } from '../services/tags.js';
-import { emailAddresses, personPhones, tags as tagsTable } from '../db/schema.js';
+import { emailAddresses, people, personPhones, tags as tagsTable, tasks as tasksTable } from '../db/schema.js';
 import { matchesBoardFilter } from '../../shared/board-filter.js';
 import type * as schema from '../db/schema.js';
 import type { CalendarProvider } from '../services/calendar/provider.js';
@@ -1442,24 +1443,20 @@ export function createMcpServer(context: McpToolsContext): McpServer {
       description:
         'Permanently deletes a tag, identified by either its id or its name (case-insensitive), detaching it from every person and task it was attached to; no confirmation step.',
       inputSchema: { tagId: z.number().int().positive().optional(), tagName: z.string().optional() },
-      outputSchema: { deleted: z.boolean(), peopleDetached: z.number(), tasksDetached: z.number() },
+      outputSchema: { deleted: z.boolean(), peopleDetached: z.number(), tasksDetached: z.number(), companiesDetached: z.number() },
     },
     async ({ tagId, tagName }) => {
       const identifier = tagIdentifierInput(tagId, tagName);
       if (!identifier.ok) {
         return toolError('Provide either tagId or tagName, not both');
       }
-      const resolvedName = resolveExistingTag(context.db, identifier.input);
-      if (!resolvedName.ok) {
-        return toolError('Tag not found');
-      }
       const result = deleteTagByIdentifier(context.db, identifier.input);
       if (!result.ok) {
         return toolError('Tag not found');
       }
-      const { peopleDetached, tasksDetached } = result;
-      const text = `Deleted tag "${resolvedName.tag.name}" — detached from ${peopleDetached} person(s) and ${tasksDetached} task(s).`;
-      return { content: [{ type: 'text', text }], structuredContent: { deleted: true, peopleDetached, tasksDetached } };
+      const { name, peopleDetached, tasksDetached, companiesDetached } = result;
+      const text = `Deleted tag "${name}" — detached from ${peopleDetached} person(s), ${tasksDetached} task(s), and ${companiesDetached} compan${companiesDetached === 1 ? 'y' : 'ies'}.`;
+      return { content: [{ type: 'text', text }], structuredContent: { deleted: true, peopleDetached, tasksDetached, companiesDetached } };
     },
   );
 
@@ -1504,8 +1501,8 @@ export function createMcpServer(context: McpToolsContext): McpServer {
       }
 
       if (target.kind === 'task') {
-        const task = getTaskDetail(context.db, target.id);
-        const result = attachExistingTagToTask(context.db, target.id, { tagId: resolved.tag.id });
+        const [task] = context.db.select({ title: tasksTable.title }).from(tasksTable).where(eq(tasksTable.id, target.id)).limit(1).all();
+        const result = attachExistingTagToTask(context.db, target.id, resolved.tag.id);
         if (!result.ok) {
           return toolError(`Task ${target.id} not found`);
         }
@@ -1515,8 +1512,13 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         };
       }
 
-      const person = getPerson(context.db, context.personFields, target.id);
-      const result = attachExistingTagToPerson(context.db, target.id, { tagId: resolved.tag.id });
+      const [person] = context.db
+        .select({ firstName: people.firstName, lastName: people.lastName })
+        .from(people)
+        .where(eq(people.id, target.id))
+        .limit(1)
+        .all();
+      const result = attachExistingTagToPerson(context.db, target.id, resolved.tag.id);
       if (!result.ok) {
         return toolError(`Person ${target.id} not found`);
       }
@@ -1555,7 +1557,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
       }
 
       if (target.kind === 'task') {
-        const task = getTaskDetail(context.db, target.id);
+        const [task] = context.db.select({ title: tasksTable.title }).from(tasksTable).where(eq(tasksTable.id, target.id)).limit(1).all();
         const result = detachTagFromTask(context.db, target.id, resolved.tag.id);
         if (!result.ok) {
           return toolError(`Task ${target.id} not found`);
@@ -1566,7 +1568,12 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         };
       }
 
-      const person = getPerson(context.db, context.personFields, target.id);
+      const [person] = context.db
+        .select({ firstName: people.firstName, lastName: people.lastName })
+        .from(people)
+        .where(eq(people.id, target.id))
+        .limit(1)
+        .all();
       const result = detachTagFromPerson(context.db, target.id, resolved.tag.id);
       if (!result.ok) {
         return toolError(`Person ${target.id} not found`);

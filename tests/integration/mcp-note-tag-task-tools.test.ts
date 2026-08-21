@@ -258,7 +258,7 @@ describe('US2: create-tag / rename-tag / recolor-tag / delete-tag', () => {
     expect(result.content).toEqual([{ type: 'text', text: 'A valid color is required' }]);
   });
 
-  it('deletes by name reporting peopleDetached/tasksDetached, and a second delete fails not-found (US2-AS5)', async () => {
+  it('deletes by name reporting peopleDetached/tasksDetached/companiesDetached, and a second delete fails not-found (US2-AS5)', async () => {
     const task = await createTaskViaApi('Book venue');
     const person = await createPersonViaApi('Jordan', 'Smith');
     const tag = await createTagViaApi('Contract renewal');
@@ -268,7 +268,7 @@ describe('US2: create-tag / rename-tag / recolor-tag / delete-tag', () => {
     const result = await callTool('delete-tag', { tagName: 'Contract renewal' });
 
     expect(result.isError).toBeFalsy();
-    expect(result.structuredContent).toEqual({ deleted: true, peopleDetached: 1, tasksDetached: 1 });
+    expect(result.structuredContent).toEqual({ deleted: true, peopleDetached: 1, tasksDetached: 1, companiesDetached: 0 });
     expect(await listTagsViaApi()).toEqual([]);
     expect((await getTaskViaApi(task.id)).tags).toEqual([]);
     expect((await getPersonViaApi(person.id)).tags).toEqual([]);
@@ -403,6 +403,18 @@ describe('US3: attach-tag / detach-tag', () => {
     expect(result.isError).toBeFalsy();
     expect(result.structuredContent).toEqual({ tags: ['Renewal'] });
     expect((await getTaskViaApi(task.id)).tags.map((t: { name: string }) => t.name)).toEqual(['Renewal']);
+  });
+
+  it('re-attaching an already-attached tag to a person is a no-op with no duplicate/error (US3-AS4)', async () => {
+    const person = await createPersonViaApi('Jordan', 'Smith');
+    const tag = await createTagViaApi('Renewal');
+    await callTool('attach-tag', { tagId: tag.id, personId: person.id });
+
+    const result = await callTool('attach-tag', { tagId: tag.id, personId: person.id });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toEqual({ tags: ['Renewal'] });
+    expect((await getPersonViaApi(person.id)).tags.map((t: { name: string }) => t.name)).toEqual(['Renewal']);
   });
 
   it('rejects an unknown tag identifier and an unknown target on detach-tag', async () => {
