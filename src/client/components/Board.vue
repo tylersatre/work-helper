@@ -2,7 +2,7 @@
 import { NButton } from 'naive-ui';
 import { computed, onMounted, ref, watch } from 'vue';
 import { matchesBoardFilter } from '../../shared/board-filter.js';
-import type { BoardFilter, BoardTask, BoardView } from '../../shared/types.js';
+import type { BoardFilter, BoardTask, BoardView, Tag } from '../../shared/types.js';
 import { clearFilter as clearStoredFilter, readFilter, writeFilter } from '../utils/board-filter-storage.js';
 import BoardFilterBar from './BoardFilterBar.vue';
 import CreateTaskForm from './CreateTaskForm.vue';
@@ -206,6 +206,22 @@ function onTaskCreated(): void {
 defineExpose({ fetchBoard });
 
 onMounted(() => {
+  // A restored filter (FR-014) can reference a tag no card on the freshly-fetched board carries
+  // (or carries at all yet); seed every tag's real name up front so it never falls back to a raw id.
+  void fetch('/api/tags')
+    .then((response) => (response.ok ? (response.json() as Promise<Tag[]>) : []))
+    .then((tags) => {
+      if (!Array.isArray(tags)) {
+        return;
+      }
+      for (const tag of tags) {
+        knownTagNames.value.set(tag.id, tag.name);
+      }
+    })
+    .catch(() => {
+      // Tag names unavailable: a restored filter falls back to its id label.
+    });
+
   void fetchBoard().catch(() => {
     // Initial load failed: the board stays in its default empty state rather than crashing.
   });

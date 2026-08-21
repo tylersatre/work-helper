@@ -1056,6 +1056,30 @@ describe('Board filtering - US2: narrow the board by tag', () => {
 
     wrapper.unmount();
   });
+
+  it('a persisted tag filter shows the tag\'s real name on a cold mount, even when no card on the fetched board carries it (FR-007 cold start)', async () => {
+    window.localStorage.setItem('wh.board.filter', JSON.stringify({ text: '', tagIds: [Q3_TAG.id] }));
+
+    const boardWithoutQ3 = seededBoard();
+    for (const lane of boardWithoutQ3.lanes) {
+      lane.tasks = lane.tasks.map((task) => ({ ...task, tags: task.tags.filter((tag) => tag.id !== Q3_TAG.id) }));
+    }
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/tags') {
+        return Promise.resolve({ ok: true, json: async () => [VIP_TAG, Q3_TAG] });
+      }
+      return Promise.resolve({ ok: true, json: async () => boardWithoutQ3 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(Board);
+    await screen.findByRole('heading', { level: 2, name: 'To Do' });
+    await flushPromises();
+    await openTagFilter();
+
+    expect(tagOptionLabels()).toEqual(['Q3', 'VIP']);
+    expect(tagOptionLabels()).not.toContain(String(Q3_TAG.id));
+  });
 });
 
 describe('Board filtering - US3: the filter sticks until cleared', () => {

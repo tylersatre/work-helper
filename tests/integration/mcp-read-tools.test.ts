@@ -103,12 +103,19 @@ describe('US2: read tools', () => {
     expect(inProgress.tasks.map((t) => t.title)).toContain('Draft Q3 goals');
   });
 
-  it('list-board succeeds when the client omits `arguments` entirely (a conversational client calling a zero-arg tool)', async () => {
-    const result = await client.callTool({ name: 'list-board' });
+  it('list-board succeeds when called with an empty arguments object (a conversational client using neither filter)', async () => {
+    const result = await client.callTool({ name: 'list-board', arguments: {} });
     expect(result.isError).toBeFalsy();
 
     const board = result.structuredContent as { lanes: { name: string }[] };
     expect(board.lanes.map((lane) => lane.name)).toEqual(LANES);
+  });
+
+  it('list-board advertises its search and tags arguments in tools/list, so an agent can discover them (025-board-search-filter)', async () => {
+    const { tools } = await client.listTools();
+    const listBoard = tools.find((tool) => tool.name === 'list-board')!;
+
+    expect(Object.keys(listBoard.inputSchema.properties ?? {})).toEqual(expect.arrayContaining(['search', 'tags']));
   });
 
   it('get-task returns title, lane, notes newest-first, and linked people (US2-AS2)', async () => {

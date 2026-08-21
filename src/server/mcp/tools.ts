@@ -165,11 +165,10 @@ export function createMcpServer(context: McpToolsContext): McpServer {
     {
       description:
         "Lists the board's lanes and the tasks in each, in configured lane order. Optionally narrows the board to cards matching a case-insensitive text search (over card title, note text, and linked person/company names) and/or carrying any of the given tags.",
-      inputSchema: z.object({ search: z.string().optional(), tags: z.array(z.string()).optional() }).optional(),
+      inputSchema: { search: z.string().optional(), tags: z.array(z.string()).optional() },
       outputSchema: { lanes: z.array(z.object({ name: z.string(), tasks: z.array(z.object(taskSummarySchema)) })) },
     },
-    async (args) => {
-      const { search, tags: tagNames } = args ?? {};
+    async ({ search, tags: tagNames }) => {
       const requestedTagNames = tagNames ?? [];
       const allTags = context.db.select({ id: tagsTable.id, name: tagsTable.name }).from(tagsTable).all();
       const resolvedTagIds = requestedTagNames.flatMap((name) => {
