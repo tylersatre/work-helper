@@ -61,3 +61,29 @@ export function listSuppressedAddresses(db: AppDb): SuppressedAddressSummary[] {
     .orderBy(desc(suppressedAddresses.suppressedAt))
     .all();
 }
+
+export type UnsuppressAddressResult = { ok: true; address: string; wasSuppressed: boolean } | { ok: false; error: 'invalid' };
+
+export function unsuppressAddress(db: AppDb, rawAddress: unknown): UnsuppressAddressResult {
+  const parsed = addressSchema.safeParse(rawAddress);
+  if (!parsed.success) {
+    return { ok: false, error: 'invalid' };
+  }
+  const trimmedInput = parsed.data;
+
+  const existing = findEmailAddressByValue(db, trimmedInput);
+  if (!existing) {
+    return { ok: true, address: trimmedInput, wasSuppressed: false };
+  }
+
+  const [before] = db
+    .select({ id: suppressedAddresses.id })
+    .from(suppressedAddresses)
+    .where(eq(suppressedAddresses.addressId, existing.id))
+    .limit(1)
+    .all();
+  db.delete(suppressedAddresses).where(eq(suppressedAddresses.addressId, existing.id)).run();
+
+  const [row] = db.select({ address: emailAddresses.value }).from(emailAddresses).where(eq(emailAddresses.id, existing.id)).limit(1).all();
+  return { ok: true, address: row!.address, wasSuppressed: before !== undefined };
+}

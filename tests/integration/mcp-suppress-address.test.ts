@@ -209,3 +209,38 @@ describe('US2: list-suppressed-addresses', () => {
     expect(addresses.map((a) => a.address)).toEqual(['jordan.smith@example.com', 'news@example.com']);
   });
 });
+
+describe('US3: unsuppress-address', () => {
+  it('clears a suppression, so the address reappears in list-unlinked-addresses and drops from list-suppressed-addresses (AS1)', async () => {
+    await seedStandardStore();
+    await suppressAddress('news@example.com');
+
+    const result = await unsuppressAddress('news@example.com');
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toEqual({ address: 'news@example.com', wasSuppressed: true });
+
+    const unlinked = await listUnlinked();
+    const unlinkedAddresses = (unlinked.structuredContent as { addresses: { address: string }[] }).addresses.map((a) => a.address);
+    expect(unlinkedAddresses).toContain('news@example.com');
+
+    const suppressed = await listSuppressed();
+    const suppressedAddressList = (suppressed.structuredContent as { addresses: { address: string }[] }).addresses.map((a) => a.address);
+    expect(suppressedAddressList).not.toContain('news@example.com');
+  });
+
+  it('is a no-op for an address that is not currently suppressed, succeeding with wasSuppressed: false (FR-007)', async () => {
+    await seedStandardStore();
+
+    const result = await unsuppressAddress('jordan.smith@example.com');
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toEqual({ address: 'jordan.smith@example.com', wasSuppressed: false });
+  });
+
+  it('is a no-op for an address that has never been seen at all, succeeding with wasSuppressed: false (FR-007)', async () => {
+    await seedStandardStore();
+
+    const result = await unsuppressAddress('never-seen@example.com');
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toEqual({ address: 'never-seen@example.com', wasSuppressed: false });
+  });
+});

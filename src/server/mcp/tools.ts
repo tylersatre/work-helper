@@ -50,7 +50,7 @@ import { setEmailReadState } from '../services/email/read-state.js';
 import { computeSyncWindow } from '../services/email/sync.js';
 import type { SyncCoordinator } from '../services/email/sync-coordinator.js';
 import { conversationSubject, emailsForPerson, getConversation, listConversations, listUnlinkedAddresses } from '../services/email/queries.js';
-import { listSuppressedAddresses, suppressAddress } from '../services/address-suppression.js';
+import { listSuppressedAddresses, suppressAddress, unsuppressAddress } from '../services/address-suppression.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
 
@@ -846,6 +846,27 @@ export function createMcpServer(context: McpToolsContext): McpServer {
       return {
         content: [{ type: 'text', text: `${count} suppressed address${count === 1 ? '' : 'es'}.` }],
         structuredContent: { addresses },
+      };
+    },
+  );
+
+  server.registerTool(
+    'unsuppress-address',
+    {
+      description:
+        'Clears the suppression flag on an address, if any, so it can reappear in list-unlinked-addresses. A no-op — not an error — for an address that is not currently suppressed.',
+      inputSchema: { address: z.string() },
+      outputSchema: { address: z.string(), wasSuppressed: z.boolean() },
+    },
+    async ({ address }) => {
+      const result = unsuppressAddress(context.db, address);
+      if (!result.ok) {
+        return toolError('An address is required');
+      }
+      const text = result.wasSuppressed ? `Unsuppressed ${result.address}.` : `${result.address} was not suppressed.`;
+      return {
+        content: [{ type: 'text', text }],
+        structuredContent: { address: result.address, wasSuppressed: result.wasSuppressed },
       };
     },
   );
