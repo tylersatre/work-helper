@@ -5,6 +5,7 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
+import { suppressedAddresses } from '../../src/server/db/schema.js';
 import type * as schema from '../../src/server/db/schema.js';
 import { createIdentityVerifier } from '../../src/server/mcp/auth/identity.js';
 import { connectThroughApproval } from './helpers/oauth-client.js';
@@ -209,6 +210,23 @@ describe('US2: list-suppressed-addresses', () => {
     const { addresses } = result.structuredContent as { addresses: { address: string; suppressedAt: number }[] };
     expect(addresses.map((a) => a.address)).toEqual(['jordan.smith@example.com', 'news@example.com']);
   });
+
+  it('breaks a suppressedAt tie by most-recently-inserted first, so same-millisecond suppressions still order deterministically (FR-005)', async () => {
+    await seedStandardStore();
+
+    await suppressAddress('news@example.com');
+    await suppressAddress('jordan.smith@example.com');
+
+    // Force a tie: two real suppress calls can land in the same millisecond in practice, so
+    // collapse them here to prove ordering doesn't silently fall back to insertion (rowid) order.
+    const tiedAt = Date.now();
+    db.update(suppressedAddresses).set({ suppressedAt: tiedAt }).run();
+
+    const result = await listSuppressed();
+    const { addresses } = result.structuredContent as { addresses: { address: string; suppressedAt: number }[] };
+    expect(addresses.every((a) => a.suppressedAt === tiedAt)).toBe(true);
+    expect(addresses.map((a) => a.address)).toEqual(['jordan.smith@example.com', 'news@example.com']);
+  });
 });
 
 describe('US3: unsuppress-address', () => {
@@ -243,6 +261,15 @@ describe('US3: unsuppress-address', () => {
     const result = await unsuppressAddress('never-seen@example.com');
     expect(result.isError).toBeFalsy();
     expect(result.structuredContent).toEqual({ address: 'never-seen@example.com', wasSuppressed: false });
+  });
+
+  it('resolves address matching case-insensitively and echoes the stored (synced) casing, not the caller\'s casing (FR-011)', async () => {
+    await seedStandardStore();
+    await suppressAddress('news@example.com');
+
+    const result = await unsuppressAddress('NEWS@Example.com');
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toEqual({ address: 'news@example.com', wasSuppressed: true });
   });
 });
 

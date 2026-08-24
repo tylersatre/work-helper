@@ -58,7 +58,7 @@ export function listSuppressedAddresses(db: AppDb): SuppressedAddressSummary[] {
     .select({ address: emailAddresses.value, suppressedAt: suppressedAddresses.suppressedAt })
     .from(suppressedAddresses)
     .innerJoin(emailAddresses, eq(emailAddresses.id, suppressedAddresses.addressId))
-    .orderBy(desc(suppressedAddresses.suppressedAt))
+    .orderBy(desc(suppressedAddresses.suppressedAt), desc(suppressedAddresses.id))
     .all();
 }
 
