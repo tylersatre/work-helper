@@ -87,3 +87,10 @@ export function unsuppressAddress(db: AppDb, rawAddress: unknown): UnsuppressAdd
   const [row] = db.select({ address: emailAddresses.value }).from(emailAddresses).where(eq(emailAddresses.id, existing.id)).limit(1).all();
   return { ok: true, address: row!.address, wasSuppressed: before !== undefined };
 }
+
+/** Deletes any suppression row for `addressId` — a harmless no-op when none exists. Called
+ * atomically from the same transaction as a link write (research.md R4) so a suppression
+ * flag never survives its address becoming linked to a person. */
+export function clearSuppressionForAddressId(db: AppDb, addressId: number): void {
+  db.delete(suppressedAddresses).where(eq(suppressedAddresses.addressId, addressId)).run();
+}

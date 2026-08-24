@@ -2,6 +2,7 @@ import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { entryValueSchema } from '../../shared/validation.js';
 import { calendarEventParticipants, emailAddresses, emailParticipants, people, type personPhones } from '../db/schema.js';
+import { clearSuppressionForAddressId } from './address-suppression.js';
 import type * as schema from '../db/schema.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
@@ -118,6 +119,7 @@ export function addEntry(db: AppDb, table: EntryTable, personId: number, rawValu
           .set({ personId, isPrimary: existingForPerson === undefined })
           .where(eq(emailAddresses.id, existing.id))
           .run();
+        clearSuppressionForAddressId(tx, existing.id);
       });
       return { ok: true, entries: loadEntries(db, table, personId) };
     }

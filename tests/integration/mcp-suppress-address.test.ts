@@ -92,7 +92,7 @@ function msg(overrides: Partial<SeedMessage> & { from: SeedMessage['from'] }): S
 
 /** Seeds news@example.com (1 msg, unlinked), jordan.smith@example.com (3 msg, unlinked), and
  * sam.rivera@example.com (1 msg, linked to person "Sam Rivera"), synced and ready. */
-async function seedStandardStore(): Promise<void> {
+async function seedStandardStore(): Promise<{ samPersonId: number }> {
   const newsMessage = msg({ from: { address: 'news@example.com', name: 'Newsletter' } });
   const jordanMessages = [
     msg({ from: { address: 'jordan.smith@example.com', name: 'Jordan Smith' }, receivedDateTime: '2026-08-02T09:00:00Z', sentDateTime: '2026-08-02T09:00:00Z' }),
@@ -102,9 +102,10 @@ async function seedStandardStore(): Promise<void> {
   const samMessage = msg({ from: { address: 'sam.rivera@example.com', name: 'Sam Rivera' } });
 
   buildTestApp(new FakeMailProvider([newsMessage, ...jordanMessages, samMessage]));
-  await createPersonViaApi({ firstName: 'Sam', lastName: 'Rivera', email: 'sam.rivera@example.com' });
+  const samPersonId = await createPersonViaApi({ firstName: 'Sam', lastName: 'Rivera', email: 'sam.rivera@example.com' });
   await startAndConnect();
   await sync();
+  return { samPersonId };
 }
 
 beforeEach(async () => {
@@ -242,5 +243,63 @@ describe('US3: unsuppress-address', () => {
     const result = await unsuppressAddress('never-seen@example.com');
     expect(result.isError).toBeFalsy();
     expect(result.structuredContent).toEqual({ address: 'never-seen@example.com', wasSuppressed: false });
+  });
+});
+
+describe('US4: suppression respects and defers to real linking', () => {
+  it('clears the suppression flag automatically when create-person links the address to a new person (AS3)', async () => {
+    await seedStandardStore();
+    await suppressAddress('jordan.smith@example.com');
+
+    const createResult = await client.callTool({
+      name: 'create-person',
+      arguments: { firstName: 'Jordan', lastName: 'Smith', email: 'jordan.smith@example.com' },
+    });
+    expect(createResult.isError).toBeFalsy();
+
+    const suppressed = await listSuppressed();
+    const suppressedAddressList = (suppressed.structuredContent as { addresses: { address: string }[] }).addresses.map((a) => a.address);
+    expect(suppressedAddressList).not.toContain('jordan.smith@example.com');
+  });
+
+  it('clears the suppression flag automatically when add-contact-entry links the address to an existing person', async () => {
+    const { samPersonId } = await seedStandardStore();
+    await suppressAddress('news@example.com');
+
+    const addResult = await client.callTool({
+      name: 'add-contact-entry',
+      arguments: { personId: samPersonId, type: 'email', value: 'news@example.com' },
+    });
+    expect(addResult.isError).toBeFalsy();
+
+    const suppressed = await listSuppressed();
+    const suppressedAddressList = (suppressed.structuredContent as { addresses: { address: string }[] }).addresses.map((a) => a.address);
+    expect(suppressedAddressList).not.toContain('news@example.com');
+  });
+
+  it('does not reactivate a cleared suppression flag when the address is later unlinked again (AS4)', async () => {
+    await seedStandardStore();
+    await suppressAddress('jordan.smith@example.com');
+
+    const createResult = await client.callTool({
+      name: 'create-person',
+      arguments: { firstName: 'Jordan', lastName: 'Smith', email: 'jordan.smith@example.com' },
+    });
+    const person = createResult.structuredContent as { id: number; emails: { id: number; value: string }[] };
+    const entryId = person.emails.find((e) => e.value === 'jordan.smith@example.com')!.id;
+
+    const removeResult = await client.callTool({
+      name: 'remove-contact-entry',
+      arguments: { personId: person.id, type: 'email', entryId },
+    });
+    expect(removeResult.isError).toBeFalsy();
+
+    const unlinked = await listUnlinked();
+    const unlinkedAddresses = (unlinked.structuredContent as { addresses: { address: string }[] }).addresses.map((a) => a.address);
+    expect(unlinkedAddresses).toContain('jordan.smith@example.com');
+
+    const suppressed = await listSuppressed();
+    const suppressedAddressList = (suppressed.structuredContent as { addresses: { address: string }[] }).addresses.map((a) => a.address);
+    expect(suppressedAddressList).not.toContain('jordan.smith@example.com');
   });
 });

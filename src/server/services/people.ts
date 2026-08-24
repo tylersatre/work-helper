@@ -2,6 +2,7 @@ import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { createPersonInputSchema, updatePersonInputSchema } from '../../shared/validation.js';
 import { companies, emailAddresses, people, personPhones } from '../db/schema.js';
+import { clearSuppressionForAddressId } from './address-suppression.js';
 import { findEmailAddressByValue, isEmailAddressReferenced } from './contact-entries.js';
 import type { CompanyRecord } from './companies.js';
 import { getTagsForPerson, type TagRecord } from './tags.js';
@@ -131,6 +132,7 @@ export function createPerson(db: AppDb, personFields: string[], rawInput: unknow
         // Links the existing unlinked synced-mail record instead of inserting a parallel
         // row — keeps its stored casing and immediately backfills the person's correspondence.
         tx.update(emailAddresses).set({ personId: created!.id, isPrimary: true }).where(eq(emailAddresses.id, existingEmail.id)).run();
+        clearSuppressionForAddressId(tx, existingEmail.id);
       } else {
         tx.insert(emailAddresses).values({ personId: created!.id, value: input.email, isPrimary: true, createdAt }).run();
       }
