@@ -16,6 +16,7 @@ const task = ref<TaskDetail | null>(null);
 const tagError = ref('');
 const laneError = ref('');
 const deleteError = ref('');
+const archiveError = ref('');
 const isConfirmingDelete = ref(false);
 let laneMoveChain: Promise<void> = Promise.resolve();
 let queuedLane: string | null = null;
@@ -116,6 +117,40 @@ async function detachTag(tag: Tag): Promise<void> {
   task.value.tags = body.tags;
 }
 
+async function archiveCard(): Promise<void> {
+  if (!task.value) return;
+  try {
+    const response = await fetch(`/api/tasks/${task.value.id}/archive`, { method: 'POST' });
+    if (!response.ok) {
+      const body = await response.json();
+      archiveError.value = body.error.message;
+      return;
+    }
+    archiveError.value = '';
+    await router.push('/');
+  } catch {
+    archiveError.value = "Couldn't archive that card — please try again.";
+  }
+}
+
+async function unarchiveCard(): Promise<void> {
+  if (!task.value) return;
+  try {
+    const response = await fetch(`/api/tasks/${task.value.id}/unarchive`, { method: 'POST' });
+    if (!response.ok) {
+      const body = await response.json();
+      archiveError.value = body.error.message;
+      return;
+    }
+    archiveError.value = '';
+    if (task.value) {
+      task.value.archived = false;
+    }
+  } catch {
+    archiveError.value = "Couldn't unarchive that card — please try again.";
+  }
+}
+
 function requestDelete(): void {
   deleteError.value = '';
   isConfirmingDelete.value = true;
@@ -157,8 +192,13 @@ onMounted(fetchTask);
   <section v-if="task" class="task-detail">
     <div class="task-detail-header">
       <h2 class="task-title">{{ task.title }}</h2>
-      <button type="button" class="delete-card-button" data-testid="delete-card-button" @click="requestDelete">Delete</button>
+      <div class="task-detail-header-actions">
+        <button v-if="!task.archived" type="button" class="archive-card-button" data-testid="archive-card-button" @click="archiveCard">Archive</button>
+        <button v-else type="button" class="archive-card-button" data-testid="unarchive-card-button" @click="unarchiveCard">Unarchive</button>
+        <button type="button" class="delete-card-button" data-testid="delete-card-button" @click="requestDelete">Delete</button>
+      </div>
     </div>
+    <p v-if="archiveError" role="alert" class="archive-error">{{ archiveError }}</p>
     <div class="lane-pills" role="group" aria-label="Lane">
       <button
         v-for="lane in task.lanes"
@@ -222,8 +262,23 @@ onMounted(fetchTask);
   word-break: break-word;
 }
 
-.delete-card-button {
+.task-detail-header-actions {
+  display: flex;
   flex-shrink: 0;
+  gap: 0.5rem;
+}
+
+.archive-card-button {
+  font-size: 0.8rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+  border: 1px solid var(--wh-border-subtle);
+  background: var(--wh-surface);
+  color: var(--wh-text-primary);
+  cursor: pointer;
+}
+
+.delete-card-button {
   font-size: 0.8rem;
   padding: 0.25rem 0.6rem;
   border-radius: 4px;
@@ -231,6 +286,12 @@ onMounted(fetchTask);
   background: var(--wh-surface);
   color: var(--wh-error);
   cursor: pointer;
+}
+
+.archive-error {
+  margin: 0.4rem 0 0;
+  color: var(--wh-error);
+  font-size: 0.8rem;
 }
 
 .lane-pills {

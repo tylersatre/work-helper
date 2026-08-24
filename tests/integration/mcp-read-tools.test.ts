@@ -508,7 +508,7 @@ describe('US5 (025-board-search-filter): list-board search and tags arguments', 
     const board = result.structuredContent as { lanes: { tasks: Record<string, unknown>[] }[] };
     const task = board.lanes.flatMap((lane) => lane.tasks)[0]!;
 
-    expect(Object.keys(task).sort()).toEqual(['createdAt', 'id', 'lane', 'position', 'title'].sort());
+    expect(Object.keys(task).sort()).toEqual(['archived', 'createdAt', 'id', 'lane', 'position', 'title'].sort());
   });
 
   it('performs no writes (M10)', async () => {
@@ -524,5 +524,56 @@ describe('US5 (025-board-search-filter): list-board search and tags arguments', 
     const result = await client.callTool({ name: 'list-board', arguments: { tags: ['Q3'] } });
     const text = (result.content as { type: string; text: string }[])[0]!.text;
     expect(text).toContain('3');
+  });
+});
+
+describe('US4 (027-card-archive): list-board includeArchived', () => {
+  function laneTasks<T extends { title: string }>(board: { lanes: { name: string; tasks: T[] }[] }, laneName: string): T[] {
+    return board.lanes.find((lane) => lane.name === laneName)!.tasks;
+  }
+
+  it('includeArchived omitted or false excludes archived cards entirely, identical to today (A1)', async () => {
+    await app.inject({ method: 'POST', url: `/api/tasks/${followUpTaskId}/archive` });
+
+    const result = await client.callTool({ name: 'list-board', arguments: {} });
+    const board = result.structuredContent as { lanes: { name: string; tasks: { title: string; archived: boolean }[] }[] };
+
+    expect(laneTasks(board, 'To Do').map((t) => t.title)).not.toContain('Follow up with Sam');
+    for (const lane of board.lanes) {
+      for (const task of lane.tasks) {
+        expect(task.archived).toBe(false);
+      }
+    }
+  });
+
+  it('includeArchived: true includes every card, active and archived, each correctly flagged, grouped under its lane (A2)', async () => {
+    await app.inject({ method: 'POST', url: `/api/tasks/${followUpTaskId}/archive` });
+
+    const result = await client.callTool({ name: 'list-board', arguments: { includeArchived: true } });
+    const board = result.structuredContent as { lanes: { name: string; tasks: { title: string; archived: boolean }[] }[] };
+
+    const followUp = laneTasks(board, 'To Do').find((t) => t.title === 'Follow up with Sam');
+    expect(followUp?.archived).toBe(true);
+    const draft = laneTasks(board, 'In Progress').find((t) => t.title === 'Draft Q3 goals');
+    expect(draft?.archived).toBe(false);
+  });
+
+  it('the archived gate applies before search/tags matching — with includeArchived unset, an archived card is excluded even if it matches search (A3, FR-012 parity)', async () => {
+    await app.inject({ method: 'POST', url: `/api/tasks/${followUpTaskId}/archive` });
+
+    const result = await client.callTool({ name: 'list-board', arguments: { search: 'sam' } });
+    const board = result.structuredContent as { lanes: { name: string; tasks: { title: string }[] }[] };
+
+    expect(laneTasks(board, 'To Do').map((t) => t.title)).not.toContain('Follow up with Sam');
+  });
+
+  it('with includeArchived: true, search matching on an archived card behaves identically to an active card (A4, US3 parity)', async () => {
+    await app.inject({ method: 'POST', url: `/api/tasks/${followUpTaskId}/archive` });
+
+    const result = await client.callTool({ name: 'list-board', arguments: { includeArchived: true, search: 'sam' } });
+    const board = result.structuredContent as { lanes: { name: string; tasks: { title: string }[] }[] };
+
+    expect(laneTasks(board, 'To Do').map((t) => t.title)).toContain('Follow up with Sam');
+    expect(laneTasks(board, 'In Progress').map((t) => t.title)).not.toContain('Draft Q3 goals');
   });
 });

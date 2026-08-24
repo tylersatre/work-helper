@@ -174,7 +174,8 @@ describe('US3: MCP visibility of a deleted card', () => {
     expect(names).not.toContain('delete_task');
     expect(names).not.toContain('remove-task');
     expect(names).not.toContain('delete-card');
-    expect(names).not.toContain('archive-task');
-    expect(names.filter((n) => /(delete|remove|destroy|archive)[-_](task|card)/.test(n))).toEqual([]);
+    // archive-card/unarchive-card are the deliberate, spec-decided exception (027-card-archive,
+    // FR-014) — agents may archive but never delete.
+    expect(names.filter((n) => /(delete|remove|destroy)[-_](task|card)/.test(n))).toEqual([]);
   });
 });
