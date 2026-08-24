@@ -332,3 +332,15 @@ export const calendarSyncRuns = sqliteTable(
   },
   (t) => [index('calendar_sync_runs_ran_at').on(t.ranAt)],
 );
+
+export const suppressedAddresses = sqliteTable(
+  'suppressed_addresses',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    addressId: integer('address_id')
+      .notNull()
+      .references(() => emailAddresses.id, { onDelete: 'cascade' }),
+    suppressedAt: integer('suppressed_at').notNull(),
+  },
+  (t) => [uniqueIndex('suppressed_addresses_address_id_unique').on(t.addressId)],
+);

@@ -186,4 +186,60 @@ describe('migration upgrade path (drizzle/0001_silly_sauron.sql, production data
     upgradedSqlite.close();
     freshSqlite.close();
   });
+
+  it('applies 0005 (suppressed_addresses table) to a pre-existing baseline-only database without losing data, and converges with a fresh-DB schema', () => {
+    dir = mkdtempSync(join(tmpdir(), 'work-helper-upgrade-'));
+    const dbPath = join(dir, 'work-helper.db');
+    baselineMigrationsDir = buildBaselineOnlyMigrationsFolder();
+
+    // Stand up the database exactly as it looked pre-028-suppress-address, and store data through it.
+    const baselineSqlite = new Database(dbPath);
+    baselineSqlite.pragma('foreign_keys = ON');
+    const baselineDb = drizzle(baselineSqlite, {});
+    migrate(baselineDb, { migrationsFolder: baselineMigrationsDir });
+
+    baselineSqlite.prepare('INSERT INTO people (first_name, last_name, extra_fields, created_at) VALUES (?, ?, ?, ?)').run('Sam', 'Rivera', '{}', 1);
+    baselineSqlite.prepare('INSERT INTO email_addresses (person_id, value, is_primary, created_at) VALUES (NULL, ?, 0, ?)').run('news@example.com', 1);
+    baselineSqlite.close();
+
+    // Upgrade in place through the app's real migration runner (drizzle/, which now includes 0005).
+    const { db: upgradedDb, sqlite: upgradedSqlite } = createDb(dbPath);
+
+    const people = upgradedDb.all<{ first_name: string }>('SELECT first_name FROM people' as never);
+    expect(people).toHaveLength(1);
+    const addresses = upgradedDb.all<{ value: string }>('SELECT value FROM email_addresses' as never);
+    expect(addresses).toHaveLength(1);
+
+    // The new suppressed_addresses table exists and is empty (no lossy/backfill surprises on upgrade).
+    expect(upgradedSqlite.prepare('SELECT * FROM suppressed_addresses').all()).toEqual([]);
+
+    // Converges with a fresh :memory: DB's schema — the upgrade path and a brand-new install end up identical.
+    const { sqlite: freshSqlite } = createDb(':memory:');
+    expect(tableInfo(upgradedSqlite, 'suppressed_addresses')).toEqual(tableInfo(freshSqlite, 'suppressed_addresses'));
+
+    const columns = tableInfo(upgradedSqlite, 'suppressed_addresses').map((c) => c.name);
+    expect(columns).toEqual(['id', 'address_id', 'suppressed_at']);
+
+    const pkColumns = (upgradedSqlite.prepare("PRAGMA table_info('suppressed_addresses')").all() as { name: string; pk: number }[])
+      .filter((c) => c.pk > 0)
+      .map((c) => c.name);
+    expect(pkColumns).toEqual(['id']);
+
+    const notNullColumns = tableInfo(upgradedSqlite, 'suppressed_addresses')
+      .filter((c) => c.name !== 'id')
+      .map((c) => ({ name: c.name, notnull: c.notnull }));
+    expect(notNullColumns).toEqual([
+      { name: 'address_id', notnull: 1 },
+      { name: 'suppressed_at', notnull: 1 },
+    ]);
+
+    const fks = upgradedSqlite.prepare("PRAGMA foreign_key_list('suppressed_addresses')").all() as { table: string; from: string; on_delete: string }[];
+    expect(fks).toContainEqual(expect.objectContaining({ table: 'email_addresses', from: 'address_id', on_delete: 'CASCADE' }));
+
+    const indexes = upgradedSqlite.prepare("PRAGMA index_list('suppressed_addresses')").all() as { name: string; unique: number }[];
+    expect(indexes).toContainEqual(expect.objectContaining({ name: 'suppressed_addresses_address_id_unique', unique: 1 }));
+
+    upgradedSqlite.close();
+    freshSqlite.close();
+  });
 });
