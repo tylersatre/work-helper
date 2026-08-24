@@ -50,6 +50,7 @@ import { setEmailReadState } from '../services/email/read-state.js';
 import { computeSyncWindow } from '../services/email/sync.js';
 import type { SyncCoordinator } from '../services/email/sync-coordinator.js';
 import { conversationSubject, emailsForPerson, getConversation, listConversations, listUnlinkedAddresses } from '../services/email/queries.js';
+import { suppressAddress } from '../services/address-suppression.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
 
@@ -785,7 +786,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
     'list-unlinked-addresses',
     {
       description:
-        'Lists every address linked to no person — seen in synced mail, as a calendar event participant (excluding resource attendees like rooms and equipment), or both — complete, unsuppressed, and computed live — with its message count, event count, most recently seen display name, and most recent message date (null when the address has never appeared in mail), ordered by message count descending.',
+        'Lists every address linked to no person and not currently suppressed — seen in synced mail, as a calendar event participant (excluding resource attendees like rooms and equipment), or both — computed live — with its message count, event count, most recently seen display name, and most recent message date (null when the address has never appeared in mail), ordered by message count descending. Use suppress-address to flag an address so it drops out of this list.',
       outputSchema: {
         addresses: z.array(
           z.object({
@@ -807,6 +808,31 @@ export function createMcpServer(context: McpToolsContext): McpServer {
     },
   );
 
+  server.registerTool(
+    'suppress-address',
+    {
+      description:
+        'Flags a currently-unlinked, previously-seen email address so it drops out of list-unlinked-addresses. Fails if the address has never appeared in synced mail/calendar data, or if it is already linked to a person. Suppressing an already-suppressed address is a harmless no-op.',
+      inputSchema: { address: z.string() },
+      outputSchema: { address: z.string(), suppressedAt: z.number() },
+    },
+    async ({ address }) => {
+      const result = suppressAddress(context.db, address);
+      if (!result.ok) {
+        if (result.error === 'invalid') {
+          return toolError('An address is required');
+        }
+        if (result.error === 'not-found') {
+          return toolError(`${address} has never appeared in synced mail`);
+        }
+        return toolError(`${address} is linked to ${result.personName}`);
+      }
+      return {
+        content: [{ type: 'text', text: `Suppressed ${result.address}.` }],
+        structuredContent: { address: result.address, suppressedAt: result.suppressedAt },
+      };
+    },
+  );
 
   const companyPersonSchema = { id: z.number(), firstName: z.string(), lastName: z.string() };
   const companyCardSchema = { id: z.number(), title: z.string(), lane: z.string() };
