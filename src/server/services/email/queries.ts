@@ -312,13 +312,14 @@ export interface UnlinkedAddressSummary {
 }
 
 /**
- * Every unlinked address seen in mail or as a non-`resource` calendar event participant, complete
- * and computed live per call (FR-015–FR-017, FR-022, research R11). An address qualifies via mail
- * OR non-resource event participation — addresses seen only in the `resource` role (rooms,
- * equipment) never qualify. `messageCount`/`lastMessageAt` are 0/null for calendar-only addresses;
- * `eventCount` counts only non-resource event rows even for an address that also appears as a
- * resource elsewhere. The display name is the most recent non-empty name across both mail
- * (`sent_at`) and every event appearance regardless of role (`start_at`).
+ * Every unlinked, non-suppressed address seen in mail or as a non-`resource` calendar event
+ * participant, computed live per call (FR-015–FR-017, FR-022, research R11; suppression exclusion
+ * FR-008). An address qualifies via mail OR non-resource event participation — addresses seen only
+ * in the `resource` role (rooms, equipment) never qualify. `messageCount`/`lastMessageAt` are
+ * 0/null for calendar-only addresses; `eventCount` counts only non-resource event rows even for an
+ * address that also appears as a resource elsewhere. The display name is the most recent non-empty
+ * name across both mail (`sent_at`) and every event appearance regardless of role (`start_at`). A
+ * suppressed address (see `suppressed_addresses`) is excluded from this list until unsuppressed.
  */
 export function listUnlinkedAddresses(db: AppDb): UnlinkedAddressSummary[] {
   const rows = db.all<{
@@ -377,6 +378,7 @@ export function listUnlinkedAddresses(db: AppDb): UnlinkedAddressSummary[] {
     LEFT JOIN mail_agg ON mail_agg.addressId = q.addressId
     LEFT JOIN event_agg ON event_agg.addressId = q.addressId
     LEFT JOIN ranked_names ON ranked_names.addressId = q.addressId AND ranked_names.rn = 1
+    WHERE NOT EXISTS (SELECT 1 FROM suppressed_addresses sa WHERE sa.address_id = ea.id)
     ORDER BY messageCount DESC, lastMessageAt DESC, address ASC
   `);
 
