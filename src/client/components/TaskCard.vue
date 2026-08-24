@@ -24,13 +24,14 @@ function onDragEnd(): void {
 <template>
   <li
     class="task-card"
+    :class="{ 'task-card-archived': task.archived }"
     data-testid="task-card"
     :data-task-id="task.id"
     draggable="true"
     @click="onClick"
     @dragstart="onDragStart"
     @dragend="onDragEnd"
-  >{{ task.title }}</li>
+  >{{ task.title }}<span v-if="task.archived" class="archived-badge" data-testid="archived-badge">Archived</span></li>
 </template>
 
 <style scoped>
@@ -51,5 +52,21 @@ function onDragEnd(): void {
 
 .task-card:hover {
   border-color: rgba(255, 255, 255, 0.2);
+}
+
+.task-card-archived {
+  opacity: 0.6;
+}
+
+.archived-badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 3px;
+  background: var(--wh-surface);
+  border: 1px solid var(--wh-border-subtle);
+  color: var(--wh-text-muted);
+  font-size: 0.7rem;
+  vertical-align: middle;
 }
 </style>

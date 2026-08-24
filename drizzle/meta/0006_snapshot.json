@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "c577d564-cd2b-4e24-97cc-9ab50eb6d18a",
-  "prevId": "f2e37b57-0f02-4eb8-bed7-72f3b1d9b508",
+  "id": "37bb359a-414c-444e-b56b-0f8818d6485f",
+  "prevId": "c577d564-cd2b-4e24-97cc-9ab50eb6d18a",
   "tables": {
     "app_state": {
       "name": "app_state",
@@ -1148,6 +1148,59 @@
           "name": "person_tags_person_id_tag_id_pk"
         }
       },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "suppressed_addresses": {
+      "name": "suppressed_addresses",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "address_id": {
+          "name": "address_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "suppressed_at": {
+          "name": "suppressed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "suppressed_addresses_address_id_unique": {
+          "name": "suppressed_addresses_address_id_unique",
+          "columns": [
+            "address_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "suppressed_addresses_address_id_email_addresses_id_fk": {
+          "name": "suppressed_addresses_address_id_email_addresses_id_fk",
+          "tableFrom": "suppressed_addresses",
+          "tableTo": "email_addresses",
+          "columnsFrom": [
+            "address_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
     },

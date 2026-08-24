@@ -10,11 +10,13 @@ const props = defineProps<{
   filterActive: boolean;
   visibleCount: number;
   totalCount: number;
+  showArchived: boolean;
 }>();
 
 const emit = defineEmits<{
   'update:text': [string];
   'update:tagIds': [number[]];
+  'update:showArchived': [boolean];
   clear: [];
 }>();
 
@@ -52,6 +54,15 @@ function onTagsUpdate(value: (string | number)[] | null): void {
       {{ visibleCount }} of {{ totalCount }} cards
     </span>
     <NButton v-if="filterActive" size="small" data-testid="board-clear-filters" @click="emit('clear')">Clear filters</NButton>
+    <label class="board-show-archived">
+      <input
+        type="checkbox"
+        data-testid="show-archived-toggle"
+        :checked="showArchived"
+        @change="emit('update:showArchived', ($event.target as HTMLInputElement).checked)"
+      />
+      Show archived
+    </label>
   </div>
 </template>
 
@@ -79,5 +90,16 @@ function onTagsUpdate(value: (string | number)[] | null): void {
   font-size: 0.8rem;
   color: var(--wh-text-primary);
   white-space: nowrap;
+}
+
+.board-show-archived {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--wh-text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+  margin-left: auto;
 }
 </style>

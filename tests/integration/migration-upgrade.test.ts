@@ -187,7 +187,7 @@ describe('migration upgrade path (drizzle/0001_silly_sauron.sql, production data
     freshSqlite.close();
   });
 
-  it('applies 0005 (suppressed_addresses table) to a pre-existing baseline-only database without losing data, and converges with a fresh-DB schema', () => {
+  it('applies 0006 (suppressed_addresses table) to a pre-existing baseline-only database without losing data, and converges with a fresh-DB schema', () => {
     dir = mkdtempSync(join(tmpdir(), 'work-helper-upgrade-'));
     const dbPath = join(dir, 'work-helper.db');
     baselineMigrationsDir = buildBaselineOnlyMigrationsFolder();
@@ -202,7 +202,7 @@ describe('migration upgrade path (drizzle/0001_silly_sauron.sql, production data
     baselineSqlite.prepare('INSERT INTO email_addresses (person_id, value, is_primary, created_at) VALUES (NULL, ?, 0, ?)').run('news@example.com', 1);
     baselineSqlite.close();
 
-    // Upgrade in place through the app's real migration runner (drizzle/, which now includes 0005).
+    // Upgrade in place through the app's real migration runner (drizzle/, which now includes 0006).
     const { db: upgradedDb, sqlite: upgradedSqlite } = createDb(dbPath);
 
     const people = upgradedDb.all<{ first_name: string }>('SELECT first_name FROM people' as never);

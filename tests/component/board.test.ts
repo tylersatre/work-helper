@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, within } from '@testing-library/vue';
 import { flushPromises, mount } from '@vue/test-utils';
-import { describe, expect, it, vi, afterEach } from 'vitest';
+import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import Board from '../../src/client/components/Board.vue';
 
 function makeDataTransfer(taskId: number) {
@@ -911,6 +911,58 @@ describe('Board', () => {
 
     await expect(wrapper.vm.fetchBoard()).rejects.toThrow();
   });
+
+  it('an archived card hidden in the lane does not corrupt drag reordering of the active cards around it (027-card-archive, drag-index bug)', async () => {
+    const putCalls: { url: string; body: unknown }[] = [];
+    const fetchMock = vi.fn((url: string, options?: { method?: string; body?: string }) => {
+      if (url === '/api/board' && !options) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            lanes: [
+              {
+                name: 'To Do',
+                tasks: [
+                  { id: 1, title: 'A', lane: 'To Do', position: 0, createdAt: 1, archived: false, tags: [], searchText: 'a' },
+                  { id: 2, title: 'B', lane: 'To Do', position: 1, createdAt: 2, archived: true, tags: [], searchText: 'b' },
+                  { id: 3, title: 'C', lane: 'To Do', position: 2, createdAt: 3, archived: false, tags: [], searchText: 'c' },
+                ],
+              },
+              { name: 'In Progress', tasks: [] },
+              { name: 'Waiting', tasks: [] },
+              { name: 'Done', tasks: [] },
+            ],
+          }),
+        });
+      }
+      if (options?.method === 'PUT') {
+        putCalls.push({ url, body: JSON.parse(options.body!) });
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(Board);
+    await screen.findByRole('heading', { level: 2, name: 'To Do' });
+
+    // B is archived and hidden (toggle off by default): the lane renders only [A, C].
+    const toDo = laneByName('To Do');
+    const [a, c] = within(toDo).getAllByTestId('task-card');
+    expect(cardTitles(toDo)).toEqual(['A', 'C']);
+    stubRect(a!, 0, 40);
+    stubRect(c!, 40, 40);
+
+    await fireEvent.dragStart(a!, { dataTransfer: makeDataTransfer(1) });
+    await fireDragOver(toDo, 65);
+    await fireDrop(toDo, makeDataTransfer(1), 65);
+
+    // A must actually move past C in the true (unfiltered) lane order — landing between the
+    // hidden B and C would leave the rendered view unchanged, which is the bug: the drag visibly
+    // does nothing while the server silently reorders the hidden card's neighbors.
+    expect(cardTitles(toDo)).toEqual(['C', 'A']);
+    expect(putCalls).toEqual([{ url: '/api/tasks/1/placement', body: { lane: 'To Do', index: 2 } }]);
+  });
 });
 
 describe('Board filtering - US1: find a card by typing', () => {
@@ -1195,5 +1247,192 @@ describe('Board filtering - US4: dragging while filtered', () => {
     await fireDragOver(doneAfterFilter, 5);
 
     expect(within(doneAfterFilter).queryByTestId('drop-indicator')).toBeNull();
+  });
+});
+
+// The archived card sits in the middle, not last, so a test asserting "normal manual-order
+// position" actually exercises interleaving rather than passing under an implementation that
+// segregated archived cards to the bottom of the lane (contracts/board-archive-ui.md).
+function boardWithArchivedCard() {
+  return {
+    lanes: [
+      {
+        name: 'To Do',
+        tasks: [
+          { id: 1, title: 'Follow up with Sam', lane: 'To Do', position: 0, createdAt: 1, archived: false, tags: [], searchText: 'follow up with sam' },
+          { id: 2, title: 'Draft goals', lane: 'To Do', position: 1, createdAt: 2, archived: true, tags: [], searchText: 'draft goals' },
+          { id: 3, title: 'Write proposal', lane: 'To Do', position: 2, createdAt: 3, archived: false, tags: [], searchText: 'write proposal' },
+        ],
+      },
+      { name: 'In Progress', tasks: [] },
+      { name: 'Waiting', tasks: [] },
+      { name: 'Done', tasks: [] },
+    ],
+  };
+}
+
+describe('Board archiving - US2: default-hide and reveal (027-card-archive)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('with the toggle absent/off, an archived card is never rendered in any lane even though GET /api/board includes it (FR-004)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => boardWithArchivedCard() }));
+
+    render(Board);
+    await screen.findByRole('heading', { level: 2, name: 'To Do' });
+
+    expect(screen.queryByTestId('show-archived-toggle')).toBeTruthy();
+    expect((screen.getByTestId('show-archived-toggle') as HTMLInputElement).checked).toBe(false);
+    expect(cardTitles(laneByName('To Do'))).toEqual(['Follow up with Sam', 'Write proposal']);
+  });
+
+  it('toggling "Show archived" on reveals the archived card dimmed with an archived-badge, in its normal manual-order position (FR-006, scenario 1)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => boardWithArchivedCard() }));
+
+    render(Board);
+    await screen.findByRole('heading', { level: 2, name: 'To Do' });
+
+    await fireEvent.click(screen.getByTestId('show-archived-toggle'));
+    await flushPromises();
+
+    const cards = within(laneByName('To Do')).getAllByTestId('task-card');
+    expect(cards.map((card) => card.textContent)).toEqual(['Follow up with Sam', 'Draft goalsArchived', 'Write proposal']);
+    const badges = within(laneByName('To Do')).getAllByTestId('archived-badge');
+    expect(badges).toHaveLength(1);
+  });
+});
+
+describe('Board archiving - US3: search/tag filter parity for archived cards (027-card-archive)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function boardWithTwoArchivedCards() {
+    return {
+      lanes: [
+        {
+          name: 'To Do',
+          tasks: [
+            { id: 1, title: 'Follow up with Sam', lane: 'To Do', position: 0, createdAt: 1, archived: true, tags: [], searchText: 'follow up with sam' },
+            { id: 2, title: 'Draft goals', lane: 'To Do', position: 1, createdAt: 2, archived: true, tags: [], searchText: 'draft goals' },
+          ],
+        },
+        { name: 'In Progress', tasks: [] },
+        { name: 'Waiting', tasks: [] },
+        { name: 'Done', tasks: [] },
+      ],
+    };
+  }
+
+  it('with the toggle on, searching narrows two archived cards down to the one matching, still dimmed and badged (FR-011, scenario 1)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => boardWithTwoArchivedCards() }));
+
+    render(Board);
+    await screen.findByRole('heading', { level: 2, name: 'To Do' });
+    await fireEvent.click(screen.getByTestId('show-archived-toggle'));
+    await flushPromises();
+
+    await typeSearch('sam');
+
+    const cards = within(laneByName('To Do')).getAllByTestId('task-card');
+    expect(cards).toHaveLength(1);
+    expect(cards[0]!.textContent).toContain('Follow up with Sam');
+    expect(within(laneByName('To Do')).getByTestId('archived-badge')).toBeTruthy();
+  });
+
+  it('with the toggle off, an archived card that would otherwise match the active search stays hidden regardless (FR-012, edge case)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => boardWithTwoArchivedCards() }));
+
+    render(Board);
+    await screen.findByRole('heading', { level: 2, name: 'To Do' });
+
+    await typeSearch('sam');
+
+    expect(within(laneByName('To Do')).queryAllByTestId('task-card')).toHaveLength(0);
+  });
+
+  function boardWithTaggedArchivedCards() {
+    return {
+      lanes: [
+        {
+          name: 'To Do',
+          tasks: [
+            { id: 1, title: 'Follow up with Sam', lane: 'To Do', position: 0, createdAt: 1, archived: true, tags: [Q3_TAG], searchText: 'follow up with sam' },
+            { id: 2, title: 'Draft goals', lane: 'To Do', position: 1, createdAt: 2, archived: true, tags: [VIP_TAG], searchText: 'draft goals' },
+          ],
+        },
+        { name: 'In Progress', tasks: [] },
+        { name: 'Waiting', tasks: [] },
+        { name: 'Done', tasks: [] },
+      ],
+    };
+  }
+
+  it('with the toggle on, the tag filter applies to archived cards using the same matching rules as active cards (FR-011 tag parity)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => boardWithTaggedArchivedCards() }));
+
+    render(Board);
+    await screen.findByRole('heading', { level: 2, name: 'To Do' });
+    await fireEvent.click(screen.getByTestId('show-archived-toggle'));
+    await flushPromises();
+
+    await selectTag('Q3');
+
+    const cards = within(laneByName('To Do')).getAllByTestId('task-card');
+    expect(cards).toHaveLength(1);
+    expect(cards[0]!.textContent).toContain('Follow up with Sam');
+    expect(within(laneByName('To Do')).getByTestId('archived-badge')).toBeTruthy();
+  });
+
+  it('with the toggle off, an archived card matching the selected tag stays hidden regardless (FR-012 tag parity)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => boardWithTaggedArchivedCards() }));
+
+    render(Board);
+    await screen.findByRole('heading', { level: 2, name: 'To Do' });
+
+    await selectTag('Q3');
+
+    expect(within(laneByName('To Do')).queryAllByTestId('task-card')).toHaveLength(0);
+  });
+});
+
+describe('Board archiving - US5: toggle persistence (027-card-archive)', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('with wh.board.showArchived already stored as true, a freshly mounted Board renders the toggle checked and archived cards visible with no interaction (FR-015, scenario 1)', async () => {
+    window.localStorage.setItem('wh.board.showArchived', 'true');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => boardWithArchivedCard() }));
+
+    render(Board);
+    await screen.findByRole('heading', { level: 2, name: 'To Do' });
+    await flushPromises();
+
+    expect((screen.getByTestId('show-archived-toggle') as HTMLInputElement).checked).toBe(true);
+    expect(cardTitles(laneByName('To Do'))).toContain('Follow up with Sam');
+    expect(within(laneByName('To Do')).getByTestId('archived-badge')).toBeTruthy();
+  });
+
+  it('turning the toggle on persists it to wh.board.showArchived, and turning it off clears it back to false (FR-015)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => boardWithArchivedCard() }));
+
+    render(Board);
+    await screen.findByRole('heading', { level: 2, name: 'To Do' });
+
+    expect(window.localStorage.getItem('wh.board.showArchived')).toBeNull();
+
+    await fireEvent.click(screen.getByTestId('show-archived-toggle'));
+    await flushPromises();
+    expect(window.localStorage.getItem('wh.board.showArchived')).toBe('true');
+
+    await fireEvent.click(screen.getByTestId('show-archived-toggle'));
+    await flushPromises();
+    expect(window.localStorage.getItem('wh.board.showArchived')).toBe('false');
   });
 });
