@@ -50,7 +50,7 @@ import { setEmailReadState } from '../services/email/read-state.js';
 import { computeSyncWindow } from '../services/email/sync.js';
 import type { SyncCoordinator } from '../services/email/sync-coordinator.js';
 import { conversationSubject, emailsForPerson, getConversation, listConversations, listUnlinkedAddresses } from '../services/email/queries.js';
-import { suppressAddress } from '../services/address-suppression.js';
+import { listSuppressedAddresses, suppressAddress } from '../services/address-suppression.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
 
@@ -830,6 +830,22 @@ export function createMcpServer(context: McpToolsContext): McpServer {
       return {
         content: [{ type: 'text', text: `Suppressed ${result.address}.` }],
         structuredContent: { address: result.address, suppressedAt: result.suppressedAt },
+      };
+    },
+  );
+
+  server.registerTool(
+    'list-suppressed-addresses',
+    {
+      description: 'Lists every currently-suppressed address, ordered most recently suppressed first.',
+      outputSchema: { addresses: z.array(z.object({ address: z.string(), suppressedAt: z.number() })) },
+    },
+    async () => {
+      const addresses = listSuppressedAddresses(context.db);
+      const count = addresses.length;
+      return {
+        content: [{ type: 'text', text: `${count} suppressed address${count === 1 ? '' : 'es'}.` }],
+        structuredContent: { addresses },
       };
     },
   );

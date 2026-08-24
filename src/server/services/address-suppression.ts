@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { emailAddresses, people, suppressedAddresses } from '../db/schema.js';
@@ -46,4 +46,18 @@ export function suppressAddress(db: AppDb, rawAddress: unknown): SuppressAddress
     .all();
 
   return { ok: true, address: row!.address, suppressedAt: row!.suppressedAt };
+}
+
+export interface SuppressedAddressSummary {
+  address: string;
+  suppressedAt: number;
+}
+
+export function listSuppressedAddresses(db: AppDb): SuppressedAddressSummary[] {
+  return db
+    .select({ address: emailAddresses.value, suppressedAt: suppressedAddresses.suppressedAt })
+    .from(suppressedAddresses)
+    .innerJoin(emailAddresses, eq(emailAddresses.id, suppressedAddresses.addressId))
+    .orderBy(desc(suppressedAddresses.suppressedAt))
+    .all();
 }

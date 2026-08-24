@@ -83,12 +83,12 @@ No project initialization needed — this feature adds to an existing, fully-con
 
 ### Tests for User Story 2
 
-- [ ] T008 [US2] Write failing integration tests in `tests/integration/mcp-suppress-address.test.ts` for `list-suppressed-addresses`, covering spec.md US2 acceptance scenarios 1–2 (suppressing news@example.com makes it appear in the list; suppressing ads@example.com afterward puts it before news@example.com, most-recently-suppressed first) and FR-005. Confirm the tests fail (tool doesn't exist yet).
+- [X] T008 [US2] Write failing integration tests in `tests/integration/mcp-suppress-address.test.ts` for `list-suppressed-addresses`, covering spec.md US2 acceptance scenarios 1–2 (suppressing news@example.com makes it appear in the list; suppressing ads@example.com afterward puts it before news@example.com, most-recently-suppressed first) and FR-005. Confirm the tests fail (tool doesn't exist yet).
 
 ### Implementation for User Story 2
 
-- [ ] T009 [US2] Implement `listSuppressedAddresses(db)` in `src/server/services/address-suppression.ts` per data-model.md and contracts/mcp-tools.md §2: join `suppressedAddresses` to `emailAddresses`, `ORDER BY suppressed_at DESC`, return `Array<{ address: string, suppressedAt: number }>`.
-- [ ] T010 [US2] Register the `list-suppressed-addresses` MCP tool in `src/server/mcp/tools.ts` per contracts/mcp-tools.md §2: no input, calls `listSuppressedAddresses`, `structuredContent: { addresses }` with success text `` ${count} suppressed address${count === 1 ? '' : 'es'}. ``. Make T008 pass.
+- [X] T009 [US2] Implement `listSuppressedAddresses(db)` in `src/server/services/address-suppression.ts` per data-model.md and contracts/mcp-tools.md §2: join `suppressedAddresses` to `emailAddresses`, `ORDER BY suppressed_at DESC`, return `Array<{ address: string, suppressedAt: number }>`.
+- [X] T010 [US2] Register the `list-suppressed-addresses` MCP tool in `src/server/mcp/tools.ts` per contracts/mcp-tools.md §2: no input, calls `listSuppressedAddresses`, `structuredContent: { addresses }` with success text `` ${count} suppressed address${count === 1 ? '' : 'es'}. ``. Make T008 pass.
 
 **Checkpoint**: `list-suppressed-addresses` is fully functional and independently testable, alongside US1.
 

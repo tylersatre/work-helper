@@ -185,3 +185,27 @@ describe('US1: suppress-address', () => {
     expect(addresses).not.toContain('sam.rivera@example.com');
   });
 });
+
+describe('US2: list-suppressed-addresses', () => {
+  it('includes a suppressed address (AS1)', async () => {
+    await seedStandardStore();
+
+    await suppressAddress('news@example.com');
+
+    const result = await listSuppressed();
+    expect(result.isError).toBeFalsy();
+    const { addresses } = result.structuredContent as { addresses: { address: string; suppressedAt: number }[] };
+    expect(addresses.map((a) => a.address)).toContain('news@example.com');
+  });
+
+  it('orders by suppression time, most recently suppressed first (AS2, FR-005)', async () => {
+    await seedStandardStore();
+
+    await suppressAddress('news@example.com');
+    await suppressAddress('jordan.smith@example.com');
+
+    const result = await listSuppressed();
+    const { addresses } = result.structuredContent as { addresses: { address: string; suppressedAt: number }[] };
+    expect(addresses.map((a) => a.address)).toEqual(['jordan.smith@example.com', 'news@example.com']);
+  });
+});
