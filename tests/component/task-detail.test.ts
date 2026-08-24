@@ -770,4 +770,178 @@ describe('TaskDetailPage', () => {
       expect(screen.queryByRole('alert')).toBeNull();
     });
   });
+
+  describe('archive card (027-card-archive)', () => {
+    async function renderDetail(overrides: Record<string, unknown> = {}) {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/tasks/1' && !options) {
+          return Promise.resolve({ ok: true, json: async () => taskDetailPayload(overrides) });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const router = makeRouter('/tasks/1');
+      await router.isReady();
+      render(TaskDetailPage, { global: { plugins: [router] } });
+      await flushPromises();
+      await screen.findByText('Follow up with Sam');
+
+      return { router, fetchMock };
+    }
+
+    it('renders an archive control next to the lane pills and delete control whenever the card is not archived (FR-001, scenario 1)', async () => {
+      await renderDetail({ archived: false });
+
+      expect(screen.getByTestId('archive-card-button')).toBeTruthy();
+      expect(screen.getByTestId('delete-card-button')).toBeTruthy();
+      expect(screen.queryByTestId('unarchive-card-button')).toBeNull();
+    });
+
+    it('clicking archive issues POST /api/tasks/:id/archive with no confirmation dialog and navigates to the board on success (FR-002, scenario 2)', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/tasks/1' && !options) {
+          return Promise.resolve({ ok: true, json: async () => taskDetailPayload({ archived: false }) });
+        }
+        if (url === '/api/tasks/1/archive' && options?.method === 'POST') {
+          return Promise.resolve({ ok: true, json: async () => taskDetailPayload({ archived: true }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const router = makeRouter('/tasks/1');
+      await router.isReady();
+      render(TaskDetailPage, { global: { plugins: [router] } });
+      await flushPromises();
+      await screen.findByText('Follow up with Sam');
+
+      await fireEvent.click(screen.getByTestId('archive-card-button'));
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/tasks/1/archive', expect.objectContaining({ method: 'POST' }));
+      expect(screen.queryByRole('alertdialog')).toBeNull();
+      expect(router.currentRoute.value.fullPath).toBe('/');
+    });
+
+    it('archiving works the same from a non-Done lane, e.g. In Progress (FR-003, scenario 3)', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/tasks/1' && !options) {
+          return Promise.resolve({ ok: true, json: async () => taskDetailPayload({ archived: false, lane: 'In Progress' }) });
+        }
+        if (url === '/api/tasks/1/archive' && options?.method === 'POST') {
+          return Promise.resolve({ ok: true, json: async () => taskDetailPayload({ archived: true, lane: 'In Progress' }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const router = makeRouter('/tasks/1');
+      await router.isReady();
+      render(TaskDetailPage, { global: { plugins: [router] } });
+      await flushPromises();
+      await screen.findByText('Follow up with Sam');
+
+      await fireEvent.click(screen.getByTestId('archive-card-button'));
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/tasks/1/archive', expect.objectContaining({ method: 'POST' }));
+      expect(router.currentRoute.value.fullPath).toBe('/');
+    });
+
+    it('a failed archive request surfaces inline via a role="alert" region without navigating away', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/tasks/1' && !options) {
+          return Promise.resolve({ ok: true, json: async () => taskDetailPayload({ archived: false }) });
+        }
+        if (url === '/api/tasks/1/archive' && options?.method === 'POST') {
+          return Promise.resolve({ ok: false, status: 500, json: async () => ({ error: { message: 'Something went wrong' } }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const router = makeRouter('/tasks/1');
+      await router.isReady();
+      render(TaskDetailPage, { global: { plugins: [router] } });
+      await flushPromises();
+      await screen.findByText('Follow up with Sam');
+
+      await fireEvent.click(screen.getByTestId('archive-card-button'));
+      await flushPromises();
+
+      expect(screen.getByRole('alert').textContent).toContain('Something went wrong');
+      expect(router.currentRoute.value.fullPath).toBe('/tasks/1');
+    });
+  });
+
+  describe('unarchive card (027-card-archive)', () => {
+    it('renders an unarchive control in place of the archive control when the task is archived, never both (FR-007, scenario 2)', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({ ok: true, json: async () => taskDetailPayload({ archived: true }) }),
+      );
+
+      const router = makeRouter('/tasks/1');
+      await router.isReady();
+      render(TaskDetailPage, { global: { plugins: [router] } });
+      await flushPromises();
+      await screen.findByText('Follow up with Sam');
+
+      expect(screen.getByTestId('unarchive-card-button')).toBeTruthy();
+      expect(screen.queryByTestId('archive-card-button')).toBeNull();
+    });
+
+    it("an archived task's notes and links to people, companies, and email conversations are unchanged from before archiving (scenario 2)", async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () =>
+            taskDetailPayload({
+              archived: true,
+              notes: [{ id: 1, taskId: 1, text: 'Waiting on budget numbers', source: 'ui', createdAt: 1 }],
+              people: [{ id: 1, firstName: 'Sam', lastName: 'Rivera', email: 'sam.rivera@example.com', phone: null, extraFields: {}, createdAt: 1 }],
+            }),
+        }),
+      );
+
+      const router = makeRouter('/tasks/1');
+      await router.isReady();
+      render(TaskDetailPage, { global: { plugins: [router] } });
+      await flushPromises();
+
+      expect(await screen.findByText('Waiting on budget numbers')).toBeTruthy();
+      const linked = await screen.findAllByTestId('linked-person');
+      expect(linked[0]?.textContent).toContain('Sam Rivera');
+    });
+
+    it('clicking unarchive issues POST /api/tasks/:id/unarchive with no confirmation, updates task.archived in place without navigating, and swaps the header control back (FR-009, FR-010, scenario 3)', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/tasks/1' && !options) {
+          return Promise.resolve({ ok: true, json: async () => taskDetailPayload({ archived: true }) });
+        }
+        if (url === '/api/tasks/1/unarchive' && options?.method === 'POST') {
+          return Promise.resolve({ ok: true, json: async () => taskDetailPayload({ archived: false, position: 3 }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const router = makeRouter('/tasks/1');
+      await router.isReady();
+      render(TaskDetailPage, { global: { plugins: [router] } });
+      await flushPromises();
+      await screen.findByText('Follow up with Sam');
+
+      await fireEvent.click(screen.getByTestId('unarchive-card-button'));
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/tasks/1/unarchive', expect.objectContaining({ method: 'POST' }));
+      expect(screen.queryByRole('alertdialog')).toBeNull();
+      expect(router.currentRoute.value.fullPath).toBe('/tasks/1');
+      expect(screen.getByTestId('archive-card-button')).toBeTruthy();
+      expect(screen.queryByTestId('unarchive-card-button')).toBeNull();
+    });
+  });
 });

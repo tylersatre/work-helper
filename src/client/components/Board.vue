@@ -3,6 +3,7 @@ import { NButton } from 'naive-ui';
 import { computed, onMounted, ref, watch } from 'vue';
 import { matchesBoardFilter } from '../../shared/board-filter.js';
 import type { BoardFilter, BoardTask, BoardView, Tag } from '../../shared/types.js';
+import { readShowArchived, writeShowArchived } from '../utils/board-archive-storage.js';
 import { clearFilter as clearStoredFilter, readFilter, writeFilter } from '../utils/board-filter-storage.js';
 import BoardFilterBar from './BoardFilterBar.vue';
 import CreateTaskForm from './CreateTaskForm.vue';
@@ -12,6 +13,11 @@ const board = ref<BoardView>({ lanes: [] });
 const draggedTaskId = ref<number | null>(null);
 const errorMessage = ref<string | null>(null);
 const filter = ref<BoardFilter>(readFilter());
+const showArchived = ref<boolean>(readShowArchived());
+
+watch(showArchived, (value) => {
+  writeShowArchived(value);
+});
 
 watch(
   filter,
@@ -45,14 +51,18 @@ watch(
 
 const filterActive = computed(() => filter.value.text.trim() !== '' || filter.value.tagIds.length > 0);
 
+const archivedGatedLanes = computed(() =>
+  board.value.lanes.map((lane) => ({ ...lane, tasks: lane.tasks.filter((task) => showArchived.value || !task.archived) })),
+);
+
 const visibleLanes = computed(() =>
-  board.value.lanes.map((lane) => ({
+  archivedGatedLanes.value.map((lane) => ({
     ...lane,
     tasks: lane.tasks.filter((task) => matchesBoardFilter(task, filter.value)),
   })),
 );
 
-const totalCount = computed(() => board.value.lanes.reduce((sum, lane) => sum + lane.tasks.length, 0));
+const totalCount = computed(() => archivedGatedLanes.value.reduce((sum, lane) => sum + lane.tasks.length, 0));
 const visibleCount = computed(() => visibleLanes.value.reduce((sum, lane) => sum + lane.tasks.length, 0));
 const noMatches = computed(() => filterActive.value && visibleCount.value === 0);
 
@@ -241,8 +251,10 @@ onMounted(() => {
       :filter-active="filterActive"
       :visible-count="visibleCount"
       :total-count="totalCount"
+      :show-archived="showArchived"
       @update:text="onFilterTextUpdate"
       @update:tag-ids="onFilterTagsUpdate"
+      @update:show-archived="(value: boolean) => (showArchived = value)"
       @clear="clearFilter"
     />
     <p v-if="noMatches" class="board-no-matches" data-testid="board-no-matches">No cards match</p>

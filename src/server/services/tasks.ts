@@ -336,6 +336,47 @@ export function deleteTask(db: AppDb, id: number): DeleteTaskResult {
   return { ok: true };
 }
 
+export type ArchiveTaskResult = { ok: true; task: typeof tasks.$inferSelect } | { ok: false; error: 'task-not-found' };
+
+export function archiveTask(db: AppDb, id: number): ArchiveTaskResult {
+  const [task] = db.select().from(tasks).where(eq(tasks.id, id)).limit(1).all();
+  if (!task) {
+    return { ok: false, error: 'task-not-found' };
+  }
+  if (task.archived) {
+    return { ok: true, task };
+  }
+
+  db.update(tasks).set({ archived: true }).where(eq(tasks.id, id)).run();
+  const [updated] = db.select().from(tasks).where(eq(tasks.id, id)).limit(1).all();
+  return { ok: true, task: updated! };
+}
+
+export type UnarchiveTaskResult = { ok: true; task: typeof tasks.$inferSelect } | { ok: false; error: 'task-not-found' };
+
+export function unarchiveTask(db: AppDb, id: number): UnarchiveTaskResult {
+  return db.transaction((tx) => {
+    const [task] = tx.select().from(tasks).where(eq(tasks.id, id)).limit(1).all();
+    if (!task) {
+      return { ok: false, error: 'task-not-found' };
+    }
+    if (!task.archived) {
+      return { ok: true, task };
+    }
+
+    const [{ maxPosition } = { maxPosition: null }] = tx
+      .select({ maxPosition: sql<number | null>`max(${tasks.position})` })
+      .from(tasks)
+      .where(eq(tasks.lane, task.lane))
+      .all();
+    const position = maxPosition === null ? 0 : maxPosition + 1;
+
+    tx.update(tasks).set({ archived: false, position }).where(eq(tasks.id, id)).run();
+    const [updated] = tx.select().from(tasks).where(eq(tasks.id, id)).limit(1).all();
+    return { ok: true, task: updated! };
+  });
+}
+
 export type UnlinkPersonResult = { ok: true; task: NonNullable<ReturnType<typeof getTaskDetail>> } | { ok: false; error: 'task-not-found' };
 
 export function unlinkPerson(db: AppDb, taskId: number, personId: number): UnlinkPersonResult {

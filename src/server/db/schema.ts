@@ -7,6 +7,7 @@ export const tasks = sqliteTable('tasks', {
   lane: text('lane').notNull(),
   position: integer('position').notNull(),
   createdAt: integer('created_at').notNull(),
+  archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
 });
 
 export const people = sqliteTable('people', {

@@ -4,6 +4,7 @@ export interface Task {
   lane: string;
   position: number;
   createdAt: number;
+  archived: boolean;
 }
 
 export interface BoardTask extends Task {

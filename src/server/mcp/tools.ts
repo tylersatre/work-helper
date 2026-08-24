@@ -16,6 +16,7 @@ import {
 import { createPerson, getPerson, listPeople, updatePerson as updatePersonService, type PersonRecord } from '../services/people.js';
 import {
   addNote,
+  archiveTask,
   createTask,
   deleteNoteById,
   getTaskDetail,
@@ -23,6 +24,7 @@ import {
   linkPerson,
   listBoardTasksByLane,
   moveTask,
+  unarchiveTask,
   unlinkPerson,
   updateTaskTitle,
 } from '../services/tasks.js';
@@ -70,7 +72,7 @@ function personName(person: { firstName: string; lastName: string }): string {
   return `${person.firstName} ${person.lastName}`;
 }
 
-const taskSummarySchema = { id: z.number(), title: z.string(), lane: z.string(), position: z.number(), createdAt: z.number() };
+const taskSummarySchema = { id: z.number(), title: z.string(), lane: z.string(), position: z.number(), createdAt: z.number(), archived: z.boolean() };
 
 const noteSchema = { id: z.number(), text: z.string(), source: z.enum(['ui', 'mcp']), createdAt: z.number() };
 
@@ -141,6 +143,7 @@ function taskDetailContent(task: NonNullable<ReturnType<typeof getTaskDetail>>) 
     lane: task.lane,
     position: task.position,
     createdAt: task.createdAt,
+    archived: task.archived,
     notes: task.notes.map((note) => ({ id: note.id, text: note.text, source: note.source, createdAt: note.createdAt })),
     people: task.people.map((person) => ({
       id: person.id,
@@ -213,11 +216,11 @@ export function createMcpServer(context: McpToolsContext): McpServer {
     'list-board',
     {
       description:
-        "Lists the board's lanes and the tasks in each, in configured lane order. Optionally narrows the board to cards matching a case-insensitive text search (over card title, note text, and linked person/company names) and/or carrying any of the given tags.",
-      inputSchema: { search: z.string().optional(), tags: z.array(z.string()).optional() },
+        "Lists the board's lanes and the tasks in each, in configured lane order. Optionally narrows the board to cards matching a case-insensitive text search (over card title, note text, and linked person/company names) and/or carrying any of the given tags. Archived cards are excluded unless includeArchived is set.",
+      inputSchema: { search: z.string().optional(), tags: z.array(z.string()).optional(), includeArchived: z.boolean().optional() },
       outputSchema: { lanes: z.array(z.object({ name: z.string(), tasks: z.array(z.object(taskSummarySchema)) })) },
     },
-    async ({ search, tags: tagNames }) => {
+    async ({ search, tags: tagNames, includeArchived }) => {
       const requestedTagNames = tagNames ?? [];
       const allTags = context.db.select({ id: tagsTable.id, name: tagsTable.name }).from(tagsTable).all();
       const resolvedTagIds = requestedTagNames.flatMap((name) => {
@@ -233,8 +236,9 @@ export function createMcpServer(context: McpToolsContext): McpServer {
       const lanes = context.lanes.map((name) => ({
         name,
         tasks: listBoardTasksByLane(context.db, name)
+          .filter((task) => includeArchived || !task.archived)
           .filter((task) => matchesBoardFilter(task, filter))
-          .map(({ id, title, lane, position, createdAt }) => ({ id, title, lane, position, createdAt })),
+          .map(({ id, title, lane, position, createdAt, archived }) => ({ id, title, lane, position, createdAt, archived })),
       }));
       const matchCount = lanes.reduce((sum, lane) => sum + lane.tasks.length, 0);
       const structuredContent = { lanes };
@@ -488,7 +492,14 @@ export function createMcpServer(context: McpToolsContext): McpServer {
     async ({ title, note, lane }) => {
       try {
         const created = createTask(context.db, context.lanes, title, note, 'mcp', lane);
-        const structuredContent = { id: created.id, title: created.title, lane: created.lane, position: created.position, createdAt: created.createdAt };
+        const structuredContent = {
+          id: created.id,
+          title: created.title,
+          lane: created.lane,
+          position: created.position,
+          createdAt: created.createdAt,
+          archived: created.archived,
+        };
         return {
           content: [{ type: 'text', text: `Created task "${created.title}" in lane "${created.lane}".` }],
           structuredContent,
@@ -1244,12 +1255,63 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         lane: task.lane,
         position: task.position,
         createdAt: task.createdAt,
+        archived: task.archived,
         landedPosition,
       };
       return {
         content: [{ type: 'text', text: `Moved task "${task.title}" to lane "${task.lane}" at position ${landedPosition}.` }],
         structuredContent,
       };
+    },
+  );
+
+  server.registerTool(
+    'archive-card',
+    {
+      description: 'Archives a task, hiding it from the default board view without deleting it. Archiving an already-archived task is a no-op.',
+      inputSchema: { taskId: z.number().int().positive() },
+      outputSchema: taskSummarySchema,
+    },
+    async ({ taskId }) => {
+      const result = archiveTask(context.db, taskId);
+      if (!result.ok) {
+        return toolError(`Task ${taskId} not found`);
+      }
+      const { task } = result;
+      const structuredContent = {
+        id: task.id,
+        title: task.title,
+        lane: task.lane,
+        position: task.position,
+        createdAt: task.createdAt,
+        archived: task.archived,
+      };
+      return { content: [{ type: 'text', text: `Archived task "${task.title}".` }], structuredContent };
+    },
+  );
+
+  server.registerTool(
+    'unarchive-card',
+    {
+      description: 'Restores an archived task to active state, placing it at the bottom of its lane. Unarchiving an already-active task is a no-op.',
+      inputSchema: { taskId: z.number().int().positive() },
+      outputSchema: taskSummarySchema,
+    },
+    async ({ taskId }) => {
+      const result = unarchiveTask(context.db, taskId);
+      if (!result.ok) {
+        return toolError(`Task ${taskId} not found`);
+      }
+      const { task } = result;
+      const structuredContent = {
+        id: task.id,
+        title: task.title,
+        lane: task.lane,
+        position: task.position,
+        createdAt: task.createdAt,
+        archived: task.archived,
+      };
+      return { content: [{ type: 'text', text: `Unarchived task "${task.title}".` }], structuredContent };
     },
   );
 
@@ -1355,7 +1417,14 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         return toolError('Title is required');
       }
       const { task } = result;
-      const structuredContent = { id: task.id, title: task.title, lane: task.lane, position: task.position, createdAt: task.createdAt };
+      const structuredContent = {
+        id: task.id,
+        title: task.title,
+        lane: task.lane,
+        position: task.position,
+        createdAt: task.createdAt,
+        archived: task.archived,
+      };
       return { content: [{ type: 'text', text: `Renamed task ${taskId} to "${task.title}".` }], structuredContent };
     },
   );
