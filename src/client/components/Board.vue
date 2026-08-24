@@ -138,10 +138,26 @@ function applyMove(current: BoardView, taskId: number, targetLaneName: string, t
   };
 }
 
+// Translates an index computed against the rendered (post-archived-gate) sibling list back to an
+// index into the true (unfiltered) lane order that applyMove/the server operate on. Without this,
+// hiding an archived card shifts every rendered index after it out of step with the real one —
+// a drag can silently land on the wrong slot while looking like it did nothing.
+function absoluteIndex(laneName: string, renderedIndex: number, taskId: number): number {
+  const full = board.value.lanes.find((lane) => lane.name === laneName)?.tasks ?? [];
+  const rendered = visibleLanes.value.find((lane) => lane.name === laneName)?.tasks ?? [];
+  const remaining = full.filter((task) => task.id !== taskId).map((task) => task.id);
+  const renderedRemaining = rendered.filter((task) => task.id !== taskId);
+  const anchorId = renderedRemaining[renderedIndex]?.id;
+  return anchorId === undefined ? remaining.length : remaining.indexOf(anchorId);
+}
+
 function onDrop(taskId: number, laneName: string, index: number): void {
   // A filtered drag can't see the true destination length — always append past the end of the
-  // lane's unfiltered task list, never the rendered/filtered one (FR-015).
-  const targetIndex = filterActive.value ? (board.value.lanes.find((lane) => lane.name === laneName)?.tasks.length ?? index) : index;
+  // lane's unfiltered task list, never the rendered/filtered one (FR-015). Otherwise, translate
+  // the rendered index back to the true lane order (archived cards may be hidden within it).
+  const targetIndex = filterActive.value
+    ? (board.value.lanes.find((lane) => lane.name === laneName)?.tasks.length ?? index)
+    : absoluteIndex(laneName, index, taskId);
   board.value = applyMove(board.value, taskId, laneName, targetIndex);
   draggedTaskId.value = null;
 
