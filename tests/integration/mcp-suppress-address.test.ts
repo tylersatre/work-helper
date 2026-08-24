@@ -303,3 +303,19 @@ describe('US4: suppression respects and defers to real linking', () => {
     expect(suppressedAddressList).not.toContain('jordan.smith@example.com');
   });
 });
+
+describe('Polish: suppression has no effect on synced mail (FR-012)', () => {
+  it('still shows a suppressed address as a normal participant via list-conversations', async () => {
+    await seedStandardStore();
+
+    await suppressAddress('news@example.com');
+
+    const conversations = await client.callTool({ name: 'list-conversations', arguments: {} });
+    expect(conversations.isError).toBeFalsy();
+    const { conversations: list } = conversations.structuredContent as {
+      conversations: { participants: { address: string }[] }[];
+    };
+    const allParticipantAddresses = list.flatMap((c) => c.participants.map((p) => p.address));
+    expect(allParticipantAddresses).toContain('news@example.com');
+  });
+});

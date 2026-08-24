@@ -143,8 +143,8 @@ No project initialization needed — this feature adds to an existing, fully-con
 
 **Purpose**: Whole-feature verification spanning all four user stories, per the project's Definition of Done (CLAUDE.md).
 
-- [ ] T020 [P] Write an integration test in `tests/integration/mcp-suppress-address.test.ts` confirming FR-012: suppress an address, then confirm it still appears normally through a raw participant-data read tool (`get-conversation` or `list-conversations`) — suppression has no effect on synced mail, conversations, or message/event participant data.
-- [ ] T021 Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` (the same gate the Stop hook runs) and fix any failures across all changed files.
+- [X] T020 [P] Write an integration test in `tests/integration/mcp-suppress-address.test.ts` confirming FR-012: suppress an address, then confirm it still appears normally through a raw participant-data read tool (`get-conversation` or `list-conversations`) — suppression has no effect on synced mail, conversations, or message/event participant data.
+- [X] T021 Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` (the same gate the Stop hook runs) and fix any failures across all changed files.
 - [ ] T022 Independently confirm (via the `verifier` agent) that every acceptance scenario in spec.md (US1–US4) has a passing automated check, per the project's Definition of Done. No `browser-tester` evidence is expected or required — this feature has no UI surface (spec.md Assumptions; quickstart.md "Expected outcome").
 
 ---
