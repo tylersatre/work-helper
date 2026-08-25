@@ -57,7 +57,7 @@ export function listTasksByLane(db: AppDb, lane: string) {
   return db.select().from(tasks).where(eq(tasks.lane, lane)).orderBy(asc(tasks.position), asc(tasks.id)).all();
 }
 
-function groupByTaskId<T extends { taskId: number }>(rows: T[]): Map<number, T[]> {
+export function groupByTaskId<T extends { taskId: number }>(rows: T[]): Map<number, T[]> {
   const byTaskId = new Map<number, T[]>();
   for (const row of rows) {
     const list = byTaskId.get(row.taskId);

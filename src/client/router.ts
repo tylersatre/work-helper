@@ -9,6 +9,7 @@ import PersonDetailPage from './pages/PersonDetailPage.vue';
 import SyncPage from './pages/SyncPage.vue';
 import TagsPage from './pages/TagsPage.vue';
 import TaskDetailPage from './pages/TaskDetailPage.vue';
+import UpNextPage from './pages/UpNextPage.vue';
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -23,5 +24,6 @@ export const router = createRouter({
     { path: '/sync', component: SyncPage },
     { path: '/emails', component: EmailsPage },
     { path: '/emails/:id', component: EmailConversationPage },
+    { path: '/up-next', component: UpNextPage },
   ],
 });

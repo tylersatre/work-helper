@@ -190,3 +190,39 @@ export interface LinkedCardSummary {
   title: string;
   lane: string;
 }
+
+export interface DashboardShowToggles {
+  tags: boolean;
+  latestNote: boolean;
+  links: boolean;
+  lane: boolean;
+}
+
+export interface DashboardSavedView {
+  lanes: string[];
+  tagIds: number[];
+  text: string;
+  limit: number;
+  show: DashboardShowToggles;
+}
+
+export interface DashboardCard {
+  id: number;
+  title: string;
+  lane: string;
+  position: number;
+  createdAt: number;
+  tags: Tag[];
+  searchText: string;
+  latestNote: { text: string; createdAt: number } | null;
+  people: { id: number; name: string }[];
+  companies: { id: number; name: string }[];
+}
+
+export interface DashboardResponse {
+  lanes: string[];
+  defaultLanes: string[];
+  quickDoneLane: string;
+  savedView: DashboardSavedView | null;
+  cards: DashboardCard[];
+}

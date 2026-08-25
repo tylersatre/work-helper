@@ -20,6 +20,7 @@ async function renderAt(path: string) {
       { path: '/sync', component: { template: '<div>sync</div>' } },
       { path: '/emails', component: { template: '<div>emails</div>' } },
       { path: '/emails/:id', component: { template: '<div>email</div>' } },
+      { path: '/up-next', component: { template: '<div>up-next</div>' } },
     ],
   });
   await router.push(path);
@@ -41,6 +42,7 @@ describe('App shell', () => {
     expect(within(nav).getByRole('link', { name: 'Tags' })).toBeTruthy();
     expect(within(nav).getByRole('link', { name: 'Sync' })).toBeTruthy();
     expect(within(nav).getByRole('link', { name: 'Emails' })).toBeTruthy();
+    expect(within(nav).getByRole('link', { name: 'Up Next' })).toBeTruthy();
   });
 
   it('marks Board active on /', async () => {
@@ -121,6 +123,14 @@ describe('App shell', () => {
 
     const nav = screen.getByTestId('app-nav');
     expect(within(nav).getByRole('link', { name: 'Emails' }).getAttribute('aria-current')).toBe('page');
+    expect(within(nav).getByRole('link', { name: 'Board' }).getAttribute('aria-current')).toBeNull();
+  });
+
+  it('marks Up Next active on /up-next, and Board is not active there (guards the activeSection board fallback, FR-001)', async () => {
+    await renderAt('/up-next');
+
+    const nav = screen.getByTestId('app-nav');
+    expect(within(nav).getByRole('link', { name: 'Up Next' }).getAttribute('aria-current')).toBe('page');
     expect(within(nav).getByRole('link', { name: 'Board' }).getAttribute('aria-current')).toBeNull();
   });
 

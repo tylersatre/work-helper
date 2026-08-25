@@ -51,3 +51,21 @@ export const companyNameSchema = z
 export const tagColorSchema = z
   .string()
   .regex(/^#[0-9a-fA-F]{6}$/, 'A valid color is required');
+
+export const dashboardSavedViewSchema = z.object({
+  lanes: z
+    .array(z.string().min(1))
+    .min(1, 'At least one lane is required')
+    .refine((lanes) => new Set(lanes).size === lanes.length, 'Lane names must be unique'),
+  tagIds: z
+    .array(z.number().int())
+    .refine((ids) => new Set(ids).size === ids.length, 'Tag ids must be unique'),
+  text: z.string(),
+  limit: z.number().int('Limit must be an integer').min(1, 'Limit must be at least 1').max(100, 'Limit must be at most 100'),
+  show: z.object({
+    tags: z.boolean(),
+    latestNote: z.boolean(),
+    links: z.boolean(),
+    lane: z.boolean(),
+  }),
+});

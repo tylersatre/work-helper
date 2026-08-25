@@ -121,6 +121,8 @@ docker compose restart
 
 A malformed config file fails startup — `docker compose logs` names the file so you know what to fix. If you edit these on the server, `git pull` can conflict with your local changes; commit or stash your edits before pulling.
 
+`lanes.json` accepts either a bare array of lane names (the original form) or an object `{ "lanes": [...], "dashboardDefaultLanes": [...], "quickDoneLane": "..." }` that additionally configures the Up Next dashboard (`/up-next`): `dashboardDefaultLanes` picks which lanes populate the dashboard's built-in default view (falls back to the first lane if omitted), and `quickDoneLane` names the lane the dashboard's one-click "done" action moves a card into (falls back to the last lane if omitted). Both keys are optional and independent; a bare-array file keeps working exactly as before.
+
 ## Email sync mailbox sign-in
 
 Email sync (the `sync-emails` MCP tool and friends) needs a one-time interactive sign-in that the container itself can't perform — `npm run mail:signin` opens a device-code flow, and the runtime image doesn't ship the dev tooling (`tsx`, `scripts/`) that command needs. Run it from your host clone instead, against the same `./data/` directory the container reads:
