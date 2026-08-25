@@ -22,7 +22,8 @@ try {
   process.exit(1);
 }
 
-const lanes = loadLanesConfig();
+const lanesConfig = loadLanesConfig();
+const lanes = lanesConfig.lanes;
 const personFields = loadPersonFieldsConfig();
 const { db } = createDb(process.env.DATABASE_PATH ?? './data/work-helper.db');
 
@@ -99,6 +100,7 @@ const calendarProvider =
 const app = buildApp({
   db,
   lanes,
+  dashboardLanes: lanesConfig.dashboard,
   personFields,
   serveClient: process.env.NODE_ENV === 'production',
   mcpTokenSecret: process.env.MCP_TOKEN_SECRET,

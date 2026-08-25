@@ -8,12 +8,13 @@ import { themeOverrides } from './theme.js';
 const route = useRoute();
 const cssVars = paletteCssVars();
 
-const activeSection = computed<'board' | 'people' | 'companies' | 'tags' | 'sync' | 'emails'>(() => {
+const activeSection = computed<'board' | 'people' | 'companies' | 'tags' | 'sync' | 'emails' | 'up-next'>(() => {
   if (route.path === '/people' || route.path.startsWith('/people/')) return 'people';
   if (route.path === '/companies' || route.path.startsWith('/companies/')) return 'companies';
   if (route.path === '/tags') return 'tags';
   if (route.path === '/sync') return 'sync';
   if (route.path === '/emails' || route.path.startsWith('/emails/')) return 'emails';
+  if (route.path === '/up-next') return 'up-next';
   return 'board';
 });
 </script>
@@ -27,6 +28,9 @@ const activeSection = computed<'board' | 'people' | 'companies' | 'tags' | 'sync
         <nav class="app-nav-links">
           <RouterLink v-slot="{ href, navigate }" to="/" custom>
             <a :href="href" :aria-current="activeSection === 'board' ? 'page' : undefined" @click="navigate">Board</a>
+          </RouterLink>
+          <RouterLink v-slot="{ href, navigate }" to="/up-next" custom>
+            <a :href="href" :aria-current="activeSection === 'up-next' ? 'page' : undefined" @click="navigate">Up Next</a>
           </RouterLink>
           <RouterLink v-slot="{ href, navigate }" to="/people" custom>
             <a :href="href" :aria-current="activeSection === 'people' ? 'page' : undefined" @click="navigate">People</a>

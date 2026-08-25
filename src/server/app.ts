@@ -11,6 +11,7 @@ import { mcpRoutes } from './mcp/routes.js';
 import { boardRoutes } from './routes/board.js';
 import { calendarSyncRoutes } from './routes/calendar-sync.js';
 import { companyRoutes } from './routes/companies.js';
+import { dashboardRoutes } from './routes/dashboard.js';
 import { emailSyncRoutes } from './routes/email-sync.js';
 import { emailRoutes } from './routes/emails.js';
 import { mailboxRoutes } from './routes/mailbox.js';
@@ -31,6 +32,7 @@ declare module 'fastify' {
   interface FastifyInstance {
     db: AppDb;
     lanes: string[];
+    dashboardLanes: { defaultLanes: string[]; quickDoneLane: string };
     personFields: string[];
     mcpKey?: Buffer;
     identityVerifier?: IdentityVerifier;
@@ -47,6 +49,7 @@ declare module 'fastify' {
 export interface AppOptions {
   db: AppDb;
   lanes: string[];
+  dashboardLanes?: { defaultLanes: string[]; quickDoneLane: string };
   personFields?: string[];
   serveClient?: boolean;
   /** Directory containing the built client (with index.html). Defaults to `dist/client` under cwd. */
@@ -73,6 +76,10 @@ export function buildApp(options: AppOptions): FastifyInstance {
 
   app.decorate('db', options.db);
   app.decorate('lanes', options.lanes);
+  app.decorate(
+    'dashboardLanes',
+    options.dashboardLanes ?? { defaultLanes: [options.lanes[0]!], quickDoneLane: options.lanes[options.lanes.length - 1]! },
+  );
   app.decorate('personFields', options.personFields ?? []);
   app.decorate('mcpKey', options.mcpTokenSecret ? deriveKey(options.mcpTokenSecret) : undefined);
   app.decorate('identityVerifier', options.identityVerifier);
@@ -86,6 +93,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
   app.decorate('mailboxConnection', options.mailboxAuth ? new MailboxConnectionManager(options.mailboxAuth) : undefined);
 
   app.register(boardRoutes);
+  app.register(dashboardRoutes);
   app.register(taskRoutes);
   app.register(peopleRoutes);
   app.register(tagRoutes);
