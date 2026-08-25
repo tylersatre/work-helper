@@ -17,6 +17,7 @@ const errorMessage = ref<string | null>(null);
 const activePopup = ref<'display' | 'filter' | null>(null);
 const pendingView = ref<DashboardSavedView | null>(null);
 const openTaskId = ref<number | null>(null);
+const existingTagIds = ref<number[]>([]);
 
 async function fetchDashboard(): Promise<void> {
   const response = await fetch('/api/dashboard');
@@ -26,20 +27,22 @@ async function fetchDashboard(): Promise<void> {
   payload.value = await response.json();
 }
 
-const availableTagIds = computed(() => {
-  if (!payload.value) return [];
-  const ids = new Set<number>();
-  for (const card of payload.value.cards) {
-    for (const tag of card.tags) {
-      ids.add(tag.id);
-    }
-  }
-  return [...ids];
-});
+function fetchExistingTagIds(): void {
+  void fetch('/api/tags')
+    .then((response) => (response.ok ? (response.json() as Promise<{ id: number }[]>) : []))
+    .then((tags) => {
+      if (!Array.isArray(tags)) return;
+      existingTagIds.value = tags.map((tag) => tag.id);
+    })
+    .catch(() => {
+      // Existing-tag list unavailable: a saved tag filter falls back to being dropped, same as a
+      // genuinely deleted tag, until the next successful fetch.
+    });
+}
 
 const view = computed(() => {
   if (!payload.value) return null;
-  return effectiveView(payload.value.savedView, { lanes: payload.value.lanes, defaultLanes: payload.value.defaultLanes }, availableTagIds.value);
+  return effectiveView(payload.value.savedView, { lanes: payload.value.lanes, defaultLanes: payload.value.defaultLanes }, existingTagIds.value);
 });
 
 const previewView = computed(() => pendingView.value ?? view.value);
@@ -55,33 +58,44 @@ const noMatches = computed(() => view.value !== null && cards.value.length === 0
 
 async function onQuickDone(taskId: number): Promise<void> {
   if (!payload.value) return;
-  const response = await fetch(`/api/tasks/${taskId}/placement`, {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ lane: payload.value.quickDoneLane, index: Number.MAX_SAFE_INTEGER }),
-  });
-  if (!response.ok) {
-    const body = await response.json();
-    errorMessage.value = body.error?.message ?? "Couldn't complete that action — please try again.";
-  } else {
-    errorMessage.value = null;
+  try {
+    const response = await fetch(`/api/tasks/${taskId}/placement`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lane: payload.value.quickDoneLane, index: Number.MAX_SAFE_INTEGER }),
+    });
+    if (!response.ok) {
+      const body = await response.json();
+      errorMessage.value = body.error?.message ?? "Couldn't complete that action — please try again.";
+    } else {
+      errorMessage.value = null;
+    }
+  } catch {
+    errorMessage.value = "Couldn't complete that action — please try again.";
   }
   await fetchDashboard().catch(() => {
     // Refetch failed: the list keeps showing its last-known-good state.
   });
 }
 
-async function onAddNote(taskId: number, text: string): Promise<void> {
-  const response = await fetch(`/api/tasks/${taskId}/notes`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text }),
-  });
-  if (!response.ok) {
-    const body = await response.json();
-    errorMessage.value = body.error?.message ?? "Couldn't add that note — please try again.";
-  } else {
-    errorMessage.value = null;
+async function onAddNote(taskId: number, text: string, onSettled: (ok: boolean) => void): Promise<void> {
+  try {
+    const response = await fetch(`/api/tasks/${taskId}/notes`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (!response.ok) {
+      const body = await response.json();
+      errorMessage.value = body.error?.message ?? "Couldn't add that note — please try again.";
+      onSettled(false);
+    } else {
+      errorMessage.value = null;
+      onSettled(true);
+    }
+  } catch {
+    errorMessage.value = "Couldn't add that note — please try again.";
+    onSettled(false);
   }
   await fetchDashboard().catch(() => {
     // Refetch failed: the list keeps showing its last-known-good state.
@@ -112,11 +126,22 @@ function onPopupPendingUpdate(next: DashboardSavedView): void {
 }
 
 async function onPopupOk(mergedView: DashboardSavedView): Promise<void> {
-  await fetch('/api/dashboard/view', {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(mergedView),
-  });
+  try {
+    const response = await fetch('/api/dashboard/view', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(mergedView),
+    });
+    if (!response.ok) {
+      const body = await response.json();
+      errorMessage.value = body.error?.message ?? "Couldn't save the view — please try again.";
+      return;
+    }
+  } catch {
+    errorMessage.value = "Couldn't save the view — please try again.";
+    return;
+  }
+  errorMessage.value = null;
   activePopup.value = null;
   pendingView.value = null;
   await fetchDashboard().catch(() => {
@@ -148,6 +173,7 @@ onMounted(() => {
   void fetchDashboard().catch(() => {
     // Initial load failed: the page stays empty rather than crashing.
   });
+  fetchExistingTagIds();
   pollTimer = setInterval(() => {
     void fetchDashboard().catch(() => {
       // Poll failed silently: keep showing the last-good payload and retry on the next tick (FR-022).

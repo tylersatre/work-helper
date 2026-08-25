@@ -41,9 +41,12 @@ function emitPending(): void {
 }
 
 function toggleLane(lane: string): void {
+  // Re-adding rebuilds in configLanes order (rather than appending) so toggling a lane off then
+  // back on round-trips to the exact original array — an appended reorder would false-positive
+  // the dirty check into a spurious discard-confirmation prompt.
   pending.value.lanes = pending.value.lanes.includes(lane)
     ? pending.value.lanes.filter((l) => l !== lane)
-    : [...pending.value.lanes, lane];
+    : props.configLanes.filter((l) => l === lane || pending.value.lanes.includes(l));
   emitPending();
 }
 
@@ -62,7 +65,13 @@ function onTextInput(event: Event): void {
 function onLimitInput(event: Event): void {
   const raw = (event.target as HTMLInputElement).value;
   limitText.value = raw;
-  pending.value.limit = raw.trim() === '' ? Number.NaN : Number(raw);
+  const parsed = raw.trim() === '' ? Number.NaN : Number(raw);
+  pending.value.limit = parsed;
+  if (Number.isNaN(parsed)) {
+    // isValid already disables OK; skip the preview update so a mid-edit clear doesn't blank the
+    // live list to "no cards match" — the last valid preview stays visible until a number lands.
+    return;
+  }
   emitPending();
 }
 
@@ -89,8 +98,9 @@ function keepEditing(): void {
 
 function onOk(): void {
   if (!isValid.value) return;
+  // The parent closes the popup (via update:show) only once the save actually succeeds, so a
+  // failed PUT leaves the popup open with the pending edit intact and the error visible.
   emit('ok', clone(pending.value));
-  emit('update:show', false);
 }
 </script>
 

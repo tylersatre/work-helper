@@ -58,7 +58,7 @@ describe('effectiveView', () => {
     expect(view.lanes).toEqual(CONFIG.defaultLanes);
   });
 
-  it('silently drops stale saved tag ids not present in the payload', () => {
+  it('silently drops saved tag ids that no longer exist (FR-021) — the given set is the caller\'s existing-tags list', () => {
     const saved: DashboardSavedView = {
       lanes: ['Up Next'],
       tagIds: [3, 999],

@@ -391,6 +391,174 @@ describe('UpNextPage — Story 3: configure the view', () => {
     expect(screen.queryAllByTestId('up-next-card')).toHaveLength(0);
     expect(screen.getByTestId('up-next-no-match')).toBeTruthy();
   });
+
+  it('a saved tag filter for a tag that still exists but is on no visible card shows no-match, not every card (FR-021)', async () => {
+    const payload = seededDashboard({
+      savedView: { lanes: ['Up Next', 'In Progress'], tagIds: [VIP_TAG.id], text: '', limit: 5, show: { tags: true, latestNote: true, links: true, lane: false } },
+    });
+    // No card currently carries VIP — simulating the last VIP-tagged card having been archived/untagged —
+    // but the tag itself still exists (still returned by GET /api/tags).
+    payload.cards = payload.cards.map((c) => ({ ...c, tags: c.tags.filter((t) => t.id !== VIP_TAG.id) }));
+    const fetchMock = vi.fn((url: string, options?: RequestInit) => {
+      if (url === '/api/dashboard' && !options) {
+        return Promise.resolve({ ok: true, json: async () => payload });
+      }
+      if (url === '/api/tags' && !options) {
+        return Promise.resolve({ ok: true, json: async () => [VIP_TAG, Q3_TAG] });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(UpNextPage);
+    await flushPromises();
+
+    expect(screen.queryAllByTestId('up-next-card')).toHaveLength(0);
+    expect(screen.getByTestId('up-next-no-match')).toBeTruthy();
+  });
+
+  it('a failing PUT /api/dashboard/view keeps the popup open, shows an inline error, and preserves the pending edit', async () => {
+    const fetchMock = vi.fn((url: string, options?: RequestInit) => {
+      if (url === '/api/dashboard' && !options) {
+        return Promise.resolve({ ok: true, json: async () => seededDashboard() });
+      }
+      if (url === '/api/dashboard/view' && options?.method === 'PUT') {
+        return Promise.resolve({ ok: false, json: async () => ({ error: { message: 'Invalid saved view' } }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(UpNextPage);
+    await screen.findAllByTestId('up-next-card');
+    await flushPromises();
+
+    await fireEvent.click(screen.getByTestId('up-next-open-display'));
+    await flushPromises();
+    const popup = screen.getByTestId('up-next-display-popup');
+    await fireEvent.click(within(popup).getByTestId('up-next-toggle-lane'));
+    await fireEvent.click(within(popup).getByRole('button', { name: 'OK' }));
+    await flushPromises();
+
+    expect(screen.getByTestId('up-next-display-popup')).toBeTruthy();
+    expect(screen.getByTestId('up-next-error-banner').textContent).toContain('Invalid saved view');
+    expect(within(findCard('Follow up with Sam')).getByTestId('up-next-card-lane')).toBeTruthy();
+  });
+
+  it('a rejected placement fetch on quick-done shows an inline error and still refetches', async () => {
+    const fetchMock = vi.fn((url: string, options?: RequestInit) => {
+      if (url === '/api/dashboard' && !options) {
+        return Promise.resolve({ ok: true, json: async () => seededDashboard() });
+      }
+      if (/\/api\/tasks\/\d+\/placement/.test(url) && options?.method === 'PUT') {
+        return Promise.reject(new Error('network error'));
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(UpNextPage);
+    await screen.findAllByTestId('up-next-card');
+    await flushPromises();
+    fetchMock.mockClear();
+
+    await fireEvent.click(within(findCard('Write proposal')).getByTestId('up-next-quick-done'));
+    await flushPromises();
+
+    expect(screen.getByTestId('up-next-error-banner')).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith('/api/dashboard');
+  });
+
+  it('a rejected notes fetch on add-note shows an inline error and still refetches', async () => {
+    const fetchMock = vi.fn((url: string, options?: RequestInit) => {
+      if (url === '/api/dashboard' && !options) {
+        return Promise.resolve({ ok: true, json: async () => seededDashboard() });
+      }
+      if (/\/api\/tasks\/\d+\/notes/.test(url) && options?.method === 'POST') {
+        return Promise.reject(new Error('network error'));
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(UpNextPage);
+    await screen.findAllByTestId('up-next-card');
+    await flushPromises();
+    fetchMock.mockClear();
+
+    const samCard = findCard('Follow up with Sam');
+    await fireEvent.update(within(samCard).getByTestId('up-next-note-input'), 'Sam replied — pricing approved');
+    await fireEvent.click(within(samCard).getByTestId('up-next-note-submit'));
+    await flushPromises();
+
+    expect(screen.getByTestId('up-next-error-banner')).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith('/api/dashboard');
+  });
+
+  it('a failed add-note restores the typed draft instead of clearing it (nit fix)', async () => {
+    const fetchMock = vi.fn((url: string, options?: RequestInit) => {
+      if (url === '/api/dashboard' && !options) {
+        return Promise.resolve({ ok: true, json: async () => seededDashboard() });
+      }
+      if (/\/api\/tasks\/\d+\/notes/.test(url) && options?.method === 'POST') {
+        return Promise.resolve({ ok: false, json: async () => ({ error: { message: 'Note text is required' } }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(UpNextPage);
+    await screen.findAllByTestId('up-next-card');
+    await flushPromises();
+
+    const samCard = findCard('Follow up with Sam');
+    await fireEvent.update(within(samCard).getByTestId('up-next-note-input'), 'Sam replied — pricing approved');
+    await fireEvent.click(within(samCard).getByTestId('up-next-note-submit'));
+    await flushPromises();
+
+    expect((within(samCard).getByTestId('up-next-note-input') as HTMLInputElement).value).toBe('Sam replied — pricing approved');
+  });
+
+  it('toggling a lane off then back on in the filter popup restores the exact original lane order (no spurious discard prompt)', async () => {
+    stubViewFetch();
+    render(UpNextPage);
+    await screen.findAllByTestId('up-next-card');
+    await flushPromises();
+
+    await fireEvent.click(screen.getByTestId('up-next-open-filter'));
+    await flushPromises();
+    const popup = screen.getByTestId('up-next-filter-popup');
+    // Toggle the FIRST selected lane (not the last) — removing then re-appending the last lane
+    // trivially round-trips to the same order, so it wouldn't reproduce the reordering bug.
+    await fireEvent.click(within(popup).getByTestId('up-next-filter-lane-Up Next'));
+    await fireEvent.click(within(popup).getByTestId('up-next-filter-lane-Up Next'));
+    await flushPromises();
+
+    await fireEvent.click(within(popup).getByRole('button', { name: 'Cancel' }));
+    await flushPromises();
+
+    // Off-then-on round-trips to the identical snapshot, so Cancel must close cleanly with no
+    // discard-confirmation prompt (a reordered-but-identical-membership array would false-positive as dirty).
+    expect(screen.queryByTestId('up-next-discard-confirm')).toBeNull();
+    expect(screen.queryByTestId('up-next-filter-popup')).toBeNull();
+  });
+
+  it('clearing the limit field keeps the last valid preview instead of blanking it to no-match mid-keystroke', async () => {
+    stubViewFetch();
+    render(UpNextPage);
+    await screen.findAllByTestId('up-next-card');
+    await flushPromises();
+
+    await fireEvent.click(screen.getByTestId('up-next-open-filter'));
+    await flushPromises();
+    const popup = screen.getByTestId('up-next-filter-popup');
+    await fireEvent.update(within(popup).getByTestId('up-next-filter-limit'), '');
+    await flushPromises();
+
+    expect(screen.getAllByTestId('up-next-card').length).toBeGreaterThan(0);
+    const okButton = within(popup).getByRole('button', { name: 'OK' }) as HTMLButtonElement;
+    expect(okButton.disabled).toBe(true);
+  });
 });
 
 function taskDetailPayload(overrides: Record<string, unknown> = {}) {

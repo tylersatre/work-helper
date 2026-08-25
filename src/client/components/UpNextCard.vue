@@ -7,7 +7,11 @@ import TagChip from './TagChip.vue';
 
 const props = defineProps<{ card: DashboardCard; show: DashboardShowToggles; now: number }>();
 
-const emit = defineEmits<{ 'quick-done': [taskId: number]; 'add-note': [taskId: number, text: string]; open: [taskId: number] }>();
+const emit = defineEmits<{
+  'quick-done': [taskId: number];
+  'add-note': [taskId: number, text: string, onSettled: (ok: boolean) => void];
+  open: [taskId: number];
+}>();
 
 const noteText = ref('');
 const noteValidationMessage = ref('');
@@ -27,8 +31,14 @@ function onSubmitNote(event: Event): void {
     return;
   }
   noteValidationMessage.value = '';
-  emit('add-note', props.card.id, noteText.value);
-  noteText.value = '';
+  const text = noteText.value;
+  emit('add-note', props.card.id, text, (ok) => {
+    // Only clear the draft once the parent confirms the save actually succeeded — otherwise a
+    // failed submission would silently discard what was typed.
+    if (ok) {
+      noteText.value = '';
+    }
+  });
 }
 </script>
 

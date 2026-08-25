@@ -55,8 +55,9 @@ function keepEditing(): void {
 }
 
 function onOk(): void {
+  // The parent closes the popup (via update:show) only once the save actually succeeds, so a
+  // failed PUT leaves the popup open with the pending edit intact and the error visible.
   emit('ok', clone(pending.value));
-  emit('update:show', false);
 }
 </script>
 

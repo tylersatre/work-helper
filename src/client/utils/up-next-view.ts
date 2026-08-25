@@ -9,7 +9,10 @@ export interface DashboardLaneConfig {
 const BUILT_IN_SHOW = { tags: true, latestNote: true, links: true, lane: false };
 const BUILT_IN_LIMIT = 5;
 
-export function effectiveView(saved: DashboardSavedView | null, config: DashboardLaneConfig, availableTagIds: number[]): DashboardSavedView {
+// existingTagIds must be every tag id that still exists (e.g. from GET /api/tags), not merely
+// tags attached to a currently-visible card — a tag with zero attached cards right now still
+// exists, and FR-021 only drops a saved tag filter when the tag itself has been deleted.
+export function effectiveView(saved: DashboardSavedView | null, config: DashboardLaneConfig, existingTagIds: number[]): DashboardSavedView {
   if (!saved) {
     return { lanes: config.defaultLanes, tagIds: [], text: '', limit: BUILT_IN_LIMIT, show: { ...BUILT_IN_SHOW } };
   }
@@ -20,8 +23,8 @@ export function effectiveView(saved: DashboardSavedView | null, config: Dashboar
     lanes = config.defaultLanes;
   }
 
-  const availableTags = new Set(availableTagIds);
-  const tagIds = saved.tagIds.filter((id) => availableTags.has(id));
+  const stillExisting = new Set(existingTagIds);
+  const tagIds = saved.tagIds.filter((id) => stillExisting.has(id));
 
   return { lanes, tagIds, text: saved.text, limit: saved.limit, show: saved.show };
 }
