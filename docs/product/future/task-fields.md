@@ -12,7 +12,7 @@ Native structured fields on a card — due date, priority, effort, possibly a de
 
 ## Depends on
 
-None strictly. Interacts with: the `custom-fields` stub (these are native fields with semantics, not the flexible custom-field mechanism — shipping these may shrink what custom-fields needs to cover); `mcp-update-task` (once fields exist, setting them via MCP is the natural companion, and due dates leaving titles reduces that stub's rename pressure); `board-search-filter` (shipped the board tools' text and tag filter arguments that a due-date filter would join); `kanban-card-indicators` and `kanban-lane-sorting` (whether card faces show these fields and whether lanes can sort by them belong to those stubs).
+None strictly. Interacts with: the `custom-fields` stub (these are native fields with semantics, not the flexible custom-field mechanism — shipping these may shrink what custom-fields needs to cover); `mcp-update-task` (once fields exist, setting them via MCP is the natural companion, and due dates leaving titles reduces that stub's rename pressure); `board-search-filter` (shipped the board tools' text and tag filter arguments that a due-date filter would join); `kanban-card-indicators` and `kanban-lane-sorting` (whether card faces show these fields and whether lanes can sort by them belong to those stubs); `up-next-dashboard` (specced 2026-08-25 — surfaces the top of the Up Next/In Progress lanes as a glanceable page ranked by lane + manual order only; due date and priority fields would naturally join its display toggles, filter knobs, and ranking when they ship).
 
 ## Notes
 
