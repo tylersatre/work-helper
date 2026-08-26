@@ -1028,6 +1028,23 @@ describe('TaskDetailPage', () => {
       expect(screen.getByTestId('effort-select').textContent).toContain('L');
     });
 
+    it('keeps each field name visible even once a value is set, so a fully-populated view stays identifiable (PR review)', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        if (url === '/api/tasks/1') {
+          return Promise.resolve({
+            ok: true,
+            json: async () => taskDetailPayload({ dueDate: '2026-09-05', priority: 'High', effort: 'L' }),
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      await renderDetail(fetchMock);
+
+      expect(screen.getByRole('group', { name: /^due date$/i })).toBeTruthy();
+      expect(screen.getByRole('group', { name: /^priority$/i })).toBeTruthy();
+      expect(screen.getByRole('group', { name: /^effort$/i })).toBeTruthy();
+    });
+
     it('changing the due-date picker immediately PATCHes { dueDate } with no confirmation and updates the view', async () => {
       const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
         if (url === '/api/tasks/1' && !options) return Promise.resolve({ ok: true, json: async () => taskDetailPayload() });
@@ -1249,6 +1266,22 @@ describe('TaskDetailPage', () => {
       await chooseSelectOption('priority-select', 'Urgent');
 
       expect(screen.getByRole('alert').textContent).toContain('Invalid priority');
+      expect(screen.getByTestId('priority-unset')).toBeTruthy();
+    });
+
+    it('a network-level PATCH failure (fetch rejects) also surfaces inline via role="alert" and reverts the control (PR review)', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/tasks/1' && !options) return Promise.resolve({ ok: true, json: async () => taskDetailPayload() });
+        if (url === '/api/tasks/1' && options?.method === 'PATCH') {
+          return Promise.reject(new Error('offline'));
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      await renderDetail(fetchMock);
+
+      await chooseSelectOption('priority-select', 'Urgent');
+
+      expect(screen.getByRole('alert')).toBeTruthy();
       expect(screen.getByTestId('priority-unset')).toBeTruthy();
     });
   });

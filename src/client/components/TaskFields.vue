@@ -50,29 +50,38 @@ const isEditingDescription = ref(false);
 const descriptionDraft = ref('');
 const renderedDescription = computed(() => renderNoteMarkdown(props.description ?? ''));
 
+function revertField(key: 'dueDate' | 'priority' | 'effort' | 'description'): void {
+  if (key === 'dueDate') dueDateValue.value = props.dueDate ? parseLocalDate(props.dueDate) : null;
+  if (key === 'priority') priorityValue.value = props.priority ?? null;
+  if (key === 'effort') effortValue.value = props.effort ?? null;
+}
+
 async function patchField(key: 'dueDate' | 'priority' | 'effort' | 'description', value: string | null): Promise<void> {
-  const response = await fetch(`/api/tasks/${props.taskId}`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ [key]: value }),
-  });
-  const body = await response.json();
+  try {
+    const response = await fetch(`/api/tasks/${props.taskId}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ [key]: value }),
+    });
+    const body = await response.json();
 
-  if (!response.ok) {
-    fieldError.value = body.error.message;
-    if (key === 'dueDate') dueDateValue.value = props.dueDate ? parseLocalDate(props.dueDate) : null;
-    if (key === 'priority') priorityValue.value = props.priority ?? null;
-    if (key === 'effort') effortValue.value = props.effort ?? null;
-    return;
+    if (!response.ok) {
+      fieldError.value = body.error.message;
+      revertField(key);
+      return;
+    }
+
+    fieldError.value = '';
+    emit('update:fields', {
+      dueDate: key === 'dueDate' ? value : props.dueDate,
+      priority: key === 'priority' ? (value as TaskPriority | null) : props.priority,
+      effort: key === 'effort' ? (value as TaskEffort | null) : props.effort,
+      description: key === 'description' ? value : props.description,
+    });
+  } catch {
+    fieldError.value = "Couldn't save that change — please try again.";
+    revertField(key);
   }
-
-  fieldError.value = '';
-  emit('update:fields', {
-    dueDate: key === 'dueDate' ? value : props.dueDate,
-    priority: key === 'priority' ? (value as TaskPriority | null) : props.priority,
-    effort: key === 'effort' ? (value as TaskEffort | null) : props.effort,
-    description: key === 'description' ? value : props.description,
-  });
 }
 
 function onDueDateUpdate(value: number | null): void {
@@ -109,7 +118,8 @@ async function saveDescription(): Promise<void> {
 
 <template>
   <div class="task-fields">
-    <div class="task-field">
+    <div class="task-field" role="group" aria-label="Due date">
+      <span class="task-field-name">Due date</span>
       <span v-if="!dueDate" data-testid="due-date-unset" class="task-field-unset">No due date</span>
       <NDatePicker
         v-model:value="dueDateValue"
@@ -121,7 +131,8 @@ async function saveDescription(): Promise<void> {
       />
     </div>
 
-    <div class="task-field">
+    <div class="task-field" role="group" aria-label="Priority">
+      <span class="task-field-name">Priority</span>
       <span v-if="!priority" data-testid="priority-unset" class="task-field-unset">No priority</span>
       <NSelect
         v-model:value="priorityValue"
@@ -134,7 +145,8 @@ async function saveDescription(): Promise<void> {
       />
     </div>
 
-    <div class="task-field">
+    <div class="task-field" role="group" aria-label="Effort">
+      <span class="task-field-name">Effort</span>
       <span v-if="!effort" data-testid="effort-unset" class="task-field-unset">No effort</span>
       <NSelect
         v-model:value="effortValue"
@@ -147,7 +159,8 @@ async function saveDescription(): Promise<void> {
       />
     </div>
 
-    <div class="task-field">
+    <div class="task-field" role="group" aria-label="Description">
+      <span class="task-field-name">Description</span>
       <template v-if="isEditingDescription">
         <NInput
           v-model:value="descriptionDraft"
@@ -187,6 +200,12 @@ async function saveDescription(): Promise<void> {
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.task-field-name {
+  font-size: 0.72rem;
+  color: var(--wh-text-secondary);
+  min-width: 4.5rem;
 }
 
 .task-field-unset {

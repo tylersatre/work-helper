@@ -323,10 +323,10 @@ export function updateTask(db: AppDb, taskId: number, input: UpdateTaskInput): U
     }
     patch.title = result.data;
   }
-  if ('dueDate' in input) patch.dueDate = input.dueDate;
+  if ('dueDate' in input) patch.dueDate = blankToNull(input.dueDate);
   if ('priority' in input) patch.priority = input.priority;
   if ('effort' in input) patch.effort = input.effort;
-  if ('description' in input) patch.description = input.description;
+  if ('description' in input) patch.description = blankToNull(input.description);
 
   if (Object.keys(patch).length > 0) {
     db.update(tasks).set(patch).where(eq(tasks.id, taskId)).run();

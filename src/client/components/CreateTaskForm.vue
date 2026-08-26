@@ -116,34 +116,40 @@ async function onSubmit(): Promise<void> {
         :input-props="{ id: 'task-create-note', name: 'note' }"
       />
 
-      <label class="add-task-label">Due date</label>
-      <NDatePicker
-        v-model:value="dueDate"
-        type="date"
-        clearable
-        size="small"
-        data-testid="create-task-due-date"
-      />
+      <div role="group" aria-label="Due date" class="add-task-group">
+        <label class="add-task-label">Due date</label>
+        <NDatePicker
+          v-model:value="dueDate"
+          type="date"
+          clearable
+          size="small"
+          data-testid="create-task-due-date"
+        />
+      </div>
 
-      <label class="add-task-label">Priority</label>
-      <NSelect
-        v-model:value="priority"
-        clearable
-        size="small"
-        :virtual-scroll="false"
-        :options="priorityOptions"
-        data-testid="create-task-priority"
-      />
+      <div role="group" aria-label="Priority" class="add-task-group">
+        <label class="add-task-label">Priority</label>
+        <NSelect
+          v-model:value="priority"
+          clearable
+          size="small"
+          :virtual-scroll="false"
+          :options="priorityOptions"
+          data-testid="create-task-priority"
+        />
+      </div>
 
-      <label class="add-task-label">Effort</label>
-      <NSelect
-        v-model:value="effort"
-        clearable
-        size="small"
-        :virtual-scroll="false"
-        :options="effortOptions"
-        data-testid="create-task-effort"
-      />
+      <div role="group" aria-label="Effort" class="add-task-group">
+        <label class="add-task-label">Effort</label>
+        <NSelect
+          v-model:value="effort"
+          clearable
+          size="small"
+          :virtual-scroll="false"
+          :options="effortOptions"
+          data-testid="create-task-effort"
+        />
+      </div>
 
       <label class="add-task-label" for="task-create-description">Description</label>
       <NInput
@@ -190,6 +196,12 @@ async function onSubmit(): Promise<void> {
 .add-task-label {
   font-size: 0.72rem;
   color: var(--wh-text-secondary);
+}
+
+.add-task-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
 }
 
 .add-task-error {

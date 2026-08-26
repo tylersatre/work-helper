@@ -7,6 +7,13 @@ import { taskEffortSchema, taskPrioritySchema } from '../../shared/validation.js
 
 const placementIndexSchema = z.number().int().nonnegative();
 
+const patchTaskBodySchema = z.object({
+  dueDate: z.string().nullable().optional(),
+  priority: taskPrioritySchema.nullable().optional(),
+  effort: taskEffortSchema.nullable().optional(),
+  description: z.string().nullable().optional(),
+});
+
 export async function taskRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/tasks', async (request, reply) => {
     const body = request.body as
@@ -42,24 +49,27 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
 
   app.patch('/api/tasks/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const body = request.body as
-      | { dueDate?: string | null; priority?: string | null; effort?: string | null; description?: string | null }
-      | undefined;
-
-    if (body && 'priority' in body && body.priority !== null && !taskPrioritySchema.safeParse(body.priority).success) {
+    const parseResult = patchTaskBodySchema.safeParse(request.body ?? {});
+    if (!parseResult.success) {
+      const field = parseResult.error.issues[0]?.path[0];
+      if (field === 'priority') {
+        reply.status(400);
+        return { error: { message: 'Invalid priority' } };
+      }
+      if (field === 'effort') {
+        reply.status(400);
+        return { error: { message: 'Invalid effort' } };
+      }
       reply.status(400);
-      return { error: { message: 'Invalid priority' } };
+      return { error: { message: 'Invalid request body' } };
     }
-    if (body && 'effort' in body && body.effort !== null && !taskEffortSchema.safeParse(body.effort).success) {
-      reply.status(400);
-      return { error: { message: 'Invalid effort' } };
-    }
+    const body = parseResult.data;
 
     const input: Parameters<typeof updateTask>[2] = {};
-    if (body && 'dueDate' in body) input.dueDate = body.dueDate;
-    if (body && 'priority' in body) input.priority = body.priority as never;
-    if (body && 'effort' in body) input.effort = body.effort as never;
-    if (body && 'description' in body) input.description = body.description;
+    if ('dueDate' in body) input.dueDate = body.dueDate;
+    if ('priority' in body) input.priority = body.priority;
+    if ('effort' in body) input.effort = body.effort;
+    if ('description' in body) input.description = body.description;
 
     const result = updateTask(app.db, Number(id), input);
     if (!result.ok) {

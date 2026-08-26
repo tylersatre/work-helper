@@ -248,6 +248,17 @@ describe('US3 (030-task-fields): create-task and update-task field parity', () =
     expect(detail).toMatchObject({ title: 'Book venue', effort: null });
   });
 
+  it('update-task with a whitespace-only description normalizes it to null, consistent with create-task (PR review)', async () => {
+    const task = await createTaskViaApi('Book venue');
+
+    const result = await callTool('update-task', { taskId: task.id, description: '   ' });
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toMatchObject({ description: null });
+
+    const detail = await getTaskViaApi(task.id);
+    expect(detail.description).toBeNull();
+  });
+
   it('the existing rename-only behavior still works with title now optional', async () => {
     const task = await createTaskViaApi('Book venue');
 

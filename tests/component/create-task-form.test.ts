@@ -71,6 +71,15 @@ describe('CreateTaskForm', () => {
     expect(descriptionField.value).toBe('');
   });
 
+  it('associates the Due date/Priority/Effort labels with their control via an accessible group (PR review)', async () => {
+    render(CreateTaskForm);
+    await expandForm();
+
+    expect(screen.getByRole('group', { name: /^due date$/i })).toBeTruthy();
+    expect(screen.getByRole('group', { name: /^priority$/i })).toBeTruthy();
+    expect(screen.getByRole('group', { name: /^effort$/i })).toBeTruthy();
+  });
+
   it('the priority and effort selects offer the fixed option lists', async () => {
     render(CreateTaskForm);
     await expandForm();

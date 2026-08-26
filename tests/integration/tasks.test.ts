@@ -297,6 +297,30 @@ describe('PATCH /api/tasks/:id', () => {
     const check = await app.inject({ method: 'GET', url: `/api/tasks/${task!.id}` });
     expect(check.json().effort).toBeNull();
   });
+
+  it('rejects a non-string dueDate with 400 instead of persisting a wrong-typed value (PR review)', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    const [task] = seed(db, [{ title: 'Book venue', lane: 'To Do', position: 0 }]);
+
+    const response = await app.inject({ method: 'PATCH', url: `/api/tasks/${task!.id}`, payload: { dueDate: 20260905 } });
+
+    expect(response.statusCode).toBe(400);
+    const check = await app.inject({ method: 'GET', url: `/api/tasks/${task!.id}` });
+    expect(check.json().dueDate).toBeNull();
+  });
+
+  it('rejects a non-string description with 400 instead of erroring at the driver (PR review)', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    const [task] = seed(db, [{ title: 'Book venue', lane: 'To Do', position: 0 }]);
+
+    const response = await app.inject({ method: 'PATCH', url: `/api/tasks/${task!.id}`, payload: { description: { a: 1 } } });
+
+    expect(response.statusCode).toBe(400);
+    const check = await app.inject({ method: 'GET', url: `/api/tasks/${task!.id}` });
+    expect(check.json().description).toBeNull();
+  });
 });
 
 describe('PUT /api/tasks/:id/placement', () => {
@@ -732,6 +756,18 @@ describe('updateTask (service)', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.task).toMatchObject({ dueDate: '2026-09-10', priority: 'Urgent', effort: 'XL', description: 'Updated scope' });
+  });
+
+  it('normalizes a whitespace-only dueDate or description to null, consistent with createTask (PR review)', () => {
+    const { db } = createDb(':memory:');
+    const [task] = seed(db, [{ title: 'Book venue', lane: 'To Do', position: 0 }]);
+
+    const result = updateTask(db, task!.id, { dueDate: '   ', description: '   ' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.task.dueDate).toBeNull();
+    expect(result.task.description).toBeNull();
   });
 
   it('rejects the entire call with no field changed when title is invalid alongside otherwise-valid field values', () => {
