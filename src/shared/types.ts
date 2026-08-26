@@ -1,3 +1,6 @@
+export type TaskPriority = 'Low' | 'Medium' | 'High' | 'Urgent';
+export type TaskEffort = 'S' | 'M' | 'L' | 'XL';
+
 export interface Task {
   id: number;
   title: string;
@@ -5,6 +8,10 @@ export interface Task {
   position: number;
   createdAt: number;
   archived: boolean;
+  dueDate: string | null;
+  priority: TaskPriority | null;
+  effort: TaskEffort | null;
+  description: string | null;
 }
 
 export interface BoardTask extends Task {

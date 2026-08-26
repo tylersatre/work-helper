@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router';
 import type { Task } from '../../shared/types.js';
+import { formatDueDate } from '../utils/time.js';
 
 const props = defineProps<{ task: Task }>();
 const emit = defineEmits<{ dragstart: [taskId: number]; dragend: [] }>();
@@ -31,7 +32,11 @@ function onDragEnd(): void {
     @click="onClick"
     @dragstart="onDragStart"
     @dragend="onDragEnd"
-  >{{ task.title }}<span v-if="task.archived" class="archived-badge" data-testid="archived-badge">Archived</span></li>
+  >{{ task.title }}<span v-if="task.archived" class="archived-badge" data-testid="archived-badge">Archived</span><span
+    v-if="task.dueDate !== null"
+    class="due-date-badge"
+    data-testid="due-date-badge"
+  >{{ formatDueDate(task.dueDate) }}</span></li>
 </template>
 
 <style scoped>
@@ -59,6 +64,18 @@ function onDragEnd(): void {
 }
 
 .archived-badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 3px;
+  background: var(--wh-surface);
+  border: 1px solid var(--wh-border-subtle);
+  color: var(--wh-text-muted);
+  font-size: 0.7rem;
+  vertical-align: middle;
+}
+
+.due-date-badge {
   display: inline-block;
   margin-left: 0.4rem;
   padding: 0.05rem 0.35rem;

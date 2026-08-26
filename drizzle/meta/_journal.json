@@ -50,6 +50,13 @@
       "when": 1787598082310,
       "tag": "0006_silky_the_renegades",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1787776825456,
+      "tag": "0007_volatile_slayback",
+      "breakpoints": true
     }
   ]
 }

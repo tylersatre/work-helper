@@ -1,17 +1,34 @@
 import type { FastifyInstance } from 'fastify';
 import { ZodError, z } from 'zod';
-import { addNote, archiveTask, createTask, deleteNote, deleteTask, getTaskDetail, linkPerson, moveTask, unarchiveTask, unlinkPerson } from '../services/tasks.js';
+import { addNote, archiveTask, createTask, deleteNote, deleteTask, getTaskDetail, linkPerson, moveTask, unarchiveTask, unlinkPerson, updateTask } from '../services/tasks.js';
 import { attachTagToTask, detachTagFromTask, type AttachInput } from '../services/tags.js';
 import { linkCompanyToTask, unlinkCompanyFromTask } from '../services/companies.js';
+import { taskEffortSchema, taskPrioritySchema } from '../../shared/validation.js';
 
 const placementIndexSchema = z.number().int().nonnegative();
 
 export async function taskRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/tasks', async (request, reply) => {
-    const body = request.body as { title?: unknown; note?: unknown } | undefined;
+    const body = request.body as
+      | { title?: unknown; note?: unknown; dueDate?: unknown; priority?: unknown; effort?: unknown; description?: unknown }
+      | undefined;
+
+    if (typeof body?.priority === 'string' && body.priority.trim() !== '' && !taskPrioritySchema.safeParse(body.priority).success) {
+      reply.status(400);
+      return { error: { message: 'Invalid priority' } };
+    }
+    if (typeof body?.effort === 'string' && body.effort.trim() !== '' && !taskEffortSchema.safeParse(body.effort).success) {
+      reply.status(400);
+      return { error: { message: 'Invalid effort' } };
+    }
 
     try {
-      const task = createTask(app.db, app.lanes, body?.title, body?.note);
+      const task = createTask(app.db, app.lanes, body?.title, body?.note, undefined, undefined, {
+        dueDate: body?.dueDate,
+        priority: body?.priority,
+        effort: body?.effort,
+        description: body?.description,
+      });
       reply.status(201);
       return task;
     } catch (error) {
@@ -21,6 +38,36 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       }
       throw error;
     }
+  });
+
+  app.patch('/api/tasks/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as
+      | { dueDate?: string | null; priority?: string | null; effort?: string | null; description?: string | null }
+      | undefined;
+
+    if (body && 'priority' in body && body.priority !== null && !taskPrioritySchema.safeParse(body.priority).success) {
+      reply.status(400);
+      return { error: { message: 'Invalid priority' } };
+    }
+    if (body && 'effort' in body && body.effort !== null && !taskEffortSchema.safeParse(body.effort).success) {
+      reply.status(400);
+      return { error: { message: 'Invalid effort' } };
+    }
+
+    const input: Parameters<typeof updateTask>[2] = {};
+    if (body && 'dueDate' in body) input.dueDate = body.dueDate;
+    if (body && 'priority' in body) input.priority = body.priority as never;
+    if (body && 'effort' in body) input.effort = body.effort as never;
+    if (body && 'description' in body) input.description = body.description;
+
+    const result = updateTask(app.db, Number(id), input);
+    if (!result.ok) {
+      reply.status(404);
+      return { error: { message: 'Task not found' } };
+    }
+
+    return result.task;
   });
 
   app.get('/api/tasks/:id', async (request, reply) => {

@@ -150,6 +150,114 @@ describe('US4: update-task', () => {
   });
 });
 
+describe('US3 (030-task-fields): create-task and update-task field parity', () => {
+  it('create-task with all four fields set creates a task carrying exactly those values', async () => {
+    const result = await callTool('create-task', {
+      title: 'Ship report',
+      dueDate: '2026-09-10',
+      priority: 'Medium',
+      effort: 'M',
+      description: 'Quarterly export',
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toMatchObject({ dueDate: '2026-09-10', priority: 'Medium', effort: 'M', description: 'Quarterly export' });
+
+    const taskId = (result.structuredContent as { id: number }).id;
+    const detail = await getTaskViaApi(taskId);
+    expect(detail).toMatchObject({ dueDate: '2026-09-10', priority: 'Medium', effort: 'M', description: 'Quarterly export' });
+  });
+
+  it('create-task with the four fields omitted creates a task with all four null', async () => {
+    const result = await callTool('create-task', { title: 'Draft budget' });
+
+    expect(result.structuredContent).toMatchObject({ dueDate: null, priority: null, effort: null, description: null });
+  });
+
+  it('create-task with an invalid priority is rejected by schema validation before the handler runs, creating no task', async () => {
+    const result = await callTool('create-task', { title: 'Bad priority', priority: 'Critical' });
+    expect(result.isError).toBe(true);
+
+    const board = await callTool('list-board');
+    const { lanes } = board.structuredContent as { lanes: { tasks: unknown[] }[] };
+    expect(lanes.reduce((sum, lane) => sum + lane.tasks.length, 0)).toBe(0);
+  });
+
+  it('create-task with an invalid effort is rejected by schema validation before the handler runs, creating no task', async () => {
+    const result = await callTool('create-task', { title: 'Bad effort', effort: 'XXL' });
+    expect(result.isError).toBe(true);
+
+    const board = await callTool('list-board');
+    const { lanes } = board.structuredContent as { lanes: { tasks: unknown[] }[] };
+    expect(lanes.reduce((sum, lane) => sum + lane.tasks.length, 0)).toBe(0);
+  });
+
+  it('update-task changes all four fields in one call while leaving title untouched', async () => {
+    const task = await createTaskViaApi('Book venue');
+
+    const result = await callTool('update-task', {
+      taskId: task.id,
+      priority: 'Urgent',
+      effort: 'XL',
+      dueDate: '2026-09-10',
+      description: 'Updated scope',
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toMatchObject({
+      title: 'Book venue',
+      priority: 'Urgent',
+      effort: 'XL',
+      dueDate: '2026-09-10',
+      description: 'Updated scope',
+    });
+  });
+
+  it('a second update-task call clearing only dueDate leaves the other three fields (and title) untouched', async () => {
+    const task = await createTaskViaApi('Book venue');
+    await callTool('update-task', { taskId: task.id, priority: 'Urgent', effort: 'XL', dueDate: '2026-09-10', description: 'Updated scope' });
+
+    const result = await callTool('update-task', { taskId: task.id, dueDate: null });
+
+    expect(result.structuredContent).toMatchObject({
+      title: 'Book venue',
+      priority: 'Urgent',
+      effort: 'XL',
+      dueDate: null,
+      description: 'Updated scope',
+    });
+  });
+
+  it('update-task with an invalid priority is rejected, leaving the task (and everything else) unchanged', async () => {
+    const task = await createTaskViaApi('Book venue');
+
+    const result = await callTool('update-task', { taskId: task.id, priority: 'Critical' });
+    expect(result.isError).toBe(true);
+
+    const detail = await getTaskViaApi(task.id);
+    expect(detail).toMatchObject({ title: 'Book venue', priority: null });
+  });
+
+  it('update-task with an invalid effort is rejected, leaving the task (and everything else) unchanged', async () => {
+    const task = await createTaskViaApi('Book venue');
+
+    const result = await callTool('update-task', { taskId: task.id, effort: 'XXL' });
+    expect(result.isError).toBe(true);
+
+    const detail = await getTaskViaApi(task.id);
+    expect(detail).toMatchObject({ title: 'Book venue', effort: null });
+  });
+
+  it('the existing rename-only behavior still works with title now optional', async () => {
+    const task = await createTaskViaApi('Book venue');
+
+    const result = await callTool('update-task', { taskId: task.id, title: 'New name' });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toMatchObject({ title: 'New name' });
+  });
+});
+
 describe('US2: create-tag / rename-tag / recolor-tag / delete-tag', () => {
   it('creates with an explicit color and rejects a case-insensitive duplicate name (US2-AS1)', async () => {
     const created = await callTool('create-tag', { name: 'Renewal', color: '#F59E0B' });

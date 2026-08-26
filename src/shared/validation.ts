@@ -52,6 +52,11 @@ export const tagColorSchema = z
   .string()
   .regex(/^#[0-9a-fA-F]{6}$/, 'A valid color is required');
 
+export const taskPriorityValues = ['Low', 'Medium', 'High', 'Urgent'] as const;
+export const taskEffortValues = ['S', 'M', 'L', 'XL'] as const;
+export const taskPrioritySchema = z.enum(taskPriorityValues);
+export const taskEffortSchema = z.enum(taskEffortValues);
+
 export const dashboardSavedViewSchema = z.object({
   lanes: z
     .array(z.string().min(1))

@@ -508,7 +508,9 @@ describe('list surfaces stay unchanged (FR-013)', () => {
     const board = await listBoard();
     const { lanes } = board.structuredContent as { lanes: { tasks: Record<string, unknown>[] }[] };
     const linkedTask = lanes.flatMap((lane) => lane.tasks).find((t) => t.id === taskId)!;
-    expect(Object.keys(linkedTask).sort()).toEqual(['archived', 'createdAt', 'id', 'lane', 'position', 'title']);
+    expect(Object.keys(linkedTask).sort()).toEqual(
+      ['archived', 'createdAt', 'id', 'lane', 'position', 'title', 'dueDate', 'priority', 'effort', 'description'].sort(),
+    );
   });
 
   it('list-conversations carries no card/link data even with links present', async () => {

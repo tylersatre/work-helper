@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { absoluteLocal, relativeTime } from '../../src/client/utils/time.js';
+import { absoluteLocal, formatDueDate, parseLocalDate, relativeTime } from '../../src/client/utils/time.js';
 
 function normalizeSpaces(value: string): string {
   return value.replace(/\u202F/g, ' ');
@@ -48,5 +48,32 @@ describe('absoluteLocal', () => {
     const result = normalizeSpaces(absoluteLocal(thenMs, 'America/Denver'));
 
     expect(result).toBe('Aug 4, 2026, 12:00 PM');
+  });
+});
+
+describe('parseLocalDate', () => {
+  it('returns the local-midnight epoch ms for a well-formed date', () => {
+    const result = parseLocalDate('2026-08-20');
+
+    expect(new Date(result).getFullYear()).toBe(2026);
+    expect(new Date(result).getMonth()).toBe(7);
+    expect(new Date(result).getDate()).toBe(20);
+    expect(new Date(result).getHours()).toBe(0);
+    expect(new Date(result).getMinutes()).toBe(0);
+    expect(new Date(result).getSeconds()).toBe(0);
+  });
+});
+
+describe('formatDueDate', () => {
+  it('formats a well-formed date as a nice display string', () => {
+    expect(formatDueDate('2026-08-20')).toBe('Aug 20, 2026');
+  });
+
+  it('falls back to the raw input string when it does not parse as a valid date', () => {
+    expect(formatDueDate('not-a-date')).toBe('not-a-date');
+  });
+
+  it('falls back to the raw input string for an empty string', () => {
+    expect(formatDueDate('')).toBe('');
   });
 });

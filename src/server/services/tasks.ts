@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
-import { noteTextSchema, titleSchema } from '../../shared/validation.js';
+import type { TaskEffort, TaskPriority } from '../../shared/types.js';
+import { noteTextSchema, taskEffortSchema, taskPrioritySchema, titleSchema } from '../../shared/validation.js';
 import { companies, people, emailAddresses, personPhones, tags as tagsTable, taskCompanies, taskNotes, taskPeople, taskTags, tasks } from '../db/schema.js';
 import { conversationsForTask } from './task-conversations.js';
 import { getTagsForTask, type TagRecord } from './tags.js';
@@ -14,6 +15,10 @@ export class InvalidLaneError extends Error {
   }
 }
 
+function blankToNull(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() !== '' ? value : null;
+}
+
 export function createTask(
   db: AppDb,
   lanes: string[],
@@ -21,6 +26,7 @@ export function createTask(
   rawNote?: unknown,
   source: 'ui' | 'mcp' = 'ui',
   rawLane?: string,
+  rawFields?: { dueDate?: unknown; priority?: unknown; effort?: unknown; description?: unknown },
 ) {
   const title = titleSchema.parse(rawTitle);
   const targetLane = rawLane === undefined ? lanes[0]! : rawLane;
@@ -30,6 +36,13 @@ export function createTask(
   const createdAt = Date.now();
 
   const trimmedNote = typeof rawNote === 'string' ? rawNote.trim() : '';
+
+  const dueDate = blankToNull(rawFields?.dueDate);
+  const description = blankToNull(rawFields?.description);
+  const rawPriority = blankToNull(rawFields?.priority);
+  const priority = rawPriority === null ? null : taskPrioritySchema.parse(rawPriority);
+  const rawEffort = blankToNull(rawFields?.effort);
+  const effort = rawEffort === null ? null : taskEffortSchema.parse(rawEffort);
 
   return db.transaction((tx) => {
     const [{ maxPosition } = { maxPosition: null }] = tx
@@ -41,7 +54,7 @@ export function createTask(
 
     const [created] = tx
       .insert(tasks)
-      .values({ title, lane: targetLane, position, createdAt })
+      .values({ title, lane: targetLane, position, createdAt, dueDate, priority, effort, description })
       .returning()
       .all();
 
@@ -285,20 +298,39 @@ export function deleteNoteById(db: AppDb, noteId: number): DeleteNoteByIdResult 
   return { ok: true, taskId: note.taskId };
 }
 
-export type UpdateTaskTitleResult = { ok: true; task: typeof tasks.$inferSelect } | { ok: false; error: 'task-not-found' | 'invalid-title' };
+export type UpdateTaskInput = {
+  title?: string;
+  dueDate?: string | null;
+  priority?: TaskPriority | null;
+  effort?: TaskEffort | null;
+  description?: string | null;
+};
 
-export function updateTaskTitle(db: AppDb, taskId: number, rawTitle: unknown): UpdateTaskTitleResult {
+export type UpdateTaskResult = { ok: true; task: typeof tasks.$inferSelect } | { ok: false; error: 'task-not-found' | 'invalid-title' };
+
+export function updateTask(db: AppDb, taskId: number, input: UpdateTaskInput): UpdateTaskResult {
   const [task] = db.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, taskId)).limit(1).all();
   if (!task) {
     return { ok: false, error: 'task-not-found' };
   }
 
-  const result = titleSchema.safeParse(rawTitle);
-  if (!result.success) {
-    return { ok: false, error: 'invalid-title' };
-  }
+  const patch: Partial<typeof tasks.$inferInsert> = {};
 
-  db.update(tasks).set({ title: result.data }).where(eq(tasks.id, taskId)).run();
+  if (input.title !== undefined) {
+    const result = titleSchema.safeParse(input.title);
+    if (!result.success) {
+      return { ok: false, error: 'invalid-title' };
+    }
+    patch.title = result.data;
+  }
+  if ('dueDate' in input) patch.dueDate = input.dueDate;
+  if ('priority' in input) patch.priority = input.priority;
+  if ('effort' in input) patch.effort = input.effort;
+  if ('description' in input) patch.description = input.description;
+
+  if (Object.keys(patch).length > 0) {
+    db.update(tasks).set(patch).where(eq(tasks.id, taskId)).run();
+  }
   const [updated] = db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).all();
   return { ok: true, task: updated! };
 }

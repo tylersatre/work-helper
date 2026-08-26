@@ -3,6 +3,8 @@ import {
   createPersonInputSchema,
   entryValueSchema,
   noteTextSchema,
+  taskEffortSchema,
+  taskPrioritySchema,
   titleSchema,
   updatePersonInputSchema,
 } from '../../src/shared/validation.js';
@@ -273,6 +275,34 @@ describe('noteTextSchema', () => {
 
   it('rejects a missing value', () => {
     const result = noteTextSchema.safeParse(undefined);
+
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('taskPrioritySchema', () => {
+  it.each(['Low', 'Medium', 'High', 'Urgent'])('accepts %s', (value) => {
+    const result = taskPrioritySchema.safeParse(value);
+
+    expect(result.success).toBe(true);
+  });
+
+  it.each(['Critical', '', 'low'])('rejects %s', (value) => {
+    const result = taskPrioritySchema.safeParse(value);
+
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('taskEffortSchema', () => {
+  it.each(['S', 'M', 'L', 'XL'])('accepts %s', (value) => {
+    const result = taskEffortSchema.safeParse(value);
+
+    expect(result.success).toBe(true);
+  });
+
+  it.each(['XXL', '', 's'])('rejects %s', (value) => {
+    const result = taskEffortSchema.safeParse(value);
 
     expect(result.success).toBe(false);
   });

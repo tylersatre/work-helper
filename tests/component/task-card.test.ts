@@ -5,7 +5,18 @@ import { describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import TaskCard from '../../src/client/components/TaskCard.vue';
 
-const TASK = { id: 1, title: 'Follow up with Sam', lane: 'To Do', position: 0, createdAt: 1, archived: false };
+const TASK = {
+  id: 1,
+  title: 'Follow up with Sam',
+  lane: 'To Do',
+  position: 0,
+  createdAt: 1,
+  archived: false,
+  dueDate: null,
+  priority: null,
+  effort: null,
+  description: null,
+};
 
 function makeRouter() {
   return createRouter({
@@ -89,6 +100,38 @@ describe('TaskCard', () => {
       await flushPromises();
 
       expect(router.currentRoute.value.fullPath).toBe('/tasks/1');
+    });
+  });
+
+  describe('due-date badge (030-task-fields)', () => {
+    it('renders a due-date badge with the formatted date when dueDate is set (FR-008)', () => {
+      const router = makeRouter();
+      render(TaskCard, { props: { task: { ...TASK, dueDate: '2026-09-05' } }, global: { plugins: [router] } });
+
+      const badge = screen.getByTestId('due-date-badge');
+      expect(badge.textContent).toBe('Sep 5, 2026');
+    });
+
+    it('renders no badge at all when dueDate is null', () => {
+      const router = makeRouter();
+      render(TaskCard, { props: { task: { ...TASK, dueDate: null } }, global: { plugins: [router] } });
+
+      expect(screen.queryByTestId('due-date-badge')).toBeNull();
+    });
+
+    it('renders no priority/effort/description indicator on the card face, even when set (FR-008, Edge Cases)', () => {
+      const router = makeRouter();
+      render(TaskCard, {
+        props: { task: { ...TASK, priority: 'High', effort: 'L', description: 'Some details' } },
+        global: { plugins: [router] },
+      });
+
+      const card = screen.getByTestId('task-card');
+      expect(card.textContent).not.toContain('High');
+      expect(card.textContent).not.toContain('Some details');
+      expect(card.querySelector('[data-testid="priority-badge"]')).toBeNull();
+      expect(card.querySelector('[data-testid="effort-badge"]')).toBeNull();
+      expect(card.querySelector('[data-testid="description-badge"]')).toBeNull();
     });
   });
 });
