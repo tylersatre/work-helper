@@ -19,3 +19,5 @@ Show at-a-glance indicators on kanban card faces — linked-people chips/avatars
 Nothing about the visual treatment was decided — chips vs. avatars vs. counts, and which indicators earn card-face space, are open interview questions. All the deferrals were purely about slice thinness, not doubts about the idea. If tag chips come to cards, the tags feature's auto-colored chip rendering (consistent color per tag everywhere) is the natural starting point.
 
 The card-email-links interview (2026-08-12) added two candidates: a linked-email indicator on the card face, and the mirrored idea — a has-linked-cards indicator on Emails page list rows (offered as "detail + list indicator" in that interview; Tyler chose conversation-detail-only backlinks for the slice). If row indicators come to the Emails page, they'd sit alongside the existing unread and attachment indicators from email-ui.
+
+`task-fields` (2026-08-26) shipped a due-date badge on the card face directly (its own slice, not this stub) but deliberately kept priority, effort, and description off the card face — those three join this stub's candidate list.
