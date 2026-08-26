@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
 import { taskNotes, tasks } from '../../src/server/db/schema.js';
-import { createTask, deleteNoteById, InvalidLaneError, updateTaskTitle } from '../../src/server/services/tasks.js';
+import { createTask, deleteNoteById, InvalidLaneError, updateTask } from '../../src/server/services/tasks.js';
 
 const LANES = ['To Do', 'In Progress', 'Waiting', 'Done'];
 
@@ -169,6 +169,157 @@ describe('POST /api/tasks', () => {
     const board = await app.inject({ method: 'GET', url: '/api/board' });
     const totalTasks = board.json().lanes.reduce((sum: number, lane: { tasks: unknown[] }) => sum + lane.tasks.length, 0);
     expect(totalTasks).toBe(0);
+  });
+
+  it('creates a task with all four new fields set when provided in the body', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: { title: 'Book venue', dueDate: '2026-09-05', priority: 'High', effort: 'L', description: '**Urgent**' },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({ dueDate: '2026-09-05', priority: 'High', effort: 'L', description: '**Urgent**' });
+  });
+
+  it('creates a task with all four new fields null when omitted from the body', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+
+    const response = await app.inject({ method: 'POST', url: '/api/tasks', payload: { title: 'Book venue' } });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({ dueDate: null, priority: null, effort: null, description: null });
+  });
+
+  it('rejects an invalid priority value with 400 and creates no task', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+
+    const response = await app.inject({ method: 'POST', url: '/api/tasks', payload: { title: 'Book venue', priority: 'Critical' } });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: { message: 'Invalid priority' } });
+
+    const board = await app.inject({ method: 'GET', url: '/api/board' });
+    const totalTasks = board.json().lanes.reduce((sum: number, lane: { tasks: unknown[] }) => sum + lane.tasks.length, 0);
+    expect(totalTasks).toBe(0);
+  });
+
+  it('rejects an invalid effort value with 400 and creates no task', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+
+    const response = await app.inject({ method: 'POST', url: '/api/tasks', payload: { title: 'Book venue', effort: 'XXL' } });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: { message: 'Invalid effort' } });
+
+    const board = await app.inject({ method: 'GET', url: '/api/board' });
+    const totalTasks = board.json().lanes.reduce((sum: number, lane: { tasks: unknown[] }) => sum + lane.tasks.length, 0);
+    expect(totalTasks).toBe(0);
+  });
+});
+
+describe('PATCH /api/tasks/:id', () => {
+  it('changes only the fields present in the body, leaving omitted ones untouched, returning the full updated row', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    const [task] = seed(db, [{ title: 'Book venue', lane: 'To Do', position: 0 }]);
+    db.update(tasks).set({ priority: 'High' }).where(eq(tasks.id, task!.id)).run();
+
+    const response = await app.inject({ method: 'PATCH', url: `/api/tasks/${task!.id}`, payload: { dueDate: '2026-09-05' } });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ dueDate: '2026-09-05', priority: 'High' });
+  });
+
+  it('clears a field to null when the body sends that key as null', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    const [task] = seed(db, [{ title: 'Book venue', lane: 'To Do', position: 0 }]);
+    db.update(tasks).set({ dueDate: '2026-09-05' }).where(eq(tasks.id, task!.id)).run();
+
+    const response = await app.inject({ method: 'PATCH', url: `/api/tasks/${task!.id}`, payload: { dueDate: null } });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().dueDate).toBeNull();
+  });
+
+  it('is a no-op 200 returning the current row unchanged when the body has none of the four keys', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    const [task] = seed(db, [{ title: 'Book venue', lane: 'To Do', position: 0 }]);
+
+    const response = await app.inject({ method: 'PATCH', url: `/api/tasks/${task!.id}`, payload: {} });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ title: 'Book venue', dueDate: null, priority: null, effort: null, description: null });
+  });
+
+  it('returns 404 for an unknown task id', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+
+    const response = await app.inject({ method: 'PATCH', url: '/api/tasks/999', payload: { dueDate: '2026-09-05' } });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({ error: { message: 'Task not found' } });
+  });
+
+  it('rejects an invalid priority value with 400, leaving the task unchanged', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    const [task] = seed(db, [{ title: 'Book venue', lane: 'To Do', position: 0 }]);
+
+    const response = await app.inject({ method: 'PATCH', url: `/api/tasks/${task!.id}`, payload: { priority: 'Critical' } });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: { message: 'Invalid priority' } });
+
+    const check = await app.inject({ method: 'GET', url: `/api/tasks/${task!.id}` });
+    expect(check.json().priority).toBeNull();
+  });
+
+  it('rejects an invalid effort value with 400, leaving the task unchanged', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    const [task] = seed(db, [{ title: 'Book venue', lane: 'To Do', position: 0 }]);
+
+    const response = await app.inject({ method: 'PATCH', url: `/api/tasks/${task!.id}`, payload: { effort: 'XXL' } });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: { message: 'Invalid effort' } });
+
+    const check = await app.inject({ method: 'GET', url: `/api/tasks/${task!.id}` });
+    expect(check.json().effort).toBeNull();
+  });
+
+  it('rejects a non-string dueDate with 400 instead of persisting a wrong-typed value (PR review)', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    const [task] = seed(db, [{ title: 'Book venue', lane: 'To Do', position: 0 }]);
+
+    const response = await app.inject({ method: 'PATCH', url: `/api/tasks/${task!.id}`, payload: { dueDate: 20260905 } });
+
+    expect(response.statusCode).toBe(400);
+    const check = await app.inject({ method: 'GET', url: `/api/tasks/${task!.id}` });
+    expect(check.json().dueDate).toBeNull();
+  });
+
+  it('rejects a non-string description with 400 instead of erroring at the driver (PR review)', async () => {
+    const { db } = createDb(':memory:');
+    const app = buildApp({ db, lanes: LANES });
+    const [task] = seed(db, [{ title: 'Book venue', lane: 'To Do', position: 0 }]);
+
+    const response = await app.inject({ method: 'PATCH', url: `/api/tasks/${task!.id}`, payload: { description: { a: 1 } } });
+
+    expect(response.statusCode).toBe(400);
+    const check = await app.inject({ method: 'GET', url: `/api/tasks/${task!.id}` });
+    expect(check.json().description).toBeNull();
   });
 });
 
@@ -433,6 +584,58 @@ describe('createTask lane targeting (US3)', () => {
   });
 });
 
+describe('createTask fields (030-task-fields)', () => {
+  it('stores all four fields when set', () => {
+    const { db } = createDb(':memory:');
+
+    const created = createTask(db, LANES, 'Book venue', undefined, 'ui', undefined, {
+      dueDate: '2026-09-05',
+      priority: 'High',
+      effort: 'L',
+      description: '**Urgent**',
+    });
+
+    expect(created).toMatchObject({ dueDate: '2026-09-05', priority: 'High', effort: 'L', description: '**Urgent**' });
+  });
+
+  it('leaves all four fields null when rawFields is omitted', () => {
+    const { db } = createDb(':memory:');
+
+    const created = createTask(db, LANES, 'Book venue');
+
+    expect(created).toMatchObject({ dueDate: null, priority: null, effort: null, description: null });
+  });
+
+  it.each([
+    ['dueDate', ''],
+    ['dueDate', '   '],
+    ['priority', ''],
+    ['priority', '   '],
+    ['effort', ''],
+    ['effort', '   '],
+    ['description', ''],
+    ['description', '   '],
+  ])('leaves %s null when blank/whitespace', (key, value) => {
+    const { db } = createDb(':memory:');
+
+    const created = createTask(db, LANES, 'Book venue', undefined, 'ui', undefined, { [key]: value });
+
+    expect((created as Record<string, unknown>)[key]).toBeNull();
+  });
+
+  it('throws on an invalid priority value', () => {
+    const { db } = createDb(':memory:');
+
+    expect(() => createTask(db, LANES, 'Book venue', undefined, 'ui', undefined, { priority: 'Critical' })).toThrow();
+  });
+
+  it('throws on an invalid effort value', () => {
+    const { db } = createDb(':memory:');
+
+    expect(() => createTask(db, LANES, 'Book venue', undefined, 'ui', undefined, { effort: 'XXL' })).toThrow();
+  });
+});
+
 describe('deleteNoteById (service)', () => {
   function seedNotes(db: ReturnType<typeof createDb>['db'], taskId: number, texts: string[]) {
     return texts.map((text, i) => db.insert(taskNotes).values({ taskId, text, source: 'ui', createdAt: i }).returning().all()[0]!);
@@ -459,12 +662,12 @@ describe('deleteNoteById (service)', () => {
   });
 });
 
-describe('updateTaskTitle (service)', () => {
+describe('updateTask (service)', () => {
   it('updates the title and returns { ok: true, task } with the new title', () => {
     const { db } = createDb(':memory:');
     const [task] = seed(db, [{ title: 'Book venue (due Aug 20)', lane: 'To Do', position: 0 }]);
 
-    const result = updateTaskTitle(db, task!.id, 'Book venue (due Sept 5)');
+    const result = updateTask(db, task!.id, { title: 'Book venue (due Sept 5)' });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -475,7 +678,7 @@ describe('updateTaskTitle (service)', () => {
     const { db } = createDb(':memory:');
     const [task] = seed(db, [{ title: 'Book venue', lane: 'To Do', position: 0 }]);
 
-    const result = updateTaskTitle(db, task!.id, '');
+    const result = updateTask(db, task!.id, { title: '' });
 
     expect(result).toEqual({ ok: false, error: 'invalid-title' });
   });
@@ -484,7 +687,7 @@ describe('updateTaskTitle (service)', () => {
     const { db } = createDb(':memory:');
     const [task] = seed(db, [{ title: 'Book venue', lane: 'To Do', position: 0 }]);
 
-    const result = updateTaskTitle(db, task!.id, '   ');
+    const result = updateTask(db, task!.id, { title: '   ' });
 
     expect(result).toEqual({ ok: false, error: 'invalid-title' });
   });
@@ -492,8 +695,89 @@ describe('updateTaskTitle (service)', () => {
   it('returns task-not-found for an unknown task id', () => {
     const { db } = createDb(':memory:');
 
-    const result = updateTaskTitle(db, 999, 'New title');
+    const result = updateTask(db, 999, { title: 'New title' });
 
     expect(result).toEqual({ ok: false, error: 'task-not-found' });
+  });
+
+  it('sets each of the four new fields fresh on a task with none set', () => {
+    const { db } = createDb(':memory:');
+    const [task] = seed(db, [{ title: 'Book venue', lane: 'To Do', position: 0 }]);
+
+    const result = updateTask(db, task!.id, { dueDate: '2026-09-05', priority: 'High', effort: 'L', description: 'Details' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.task).toMatchObject({ dueDate: '2026-09-05', priority: 'High', effort: 'L', description: 'Details' });
+  });
+
+  it('changes an already-set field to a new value', () => {
+    const { db } = createDb(':memory:');
+    const [task] = seed(db, [{ title: 'Book venue', lane: 'To Do', position: 0 }]);
+    updateTask(db, task!.id, { priority: 'Low' });
+
+    const result = updateTask(db, task!.id, { priority: 'Urgent' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.task.priority).toBe('Urgent');
+  });
+
+  it('clears an already-set field via null', () => {
+    const { db } = createDb(':memory:');
+    const [task] = seed(db, [{ title: 'Book venue', lane: 'To Do', position: 0 }]);
+    updateTask(db, task!.id, { dueDate: '2026-09-05' });
+
+    const result = updateTask(db, task!.id, { dueDate: null });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.task.dueDate).toBeNull();
+  });
+
+  it('leaves a field completely unchanged when its key is omitted from the input', () => {
+    const { db } = createDb(':memory:');
+    const [task] = seed(db, [{ title: 'Book venue', lane: 'To Do', position: 0 }]);
+    updateTask(db, task!.id, { dueDate: '2026-09-05', priority: 'High' });
+
+    const result = updateTask(db, task!.id, { effort: 'L' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.task).toMatchObject({ dueDate: '2026-09-05', priority: 'High', effort: 'L' });
+  });
+
+  it('changes all four fields together in one call', () => {
+    const { db } = createDb(':memory:');
+    const [task] = seed(db, [{ title: 'Book venue', lane: 'To Do', position: 0 }]);
+
+    const result = updateTask(db, task!.id, { dueDate: '2026-09-10', priority: 'Urgent', effort: 'XL', description: 'Updated scope' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.task).toMatchObject({ dueDate: '2026-09-10', priority: 'Urgent', effort: 'XL', description: 'Updated scope' });
+  });
+
+  it('normalizes a whitespace-only dueDate or description to null, consistent with createTask (PR review)', () => {
+    const { db } = createDb(':memory:');
+    const [task] = seed(db, [{ title: 'Book venue', lane: 'To Do', position: 0 }]);
+
+    const result = updateTask(db, task!.id, { dueDate: '   ', description: '   ' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.task.dueDate).toBeNull();
+    expect(result.task.description).toBeNull();
+  });
+
+  it('rejects the entire call with no field changed when title is invalid alongside otherwise-valid field values', () => {
+    const { db } = createDb(':memory:');
+    const [task] = seed(db, [{ title: 'Book venue', lane: 'To Do', position: 0 }]);
+
+    const result = updateTask(db, task!.id, { title: '   ', dueDate: '2026-09-05', priority: 'High' });
+
+    expect(result).toEqual({ ok: false, error: 'invalid-title' });
+    const [unchanged] = db.select().from(tasks).where(eq(tasks.id, task!.id)).all();
+    expect(unchanged).toMatchObject({ title: 'Book venue', dueDate: null, priority: null });
   });
 });

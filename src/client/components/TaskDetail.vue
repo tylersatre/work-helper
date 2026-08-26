@@ -7,6 +7,7 @@ import LinkedConversations from './LinkedConversations.vue';
 import LinkedPeople from './LinkedPeople.vue';
 import TagChip from './TagChip.vue';
 import TagInput from './TagInput.vue';
+import TaskFields from './TaskFields.vue';
 import TaskNotes from './TaskNotes.vue';
 
 const props = defineProps<{ taskId: number }>();
@@ -71,6 +72,15 @@ function onUpdateCompanies(companies: Company[]): void {
 function onUpdateNotes(notes: Note[]): void {
   if (task.value) {
     task.value.notes = notes;
+  }
+}
+
+function onUpdateFields(fields: { dueDate: string | null; priority: TaskDetailType['priority']; effort: TaskDetailType['effort']; description: string | null }): void {
+  if (task.value) {
+    task.value.dueDate = fields.dueDate;
+    task.value.priority = fields.priority;
+    task.value.effort = fields.effort;
+    task.value.description = fields.description;
   }
 }
 
@@ -217,6 +227,17 @@ onMounted(fetchTask);
     </div>
     <p v-if="laneError" role="alert" class="lane-error">{{ laneError }}</p>
     <DeleteCardConfirm v-if="isConfirmingDelete" :title="task.title" :error="deleteError" :on-confirm="confirmDelete" @cancel="cancelDelete" />
+    <div class="task-detail-section">
+      <h3>Fields</h3>
+      <TaskFields
+        :task-id="task.id"
+        :due-date="task.dueDate"
+        :priority="task.priority"
+        :effort="task.effort"
+        :description="task.description"
+        @update:fields="onUpdateFields"
+      />
+    </div>
     <div class="task-detail-section">
       <h3>People</h3>
       <LinkedPeople :task-id="task.id" :people="task.people" @update:people="onUpdatePeople" />

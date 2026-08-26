@@ -64,6 +64,10 @@ describe('TaskDetailPage', () => {
       companies: [],
       conversations: [],
       lanes: LANES,
+      dueDate: null,
+      priority: null,
+      effort: null,
+      description: null,
       ...overrides,
     };
   }
@@ -942,6 +946,343 @@ describe('TaskDetailPage', () => {
       expect(router.currentRoute.value.fullPath).toBe('/tasks/1');
       expect(screen.getByTestId('archive-card-button')).toBeTruthy();
       expect(screen.queryByTestId('unarchive-card-button')).toBeNull();
+    });
+  });
+
+  describe('TaskFields (030-task-fields)', () => {
+    function dueDateInput(): HTMLInputElement {
+      return screen.getByTestId('due-date-picker').querySelector('input') as HTMLInputElement;
+    }
+
+    function selectOptionElements(): HTMLElement[] {
+      return Array.from(document.querySelectorAll<HTMLElement>('.n-base-select-option'));
+    }
+
+    async function chooseSelectOption(testId: string, label: string): Promise<void> {
+      const container = screen.getByTestId(testId);
+      const trigger = container.querySelector('.n-base-selection') as HTMLElement;
+      await fireEvent.click(trigger);
+      await flushPromises();
+      const option = selectOptionElements().find((el) => el.textContent === label);
+      if (!option) {
+        throw new Error(`No option "${label}" found in ${testId}`);
+      }
+      await fireEvent.click(option);
+      await flushPromises();
+    }
+
+    async function clearSelect(testId: string): Promise<void> {
+      const container = screen.getByTestId(testId);
+      const trigger = container.querySelector('.n-base-selection') as HTMLElement;
+      await fireEvent.mouseEnter(trigger);
+      await flushPromises();
+      const clearIcon = container.querySelector('.n-base-clear .n-base-icon') as HTMLElement;
+      await fireEvent.click(clearIcon);
+      await flushPromises();
+    }
+
+    async function renderDetail(fetchMock: ReturnType<typeof vi.fn>) {
+      vi.stubGlobal('fetch', fetchMock);
+      const router = makeRouter('/tasks/1');
+      await router.isReady();
+      render(TaskDetailPage, { global: { plugins: [router] } });
+      await flushPromises();
+      await screen.findByText('Follow up with Sam');
+      return router;
+    }
+
+    it('shows unset labels next to a control for each of the four fields when none are set (FR-004)', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        if (url === '/api/tasks/1') return Promise.resolve({ ok: true, json: async () => taskDetailPayload() });
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      await renderDetail(fetchMock);
+
+      expect(screen.getByTestId('due-date-unset').textContent).toBe('No due date');
+      expect(screen.getByTestId('due-date-picker')).toBeTruthy();
+      expect(screen.getByTestId('priority-unset').textContent).toBe('No priority');
+      expect(screen.getByTestId('priority-select')).toBeTruthy();
+      expect(screen.getByTestId('effort-unset').textContent).toBe('No effort');
+      expect(screen.getByTestId('effort-select')).toBeTruthy();
+      expect(screen.getByTestId('description-unset').textContent).toBe('No description');
+      expect(screen.getByTestId('description-add-button').textContent).toContain('Add description');
+    });
+
+    it('shows the due-date picker and priority/effort selects pre-filled with the current value when set', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        if (url === '/api/tasks/1') {
+          return Promise.resolve({
+            ok: true,
+            json: async () => taskDetailPayload({ dueDate: '2026-09-05', priority: 'High', effort: 'L' }),
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      await renderDetail(fetchMock);
+
+      expect(screen.queryByTestId('due-date-unset')).toBeNull();
+      expect(dueDateInput().value).toBe('2026-09-05');
+      expect(screen.queryByTestId('priority-unset')).toBeNull();
+      expect(screen.getByTestId('priority-select').textContent).toContain('High');
+      expect(screen.queryByTestId('effort-unset')).toBeNull();
+      expect(screen.getByTestId('effort-select').textContent).toContain('L');
+    });
+
+    it('keeps each field name visible even once a value is set, so a fully-populated view stays identifiable (PR review)', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        if (url === '/api/tasks/1') {
+          return Promise.resolve({
+            ok: true,
+            json: async () => taskDetailPayload({ dueDate: '2026-09-05', priority: 'High', effort: 'L' }),
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      await renderDetail(fetchMock);
+
+      expect(screen.getByRole('group', { name: /^due date$/i })).toBeTruthy();
+      expect(screen.getByRole('group', { name: /^priority$/i })).toBeTruthy();
+      expect(screen.getByRole('group', { name: /^effort$/i })).toBeTruthy();
+    });
+
+    it('changing the due-date picker immediately PATCHes { dueDate } with no confirmation and updates the view', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/tasks/1' && !options) return Promise.resolve({ ok: true, json: async () => taskDetailPayload() });
+        if (url === '/api/tasks/1' && options?.method === 'PATCH') {
+          return Promise.resolve({ ok: true, json: async () => taskDetailPayload({ dueDate: '2026-09-05' }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      await renderDetail(fetchMock);
+
+      await fireEvent.update(dueDateInput(), '2026-09-05');
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/tasks/1',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ dueDate: '2026-09-05' }) }),
+      );
+      expect(screen.queryByTestId('due-date-unset')).toBeNull();
+    });
+
+    it('clearing the due date issues PATCH with { dueDate: null }', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/tasks/1' && !options) return Promise.resolve({ ok: true, json: async () => taskDetailPayload({ dueDate: '2026-09-05' }) });
+        if (url === '/api/tasks/1' && options?.method === 'PATCH') {
+          return Promise.resolve({ ok: true, json: async () => taskDetailPayload({ dueDate: null }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      await renderDetail(fetchMock);
+
+      const picker = screen.getByTestId('due-date-picker');
+      await fireEvent.mouseEnter(picker.querySelector('.n-input') as HTMLElement);
+      await flushPromises();
+      const clearIcon = picker.querySelector('.n-base-clear .n-base-icon') as HTMLElement;
+      await fireEvent.click(clearIcon);
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/tasks/1',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ dueDate: null }) }),
+      );
+    });
+
+    it('changing priority immediately PATCHes { priority }', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/tasks/1' && !options) return Promise.resolve({ ok: true, json: async () => taskDetailPayload() });
+        if (url === '/api/tasks/1' && options?.method === 'PATCH') {
+          return Promise.resolve({ ok: true, json: async () => taskDetailPayload({ priority: 'Urgent' }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      await renderDetail(fetchMock);
+
+      await chooseSelectOption('priority-select', 'Urgent');
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/tasks/1',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ priority: 'Urgent' }) }),
+      );
+      expect(screen.queryByTestId('priority-unset')).toBeNull();
+    });
+
+    it('changing effort immediately PATCHes { effort }', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/tasks/1' && !options) return Promise.resolve({ ok: true, json: async () => taskDetailPayload() });
+        if (url === '/api/tasks/1' && options?.method === 'PATCH') {
+          return Promise.resolve({ ok: true, json: async () => taskDetailPayload({ effort: 'XL' }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      await renderDetail(fetchMock);
+
+      await chooseSelectOption('effort-select', 'XL');
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/tasks/1',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ effort: 'XL' }) }),
+      );
+    });
+
+    it('clearing priority issues PATCH with { priority: null }', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/tasks/1' && !options) return Promise.resolve({ ok: true, json: async () => taskDetailPayload({ priority: 'High' }) });
+        if (url === '/api/tasks/1' && options?.method === 'PATCH') {
+          return Promise.resolve({ ok: true, json: async () => taskDetailPayload({ priority: null }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      await renderDetail(fetchMock);
+
+      await clearSelect('priority-select');
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/tasks/1',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ priority: null }) }),
+      );
+    });
+
+    it('shows "Add description" for an unset description, revealing an empty textarea', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        if (url === '/api/tasks/1') return Promise.resolve({ ok: true, json: async () => taskDetailPayload() });
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      await renderDetail(fetchMock);
+
+      await fireEvent.click(screen.getByTestId('description-add-button'));
+      await flushPromises();
+
+      const textarea = screen.getByTestId('description-textarea').querySelector('textarea') as HTMLTextAreaElement;
+      expect(textarea.value).toBe('');
+    });
+
+    it('renders a set description as formatted markdown next to an Edit button', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        if (url === '/api/tasks/1') return Promise.resolve({ ok: true, json: async () => taskDetailPayload({ description: '**Urgent** and _soon_ [link](https://example.com)\n\n- one\n- two' }) });
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      await renderDetail(fetchMock);
+
+      const rendered = screen.getByTestId('description-rendered');
+      expect(rendered.querySelector('strong')?.textContent).toBe('Urgent');
+      expect(rendered.querySelector('em')?.textContent).toBe('soon');
+      expect(rendered.querySelector('a')?.getAttribute('href')).toBe('https://example.com');
+      expect(rendered.querySelectorAll('li')).toHaveLength(2);
+      expect(screen.getByTestId('description-edit-button').textContent).toContain('Edit');
+    });
+
+    it('clicking Edit reveals the raw-markdown textarea plus Save/Cancel', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        if (url === '/api/tasks/1') return Promise.resolve({ ok: true, json: async () => taskDetailPayload({ description: 'Some scope notes' }) });
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      await renderDetail(fetchMock);
+
+      await fireEvent.click(screen.getByTestId('description-edit-button'));
+      await flushPromises();
+
+      const textarea = screen.getByTestId('description-textarea').querySelector('textarea') as HTMLTextAreaElement;
+      expect(textarea.value).toBe('Some scope notes');
+      expect(screen.getByTestId('description-save-button')).toBeTruthy();
+      expect(screen.getByTestId('description-cancel-button')).toBeTruthy();
+    });
+
+    it('Save with non-blank content PATCHes { description: <raw> } and returns to the rendered view', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/tasks/1' && !options) return Promise.resolve({ ok: true, json: async () => taskDetailPayload() });
+        if (url === '/api/tasks/1' && options?.method === 'PATCH') {
+          return Promise.resolve({ ok: true, json: async () => taskDetailPayload({ description: 'New details' }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      await renderDetail(fetchMock);
+
+      await fireEvent.click(screen.getByTestId('description-add-button'));
+      await flushPromises();
+      await fireEvent.update(screen.getByTestId('description-textarea').querySelector('textarea')!, 'New details');
+      await fireEvent.click(screen.getByTestId('description-save-button'));
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/tasks/1',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ description: 'New details' }) }),
+      );
+      expect(screen.getByTestId('description-rendered')).toBeTruthy();
+      expect(screen.queryByTestId('description-textarea')).toBeNull();
+    });
+
+    it('Save with blank/whitespace content PATCHes { description: null }', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/tasks/1' && !options) return Promise.resolve({ ok: true, json: async () => taskDetailPayload({ description: 'Old details' }) });
+        if (url === '/api/tasks/1' && options?.method === 'PATCH') {
+          return Promise.resolve({ ok: true, json: async () => taskDetailPayload({ description: null }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      await renderDetail(fetchMock);
+
+      await fireEvent.click(screen.getByTestId('description-edit-button'));
+      await flushPromises();
+      await fireEvent.update(screen.getByTestId('description-textarea').querySelector('textarea')!, '   ');
+      await fireEvent.click(screen.getByTestId('description-save-button'));
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/tasks/1',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ description: null }) }),
+      );
+      expect(screen.getByTestId('description-unset')).toBeTruthy();
+    });
+
+    it('Cancel discards the textarea edit with no request sent, returning to the prior view', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        if (url === '/api/tasks/1') return Promise.resolve({ ok: true, json: async () => taskDetailPayload({ description: 'Existing notes' }) });
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      await renderDetail(fetchMock);
+
+      await fireEvent.click(screen.getByTestId('description-edit-button'));
+      await flushPromises();
+      await fireEvent.update(screen.getByTestId('description-textarea').querySelector('textarea')!, 'Discard me');
+      fetchMock.mockClear();
+      await fireEvent.click(screen.getByTestId('description-cancel-button'));
+      await flushPromises();
+
+      expect(fetchMock).not.toHaveBeenCalledWith('/api/tasks/1', expect.objectContaining({ method: 'PATCH' }));
+      expect(screen.getByTestId('description-rendered').textContent).toContain('Existing notes');
+    });
+
+    it('a failed PATCH surfaces inline via role="alert" and reverts the control to the last-known-good value', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/tasks/1' && !options) return Promise.resolve({ ok: true, json: async () => taskDetailPayload() });
+        if (url === '/api/tasks/1' && options?.method === 'PATCH') {
+          return Promise.resolve({ ok: false, status: 400, json: async () => ({ error: { message: 'Invalid priority' } }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      await renderDetail(fetchMock);
+
+      await chooseSelectOption('priority-select', 'Urgent');
+
+      expect(screen.getByRole('alert').textContent).toContain('Invalid priority');
+      expect(screen.getByTestId('priority-unset')).toBeTruthy();
+    });
+
+    it('a network-level PATCH failure (fetch rejects) also surfaces inline via role="alert" and reverts the control (PR review)', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+        if (url === '/api/tasks/1' && !options) return Promise.resolve({ ok: true, json: async () => taskDetailPayload() });
+        if (url === '/api/tasks/1' && options?.method === 'PATCH') {
+          return Promise.reject(new Error('offline'));
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+      await renderDetail(fetchMock);
+
+      await chooseSelectOption('priority-select', 'Urgent');
+
+      expect(screen.getByRole('alert')).toBeTruthy();
+      expect(screen.getByTestId('priority-unset')).toBeTruthy();
     });
   });
 });

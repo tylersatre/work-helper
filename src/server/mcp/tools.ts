@@ -3,6 +3,7 @@ import { ZodError, z } from 'zod';
 import { eq } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { primaryValue } from '../../shared/contacts.js';
+import { taskEffortValues, taskPriorityValues } from '../../shared/validation.js';
 import { addEntry, markPrimary, removeEntry } from '../services/contact-entries.js';
 import {
   createCompany as createCompanyService,
@@ -26,7 +27,7 @@ import {
   moveTask,
   unarchiveTask,
   unlinkPerson,
-  updateTaskTitle,
+  updateTask,
 } from '../services/tasks.js';
 import { linkConversationToTask, unlinkConversationFromTask } from '../services/task-conversations.js';
 import {
@@ -73,7 +74,18 @@ function personName(person: { firstName: string; lastName: string }): string {
   return `${person.firstName} ${person.lastName}`;
 }
 
-const taskSummarySchema = { id: z.number(), title: z.string(), lane: z.string(), position: z.number(), createdAt: z.number(), archived: z.boolean() };
+const taskSummarySchema = {
+  id: z.number(),
+  title: z.string(),
+  lane: z.string(),
+  position: z.number(),
+  createdAt: z.number(),
+  archived: z.boolean(),
+  dueDate: z.string().nullable(),
+  priority: z.enum(taskPriorityValues).nullable(),
+  effort: z.enum(taskEffortValues).nullable(),
+  description: z.string().nullable(),
+};
 
 const noteSchema = { id: z.number(), text: z.string(), source: z.enum(['ui', 'mcp']), createdAt: z.number() };
 
@@ -145,6 +157,10 @@ function taskDetailContent(task: NonNullable<ReturnType<typeof getTaskDetail>>) 
     position: task.position,
     createdAt: task.createdAt,
     archived: task.archived,
+    dueDate: task.dueDate,
+    priority: task.priority,
+    effort: task.effort,
+    description: task.description,
     notes: task.notes.map((note) => ({ id: note.id, text: note.text, source: note.source, createdAt: note.createdAt })),
     people: task.people.map((person) => ({
       id: person.id,
@@ -239,7 +255,18 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         tasks: listBoardTasksByLane(context.db, name)
           .filter((task) => includeArchived || !task.archived)
           .filter((task) => matchesBoardFilter(task, filter))
-          .map(({ id, title, lane, position, createdAt, archived }) => ({ id, title, lane, position, createdAt, archived })),
+          .map(({ id, title, lane, position, createdAt, archived, dueDate, priority, effort, description }) => ({
+            id,
+            title,
+            lane,
+            position,
+            createdAt,
+            archived,
+            dueDate,
+            priority,
+            effort,
+            description,
+          })),
       }));
       const matchCount = lanes.reduce((sum, lane) => sum + lane.tasks.length, 0);
       const structuredContent = { lanes };
@@ -486,13 +513,21 @@ export function createMcpServer(context: McpToolsContext): McpServer {
     'create-task',
     {
       description:
-        'Creates a task at the bottom of the given lane (or the first configured lane when no lane is given), optionally with an initial note.',
-      inputSchema: { title: z.string(), note: z.string().optional(), lane: z.string().optional() },
+        'Creates a task at the bottom of the given lane (or the first configured lane when no lane is given), optionally with an initial note and/or due date, priority, effort, and description.',
+      inputSchema: {
+        title: z.string(),
+        note: z.string().optional(),
+        lane: z.string().optional(),
+        dueDate: z.string().optional(),
+        priority: z.enum(taskPriorityValues).optional(),
+        effort: z.enum(taskEffortValues).optional(),
+        description: z.string().optional(),
+      },
       outputSchema: taskSummarySchema,
     },
-    async ({ title, note, lane }) => {
+    async ({ title, note, lane, dueDate, priority, effort, description }) => {
       try {
-        const created = createTask(context.db, context.lanes, title, note, 'mcp', lane);
+        const created = createTask(context.db, context.lanes, title, note, 'mcp', lane, { dueDate, priority, effort, description });
         const structuredContent = {
           id: created.id,
           title: created.title,
@@ -500,6 +535,10 @@ export function createMcpServer(context: McpToolsContext): McpServer {
           position: created.position,
           createdAt: created.createdAt,
           archived: created.archived,
+          dueDate: created.dueDate,
+          priority: created.priority,
+          effort: created.effort,
+          description: created.description,
         };
         return {
           content: [{ type: 'text', text: `Created task "${created.title}" in lane "${created.lane}".` }],
@@ -1319,6 +1358,10 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         position: task.position,
         createdAt: task.createdAt,
         archived: task.archived,
+        dueDate: task.dueDate,
+        priority: task.priority,
+        effort: task.effort,
+        description: task.description,
         landedPosition,
       };
       return {
@@ -1348,6 +1391,10 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         position: task.position,
         createdAt: task.createdAt,
         archived: task.archived,
+        dueDate: task.dueDate,
+        priority: task.priority,
+        effort: task.effort,
+        description: task.description,
       };
       return { content: [{ type: 'text', text: `Archived task "${task.title}".` }], structuredContent };
     },
@@ -1373,6 +1420,10 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         position: task.position,
         createdAt: task.createdAt,
         archived: task.archived,
+        dueDate: task.dueDate,
+        priority: task.priority,
+        effort: task.effort,
+        description: task.description,
       };
       return { content: [{ type: 'text', text: `Unarchived task "${task.title}".` }], structuredContent };
     },
@@ -1467,12 +1518,27 @@ export function createMcpServer(context: McpToolsContext): McpServer {
   server.registerTool(
     'update-task',
     {
-      description: "Renames a task's title. MCP-only — no UI control for this feature.",
-      inputSchema: { taskId: z.number().int().positive(), title: z.string() },
+      description:
+        "Partially updates a task: rename its title and/or set, change, or clear its due date, priority, effort, and description in a single call. Any subset of fields may be provided; an omitted field is left unchanged, and an explicit null clears a due date, priority, effort, or description. MCP-only rename — no UI control for renaming in this feature.",
+      inputSchema: {
+        taskId: z.number().int().positive(),
+        title: z.string().optional(),
+        dueDate: z.string().nullable().optional(),
+        priority: z.enum(taskPriorityValues).nullable().optional(),
+        effort: z.enum(taskEffortValues).nullable().optional(),
+        description: z.string().nullable().optional(),
+      },
       outputSchema: taskSummarySchema,
     },
-    async ({ taskId, title }) => {
-      const result = updateTaskTitle(context.db, taskId, title);
+    async ({ taskId, title, dueDate, priority, effort, description }) => {
+      const input: Parameters<typeof updateTask>[2] = {};
+      if (title !== undefined) input.title = title;
+      if (dueDate !== undefined) input.dueDate = dueDate;
+      if (priority !== undefined) input.priority = priority;
+      if (effort !== undefined) input.effort = effort;
+      if (description !== undefined) input.description = description;
+
+      const result = updateTask(context.db, taskId, input);
       if (!result.ok) {
         if (result.error === 'task-not-found') {
           return toolError(`Task ${taskId} not found`);
@@ -1487,8 +1553,12 @@ export function createMcpServer(context: McpToolsContext): McpServer {
         position: task.position,
         createdAt: task.createdAt,
         archived: task.archived,
+        dueDate: task.dueDate,
+        priority: task.priority,
+        effort: task.effort,
+        description: task.description,
       };
-      return { content: [{ type: 'text', text: `Renamed task ${taskId} to "${task.title}".` }], structuredContent };
+      return { content: [{ type: 'text', text: `Updated task ${taskId} ("${task.title}").` }], structuredContent };
     },
   );
 

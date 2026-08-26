@@ -242,4 +242,42 @@ describe('migration upgrade path (drizzle/0001_silly_sauron.sql, production data
     upgradedSqlite.close();
     freshSqlite.close();
   });
+
+  it('applies 0007 (task-fields columns) to a pre-existing baseline-only database without losing data, and converges with a fresh-DB schema', () => {
+    dir = mkdtempSync(join(tmpdir(), 'work-helper-upgrade-'));
+    const dbPath = join(dir, 'work-helper.db');
+    baselineMigrationsDir = buildBaselineOnlyMigrationsFolder();
+
+    // Stand up the database exactly as it looked pre-030-task-fields, and store data through it.
+    const baselineSqlite = new Database(dbPath);
+    baselineSqlite.pragma('foreign_keys = ON');
+    const baselineDb = drizzle(baselineSqlite, {});
+    migrate(baselineDb, { migrationsFolder: baselineMigrationsDir });
+
+    baselineSqlite.prepare('INSERT INTO tasks (title, lane, position, created_at) VALUES (?, ?, ?, ?)').run('Follow up with Sam', 'To Do', 0, 1);
+    baselineSqlite.close();
+
+    // Upgrade in place through the app's real migration runner (drizzle/, which now includes 0007).
+    const { db: upgradedDb, sqlite: upgradedSqlite } = createDb(dbPath);
+
+    const tasksRows = upgradedDb.all<{ title: string }>('SELECT title FROM tasks' as never);
+    expect(tasksRows).toHaveLength(1);
+
+    // The pre-existing row survived, with all four new columns NULL (no lossy/backfill surprises on upgrade).
+    const upgradedTask = upgradedSqlite.prepare('SELECT title, due_date, priority, effort, description FROM tasks').get() as {
+      title: string;
+      due_date: string | null;
+      priority: string | null;
+      effort: string | null;
+      description: string | null;
+    };
+    expect(upgradedTask).toEqual({ title: 'Follow up with Sam', due_date: null, priority: null, effort: null, description: null });
+
+    // Converges with a fresh :memory: DB's schema — the upgrade path and a brand-new install end up identical.
+    const { sqlite: freshSqlite } = createDb(':memory:');
+    expect(tableInfo(upgradedSqlite, 'tasks')).toEqual(tableInfo(freshSqlite, 'tasks'));
+
+    upgradedSqlite.close();
+    freshSqlite.close();
+  });
 });

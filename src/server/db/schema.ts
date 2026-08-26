@@ -8,6 +8,10 @@ export const tasks = sqliteTable('tasks', {
   position: integer('position').notNull(),
   createdAt: integer('created_at').notNull(),
   archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
+  dueDate: text('due_date'),
+  priority: text('priority', { enum: ['Low', 'Medium', 'High', 'Urgent'] }),
+  effort: text('effort', { enum: ['S', 'M', 'L', 'XL'] }),
+  description: text('description'),
 });
 
 export const people = sqliteTable('people', {

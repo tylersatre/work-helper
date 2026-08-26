@@ -508,7 +508,9 @@ describe('US5 (025-board-search-filter): list-board search and tags arguments', 
     const board = result.structuredContent as { lanes: { tasks: Record<string, unknown>[] }[] };
     const task = board.lanes.flatMap((lane) => lane.tasks)[0]!;
 
-    expect(Object.keys(task).sort()).toEqual(['archived', 'createdAt', 'id', 'lane', 'position', 'title'].sort());
+    expect(Object.keys(task).sort()).toEqual(
+      ['archived', 'createdAt', 'id', 'lane', 'position', 'title', 'dueDate', 'priority', 'effort', 'description'].sort(),
+    );
   });
 
   it('performs no writes (M10)', async () => {
@@ -575,5 +577,39 @@ describe('US4 (027-card-archive): list-board includeArchived', () => {
 
     expect(laneTasks(board, 'To Do').map((t) => t.title)).toContain('Follow up with Sam');
     expect(laneTasks(board, 'In Progress').map((t) => t.title)).not.toContain('Draft Q3 goals');
+  });
+});
+
+describe('US3 (030-task-fields): due date/priority/effort/description parity from get-task and list-board', () => {
+  it('get-task and list-board both return all four fields when set on the task', async () => {
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${followUpTaskId}`,
+      payload: { dueDate: '2026-09-05', priority: 'High', effort: 'L', description: 'Some details' },
+    });
+
+    const getResult = await client.callTool({ name: 'get-task', arguments: { taskId: followUpTaskId } });
+    expect(getResult.structuredContent).toMatchObject({ dueDate: '2026-09-05', priority: 'High', effort: 'L', description: 'Some details' });
+
+    const boardResult = await client.callTool({ name: 'list-board', arguments: {} });
+    const board = boardResult.structuredContent as {
+      lanes: { name: string; tasks: { id: number; dueDate: string | null; priority: string | null; effort: string | null; description: string | null }[] }[];
+    };
+    const toDo = board.lanes.find((lane) => lane.name === 'To Do')!;
+    const found = toDo.tasks.find((t) => t.id === followUpTaskId)!;
+    expect(found).toMatchObject({ dueDate: '2026-09-05', priority: 'High', effort: 'L', description: 'Some details' });
+  });
+
+  it('get-task and list-board both return null for all four fields when unset', async () => {
+    const getResult = await client.callTool({ name: 'get-task', arguments: { taskId: followUpTaskId } });
+    expect(getResult.structuredContent).toMatchObject({ dueDate: null, priority: null, effort: null, description: null });
+
+    const boardResult = await client.callTool({ name: 'list-board', arguments: {} });
+    const board = boardResult.structuredContent as {
+      lanes: { name: string; tasks: { id: number; dueDate: string | null; priority: string | null; effort: string | null; description: string | null }[] }[];
+    };
+    const toDo = board.lanes.find((lane) => lane.name === 'To Do')!;
+    const found = toDo.tasks.find((t) => t.id === followUpTaskId)!;
+    expect(found).toMatchObject({ dueDate: null, priority: null, effort: null, description: null });
   });
 });
