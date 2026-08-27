@@ -497,7 +497,7 @@ describe('US5: a call the mailbox cannot take fails with nothing changed', () =>
     expect(result.isError).toBe(true);
     expect(result.structuredContent).toBeUndefined();
     expect(JSON.stringify(result.content)).toContain(
-      'The mailbox sign-in predates read-state changes and lacks permission to change mail — add delegated Mail.ReadWrite to the Entra app registration, then reconnect the mailbox on the Sync page to grant it.',
+      'The mailbox sign-in lacks permission to change mail — add delegated Mail.ReadWrite to the Entra app registration, then reconnect the mailbox on the Sync page to grant it.',
     );
     expect(mailProvider.readStateOf('msg-quote-1')).toBe(false);
   });

@@ -14,7 +14,7 @@ import type * as schema from '../../src/server/db/schema.js';
 import { createIdentityVerifier } from '../../src/server/mcp/auth/identity.js';
 import { FakeMailboxAuth } from '../../src/server/services/email/fake-mailbox-auth.js';
 import { GraphMailProvider } from '../../src/server/services/email/graph-provider.js';
-import type { MailProvider } from '../../src/server/services/email/provider.js';
+import type { MailMessage, MailProvider } from '../../src/server/services/email/provider.js';
 import { connectThroughApproval } from './helpers/oauth-client.js';
 import { FakeMailProvider, type SeedMessage } from './helpers/fake-mail-provider.js';
 import { startStubIdentityProvider, type StubIdentityProvider } from './helpers/stub-identity-provider.js';
@@ -440,6 +440,10 @@ describe('US1: sync-emails records run history through the shared coordinator', 
 
       async setMessageReadState(): Promise<'updated' | 'not-found'> {
         return 'updated';
+      }
+
+      async createDraft(): Promise<MailMessage> {
+        throw new Error('not implemented');
       }
     }
     buildTestApp(new GatedProvider());

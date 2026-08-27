@@ -50,6 +50,7 @@ import { eventsForPerson, getEvent, listEvents } from '../services/calendar/quer
 import type { MailProvider } from '../services/email/provider.js';
 import { MailWritePermissionError, MailboxNotConnectedError } from '../services/email/graph-auth.js';
 import { setEmailReadState } from '../services/email/read-state.js';
+import { createDraft as createDraftService, EmptyBodyError } from '../services/email/drafts.js';
 import { computeSyncWindow } from '../services/email/sync.js';
 import type { SyncCoordinator } from '../services/email/sync-coordinator.js';
 import { conversationSubject, emailsForPerson, getConversation, listConversations, listUnlinkedAddresses } from '../services/email/queries.js';
@@ -682,6 +683,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
     latestMessageAt: z.number(),
     hasUnread: z.boolean(),
     hasAttachments: z.boolean(),
+    hasDraft: z.boolean(),
     participants: z.array(conversationParticipantSummarySchema),
   };
 
@@ -706,6 +708,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
     bodyText: z.string(),
     sourceFolder: z.string(),
     isRead: z.boolean(),
+    isDraft: z.boolean(),
     importance: z.enum(['low', 'normal', 'high']),
     flagStatus: z.enum(['notFlagged', 'complete', 'flagged']),
     categories: z.array(z.string()),
@@ -795,6 +798,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
             receivedAt: z.number(),
             sourceFolder: z.string(),
             isRead: z.boolean(),
+            isDraft: z.boolean(),
             importance: z.enum(['low', 'normal', 'high']),
             flagStatus: z.enum(['notFlagged', 'complete', 'flagged']),
             categories: z.array(z.string()),
@@ -1494,6 +1498,67 @@ export function createMcpServer(context: McpToolsContext): McpServer {
 
       const structuredContent = { state, outcomes, markedCount, alreadyCount, notFoundCount, failedCount };
       return { content: [{ type: 'text', text }], structuredContent };
+    },
+  );
+
+  const draftSummarySchema = {
+    messageId: z.number(),
+    conversationId: z.number(),
+    subject: z.string(),
+    to: z.array(z.string()),
+    cc: z.array(z.string()),
+    bcc: z.array(z.string()),
+    isDraft: z.literal(true),
+    webLink: z.string(),
+  };
+
+  function draftToolError(error: unknown): ReturnType<typeof toolError> {
+    if (error instanceof MailboxNotConnectedError) {
+      return toolError(
+        error.reason === 'never-signed-in'
+          ? 'The mailbox is not connected — connect the mailbox on the Sync page.'
+          : `The mailbox sign-in has expired (${error.detail}) — reconnect the mailbox on the Sync page.`,
+      );
+    }
+    if (error instanceof MailWritePermissionError) {
+      return toolError(error.message);
+    }
+    if (error instanceof EmptyBodyError) {
+      return toolError(error.message);
+    }
+    throw error;
+  }
+
+  server.registerTool(
+    'create-draft',
+    {
+      description:
+        'Creates a fresh standalone draft in the mailbox\'s Drafts folder — each call makes a new draft, it never revises one (use update-draft to revise an existing draft). The saved signature (from the Sync page) is appended below the supplied body.',
+      inputSchema: {
+        to: z.array(z.string()).min(1).describe('Recipient email addresses'),
+        cc: z.array(z.string()).optional(),
+        bcc: z.array(z.string()).optional(),
+        subject: z.string(),
+        bodyHtml: z.string().describe('HTML body, written verbatim; the saved signature is appended below it'),
+      },
+      outputSchema: draftSummarySchema,
+    },
+    async ({ to, cc, bcc, subject, bodyHtml }) => {
+      if (!context.mailProvider) {
+        return toolError('The mailbox is not connected — connect the mailbox on the Sync page.');
+      }
+
+      let summary;
+      try {
+        summary = await createDraftService(context.db, context.mailProvider, { to, cc, bcc, subject, bodyHtml });
+      } catch (error) {
+        return draftToolError(error);
+      }
+
+      return {
+        content: [{ type: 'text', text: `Created draft "${summary.subject}" (message ${summary.messageId}).` }],
+        structuredContent: { ...summary },
+      };
     },
   );
 

@@ -49,6 +49,7 @@ export interface ConversationSummary {
   latestMessageAt: number;
   hasUnread: boolean;
   hasAttachments: boolean;
+  hasDraft: boolean;
   participants: ConversationParticipantSummary[];
 }
 
@@ -103,10 +104,12 @@ export function listConversations(
     latestMessageAt: number;
     hasUnreadRaw: number;
     hasAttachmentsRaw: number;
+    hasDraftRaw: number;
   }>(sql`
     WITH agg AS (
       SELECT conversation_id AS id, COUNT(*) AS messageCount, MAX(sent_at) AS latestMessageAt,
-             MAX(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) AS hasUnreadRaw
+             MAX(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) AS hasUnreadRaw,
+             MAX(CASE WHEN is_draft = 1 THEN 1 ELSE 0 END) AS hasDraftRaw
       FROM email_messages
       GROUP BY conversation_id
     ),
@@ -123,6 +126,7 @@ export function listConversations(
     )
     SELECT agg.id AS id, earliest.subject AS subject, agg.messageCount AS messageCount, agg.latestMessageAt AS latestMessageAt,
            agg.hasUnreadRaw AS hasUnreadRaw,
+           agg.hasDraftRaw AS hasDraftRaw,
            CASE WHEN attach.id IS NULL THEN 0 ELSE 1 END AS hasAttachmentsRaw
     FROM agg
     JOIN earliest ON earliest.conversation_id = agg.id AND earliest.rn = 1
@@ -144,6 +148,7 @@ export function listConversations(
     latestMessageAt: row.latestMessageAt,
     hasUnread: row.hasUnreadRaw === 1,
     hasAttachments: row.hasAttachmentsRaw === 1,
+    hasDraft: row.hasDraftRaw === 1,
     participants: participantsForConversation(db, row.id),
   }));
 
@@ -173,6 +178,7 @@ export interface ConversationMessage {
   bodyContentType?: 'html' | 'text';
   sourceFolder: string;
   isRead: boolean;
+  isDraft: boolean;
   importance: 'low' | 'normal' | 'high';
   flagStatus: 'notFlagged' | 'complete' | 'flagged';
   categories: string[];
@@ -203,6 +209,7 @@ export interface PersonEmail {
   receivedAt: number;
   sourceFolder: string;
   isRead: boolean;
+  isDraft: boolean;
   importance: 'low' | 'normal' | 'high';
   flagStatus: 'notFlagged' | 'complete' | 'flagged';
   categories: string[];
@@ -266,6 +273,7 @@ export function emailsForPerson(db: AppDb, personId: number, params: { limit: nu
       receivedAt: message!.receivedAt,
       sourceFolder: message!.sourceFolder,
       isRead: message!.isRead,
+      isDraft: message!.isDraft,
       importance: message!.importance,
       flagStatus: message!.flagStatus,
       categories: message!.categories,
@@ -442,6 +450,7 @@ export function getConversation(
       ...(options?.includeOriginalBody ? { bodyOriginal: message.bodyOriginal, bodyContentType: message.bodyContentType } : {}),
       sourceFolder: message.sourceFolder,
       isRead: message.isRead,
+      isDraft: message.isDraft,
       importance: message.importance,
       flagStatus: message.flagStatus,
       categories: message.categories,

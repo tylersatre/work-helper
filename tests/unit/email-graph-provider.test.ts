@@ -465,6 +465,67 @@ describe('GraphMailProvider', () => {
     });
   });
 
+  describe('createDraft (research R1)', () => {
+    function writeProvider(getWriteAccessToken: () => Promise<string> = async () => 'write-token-123') {
+      return new GraphMailProvider({ getAccessToken: async () => 'read-token-123', getWriteAccessToken });
+    }
+
+    it('issues POST /me/messages with recipients/subject/HTML body, auth + ImmutableId headers, and returns the mapped created message', async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(
+          fixtureMessage({
+            id: 'AAMk-new-draft-1',
+            conversationId: 'conv-new',
+            subject: 'Pricing sheet',
+            body: { content: '<p>Hi</p>', contentType: 'html' },
+            isDraft: true,
+          }),
+          201,
+        ),
+      );
+      const provider = writeProvider();
+
+      const created = await provider.createDraft({
+        to: [{ address: 'sam@example.com', name: 'Sam' }],
+        cc: [{ address: 'ana@example.com', name: 'Ana' }],
+        bcc: [{ address: 'bob@example.com', name: 'Bob' }],
+        subject: 'Pricing sheet',
+        bodyHtml: '<p>Hi</p>',
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0]!;
+      expect(url).toBe('https://graph.microsoft.com/v1.0/me/messages');
+      const requestInit = init as RequestInit;
+      expect(requestInit.method).toBe('POST');
+      expect(JSON.parse(requestInit.body as string)).toEqual({
+        toRecipients: [{ emailAddress: { address: 'sam@example.com', name: 'Sam' } }],
+        ccRecipients: [{ emailAddress: { address: 'ana@example.com', name: 'Ana' } }],
+        bccRecipients: [{ emailAddress: { address: 'bob@example.com', name: 'Bob' } }],
+        subject: 'Pricing sheet',
+        body: { contentType: 'HTML', content: '<p>Hi</p>' },
+      });
+      const headers = new Headers(requestInit.headers);
+      expect(headers.get('Authorization')).toBe('Bearer write-token-123');
+      expect(headers.get('Prefer')).toBe('IdType="ImmutableId"');
+      expect(headers.get('Content-Type')).toBe('application/json');
+
+      expect(created).toMatchObject({ id: 'AAMk-new-draft-1', conversationId: 'conv-new', subject: 'Pricing sheet', isDraft: true });
+    });
+
+    it('omits cc/bcc from the payload when not supplied', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(fixtureMessage({ isDraft: true })));
+      const provider = writeProvider();
+
+      await provider.createDraft({ to: [{ address: 'sam@example.com', name: 'Sam' }], subject: 'Hi', bodyHtml: '<p>Hi</p>' });
+
+      const [, init] = fetchMock.mock.calls[0]!;
+      const body = JSON.parse((init as RequestInit).body as string);
+      expect(body.ccRecipients).toEqual([]);
+      expect(body.bccRecipients).toEqual([]);
+    });
+  });
+
   describe('verifyWriteAccess (research R3)', () => {
     it('calls getWriteAccessToken and resolves when a token is returned', async () => {
       const getWriteAccessToken = vi.fn(async () => 'write-token-123');

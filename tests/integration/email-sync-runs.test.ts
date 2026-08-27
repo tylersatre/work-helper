@@ -78,6 +78,10 @@ class GatedMailProvider implements MailProvider {
   async setMessageReadState(): Promise<'updated' | 'not-found'> {
     return 'updated';
   }
+
+  async createDraft(): Promise<MailMessage> {
+    throw new Error('not implemented');
+  }
 }
 
 let app: FastifyInstance;

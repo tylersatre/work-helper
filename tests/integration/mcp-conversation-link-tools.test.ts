@@ -526,7 +526,7 @@ describe('list surfaces stay unchanged (FR-013)', () => {
     const { conversations } = listed.structuredContent as { conversations: Record<string, unknown>[] };
     const linkedConversation = conversations.find((c) => c.id === pricing.id)!;
     expect(Object.keys(linkedConversation).sort()).toEqual(
-      ['hasAttachments', 'hasUnread', 'id', 'latestMessageAt', 'messageCount', 'participants', 'subject'].sort(),
+      ['hasAttachments', 'hasDraft', 'hasUnread', 'id', 'latestMessageAt', 'messageCount', 'participants', 'subject'].sort(),
     );
   });
 });

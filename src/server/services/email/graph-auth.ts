@@ -58,11 +58,11 @@ export class MailboxNotConnectedError extends Error {
   }
 }
 
-/** Thrown by getWriteAccessToken() when the sign-in is alive but predates this feature — it never consented to Mail.ReadWrite. */
+/** Thrown by getWriteAccessToken() when the sign-in is alive but never consented to Mail.ReadWrite. */
 export class MailWritePermissionError extends Error {
   constructor() {
     super(
-      'The mailbox sign-in predates read-state changes and lacks permission to change mail — add delegated Mail.ReadWrite to the Entra app registration, then reconnect the mailbox on the Sync page to grant it.',
+      'The mailbox sign-in lacks permission to change mail — add delegated Mail.ReadWrite to the Entra app registration, then reconnect the mailbox on the Sync page to grant it.',
     );
     this.name = 'MailWritePermissionError';
   }

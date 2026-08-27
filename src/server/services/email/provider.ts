@@ -58,6 +58,15 @@ export interface MailFolderRef {
   wellKnown: WellKnownFolder | null;
 }
 
+export interface CreateDraftInput {
+  to: MailRecipient[];
+  cc?: MailRecipient[];
+  bcc?: MailRecipient[];
+  subject: string;
+  /** Already-composed HTML — signature appending happens in the service, not the provider. */
+  bodyHtml: string;
+}
+
 export interface MailProvider {
   /** Full folder tree, including folders the sync service will exclude (Junk/Deleted Items/Drafts). */
   listFolders(): Promise<MailFolderNode[]>;
@@ -74,4 +83,6 @@ export interface MailProvider {
   verifyWriteAccess(): Promise<void>;
   /** Sets a message's read/unread state via the mailbox's minimal single-property write. 'not-found' when the mailbox no longer has the message (e.g. deleted); other failures throw. */
   setMessageReadState(graphMessageId: string, isRead: boolean): Promise<'updated' | 'not-found'>;
+  /** Creates a fresh draft in the Drafts folder with exactly the given recipients/subject/body. Returns the created message (isDraft: true). */
+  createDraft(input: CreateDraftInput): Promise<MailMessage>;
 }

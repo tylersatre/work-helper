@@ -73,6 +73,7 @@ export interface EmailConversationSummary {
   latestMessageAt: number;
   hasUnread: boolean;
   hasAttachments: boolean;
+  hasDraft: boolean;
   participants: EmailParticipantSummary[];
 }
 
@@ -103,6 +104,7 @@ export interface EmailConversationMessage {
   bodyContentType: 'html' | 'text';
   sourceFolder: string;
   isRead: boolean;
+  isDraft: boolean;
   importance: 'low' | 'normal' | 'high';
   flagStatus: 'notFlagged' | 'complete' | 'flagged';
   categories: string[];

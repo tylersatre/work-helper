@@ -1,4 +1,5 @@
 import type {
+  CreateDraftInput,
   MailAttachmentMeta,
   MailFlagStatus,
   MailFolderNode,
@@ -83,6 +84,10 @@ interface GraphFoldersResponse {
 
 function toRecipient(recipient: GraphRecipient): MailRecipient {
   return { address: recipient.emailAddress?.address ?? '', name: recipient.emailAddress?.name ?? '' };
+}
+
+function toGraphRecipient(recipient: MailRecipient): GraphRecipient {
+  return { emailAddress: { address: recipient.address, name: recipient.name } };
 }
 
 function toMailMessage(message: GraphMessage): MailMessage {
@@ -201,6 +206,28 @@ export class GraphMailProvider implements MailProvider {
     }
     const body = (await response.json()) as GraphAttachmentsResponse;
     return body.value.map((a) => ({ name: a.name, contentType: a.contentType ?? null, sizeBytes: a.size, isInline: a.isInline === true }));
+  }
+
+  async createDraft(input: CreateDraftInput): Promise<MailMessage> {
+    const token = await this.options.getWriteAccessToken();
+
+    const response = await this.send(`${GRAPH_BASE}/me/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, Prefer: 'IdType="ImmutableId"', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        toRecipients: input.to.map(toGraphRecipient),
+        ccRecipients: (input.cc ?? []).map(toGraphRecipient),
+        bccRecipients: (input.bcc ?? []).map(toGraphRecipient),
+        subject: input.subject,
+        body: { contentType: 'HTML', content: input.bodyHtml },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Mailbox request failed with a connection error (HTTP ${response.status})`);
+    }
+    const message = (await response.json()) as GraphMessage;
+    return toMailMessage(message);
   }
 
   async listFolders(): Promise<MailFolderNode[]> {

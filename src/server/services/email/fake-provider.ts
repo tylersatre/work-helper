@@ -1,5 +1,6 @@
 import { MailWritePermissionError, MailboxNotConnectedError } from './graph-auth.js';
 import type {
+  CreateDraftInput,
   MailAttachmentMeta,
   MailFlagStatus,
   MailFolderNode,
@@ -65,6 +66,8 @@ export interface FakeMailProviderOptions {
   deletedGraphMessageIds?: Iterable<string>;
   /** Graph ids whose setMessageReadState() call throws — simulates a mid-list mailbox rejection. */
   failWriteGraphMessageIds?: Iterable<string>;
+  /** The mailbox owner's own address ("me") — used for reply-all self-exclusion and Sent-folder identity. */
+  ownerAddress?: string;
 }
 
 export interface RecordedWrite {
@@ -134,6 +137,8 @@ export class FakeMailProvider implements MailProvider {
   private readonly deletedGraphMessageIds: Set<string>;
   private readonly failWriteGraphMessageIds: Set<string>;
   private readonly writes: RecordedWrite[] = [];
+  private readonly draftsFolder: Map<string, SeedMessage>;
+  private draftCounter = 0;
 
   constructor(
     private readonly seeded: SeedMessage[],
@@ -147,6 +152,9 @@ export class FakeMailProvider implements MailProvider {
     this.readState = new Map(seeded.map((seed) => [seed.id, seed.isRead ?? false]));
     this.deletedGraphMessageIds = new Set(options.deletedGraphMessageIds ?? []);
     this.failWriteGraphMessageIds = new Set(options.failWriteGraphMessageIds ?? []);
+    this.draftsFolder = new Map(
+      seeded.filter((seed) => resolveFolder(seed.folder).wellKnown === 'drafts').map((seed) => [seed.id, seed]),
+    );
   }
 
   async verifyWriteAccess(): Promise<void> {
@@ -182,6 +190,40 @@ export class FakeMailProvider implements MailProvider {
   /** Test-only: every setMessageReadState() write accepted by the mailbox, in call order. */
   get recordedWrites(): readonly RecordedWrite[] {
     return this.writes;
+  }
+
+  async createDraft(input: CreateDraftInput): Promise<MailMessage> {
+    this.draftCounter += 1;
+    const id = `fake-draft-${this.draftCounter}`;
+    const now = new Date().toISOString();
+    const seed: SeedMessage = {
+      id,
+      conversationId: `fake-draft-conv-${this.draftCounter}`,
+      subject: input.subject,
+      body: { content: input.bodyHtml, contentType: 'html' },
+      receivedDateTime: now,
+      sentDateTime: now,
+      from: this.options.ownerAddress ? { address: this.options.ownerAddress } : null,
+      toRecipients: input.to,
+      ccRecipients: input.cc ?? [],
+      bccRecipients: input.bcc ?? [],
+      folder: 'drafts',
+      isRead: true,
+    };
+    this.draftsFolder.set(id, seed);
+    return { ...toMailMessage(seed, true), isDraft: true };
+  }
+
+  /** Test-only: every message currently in the mailbox's Drafts folder. */
+  draftsInMailbox(): MailMessage[] {
+    return [...this.draftsFolder.values()].map((seed) => ({ ...toMailMessage(seed, true), isDraft: true }));
+  }
+
+  /** Test-only: every message currently in the mailbox's Sent folder (SC-004 invariance checks). */
+  sentMessages(): MailMessage[] {
+    return this.seeded
+      .filter((seed) => resolveFolder(seed.folder).wellKnown === 'sentitems')
+      .map((seed) => toMailMessage(seed, this.readState.get(seed.id) ?? seed.isRead ?? false));
   }
 
   async listFolders(): Promise<MailFolderNode[]> {

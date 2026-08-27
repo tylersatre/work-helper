@@ -67,6 +67,9 @@ class CountingProvider implements MailProvider {
   setMessageReadState(...args: Parameters<MailProvider['setMessageReadState']>): Promise<'updated' | 'not-found'> {
     return this.inner.setMessageReadState(...args);
   }
+  createDraft(...args: Parameters<MailProvider['createDraft']>): Promise<MailMessage> {
+    return this.inner.createDraft(...args);
+  }
 }
 
 class FlakyProvider implements MailProvider {
@@ -85,6 +88,9 @@ class FlakyProvider implements MailProvider {
   async verifyWriteAccess(): Promise<void> {}
   async setMessageReadState(): Promise<'updated' | 'not-found'> {
     return 'updated';
+  }
+  async createDraft(): Promise<MailMessage> {
+    throw new Error('not implemented');
   }
 }
 

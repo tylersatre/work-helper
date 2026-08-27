@@ -42,6 +42,10 @@ class StubProvider implements MailProvider {
   async setMessageReadState(): Promise<'updated' | 'not-found'> {
     return 'updated';
   }
+
+  async createDraft(): Promise<MailMessage> {
+    throw new Error('not implemented');
+  }
 }
 
 function baseMessage(): MailMessage {

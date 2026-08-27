@@ -25,6 +25,7 @@ function conversation(overrides: Record<string, unknown> = {}) {
     latestMessageAt: Date.parse('2026-08-06T09:01:00Z'),
     hasUnread: true,
     hasAttachments: true,
+    hasDraft: false,
     participants: [
       { address: 'sam.rivera@example.com', displayName: 'Sam Rivera', person: null },
       { address: 'tyler@example.com', displayName: 'Tyler Satre', person: null },
@@ -77,6 +78,28 @@ describe('EmailsPage', () => {
     expect(rows[1]!.textContent).toContain('Pricing question');
     expect(within(rows[1]!).queryByTestId('unread-indicator')).toBeNull();
     expect(within(rows[1]!).queryByTestId('attachment-indicator')).toBeNull();
+  });
+
+  it('shows a Draft chip only for conversations with hasDraft true', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          conversations: [
+            conversation({ hasDraft: true }),
+            conversation({ id: 2, subject: 'Pricing question', hasDraft: false }),
+          ],
+          nextCursor: null,
+        }),
+      }),
+    );
+
+    await renderPage();
+
+    const rows = await screen.findAllByTestId('email-conversation-row');
+    expect(within(rows[0]!).getByTestId('draft-indicator')).toBeTruthy();
+    expect(within(rows[1]!).queryByTestId('draft-indicator')).toBeNull();
   });
 
   it('shows the bare address when a participant has no display name', async () => {
