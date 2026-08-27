@@ -13,6 +13,13 @@ export class MessageNotFoundError extends Error {
   }
 }
 
+export class NotADraftError extends Error {
+  constructor(messageId: number) {
+    super(`Message ${messageId} is not a draft — only draft messages can be edited or deleted.`);
+    this.name = 'NotADraftError';
+  }
+}
+
 type AppDb = BetterSQLite3Database<typeof schema>;
 
 const SIGNATURE_KEY = 'email.signature';
@@ -149,6 +156,61 @@ function ingestNewDraft(db: AppDb, message: MailMessage): number {
   return insertedId;
 }
 
+/**
+ * Rewrites all content fields of an already-stored draft row and replaces its participants wholesale
+ * (delete + reinsert) — the mirror path draft rows use instead of the snapshot rule (data-model.md).
+ * Reused by sync's Drafts-folder phase (US5).
+ */
+export function mirrorDraftMessage(db: AppDb, messageId: number, message: MailMessage): void {
+  const bodyText = deriveBodyText(message.body.content, message.body.contentType);
+  const roles = participantsOf(message);
+
+  db.transaction((tx) => {
+    tx.update(emailMessages)
+      .set({
+        subject: message.subject,
+        bodyOriginal: message.body.content,
+        bodyContentType: message.body.contentType,
+        bodyText,
+        sentAt: Date.parse(message.sentDateTime),
+        receivedAt: Date.parse(message.receivedDateTime),
+        isRead: message.isRead,
+        importance: message.importance,
+        flagStatus: message.flagStatus,
+        categories: message.categories,
+        webLink: message.webLink,
+        internetMessageId: message.internetMessageId,
+        isDraft: true,
+      })
+      .where(eq(emailMessages.id, messageId))
+      .run();
+
+    tx.delete(emailParticipants).where(eq(emailParticipants.messageId, messageId)).run();
+    for (const { address, role, name } of roles) {
+      const addressId = findOrCreateAddressId(tx, address);
+      tx.insert(emailParticipants).values({ messageId, addressId, role, displayName: name }).run();
+    }
+  });
+}
+
+/** Removes a draft row (+ participants), deleting its conversation too when that was the last message. */
+function removeDraftMessage(db: AppDb, messageId: number, conversationId: number): void {
+  db.transaction((tx) => {
+    tx.delete(emailParticipants).where(eq(emailParticipants.messageId, messageId)).run();
+    tx.delete(emailMessages).where(eq(emailMessages.id, messageId)).run();
+
+    const [remaining] = tx
+      .select({ id: emailMessages.id })
+      .from(emailMessages)
+      .where(eq(emailMessages.conversationId, conversationId))
+      .limit(1)
+      .all();
+    if (!remaining) {
+      tx.delete(emailConversations).where(eq(emailConversations.id, conversationId)).run();
+    }
+  });
+}
+
 function summaryOf(db: AppDb, messageId: number, message: MailMessage): DraftSummary {
   const [row] = db
     .select({ conversationId: emailMessages.conversationId })
@@ -239,4 +301,69 @@ export async function createReplyDraft(db: AppDb, provider: MailProvider, args: 
 
   const insertedId = ingestNewDraft(db, message);
   return summaryOf(db, insertedId, message);
+}
+
+function draftGuardLookup(db: AppDb, messageId: number): { graphMessageId: string } {
+  const [row] = db
+    .select({ graphMessageId: emailMessages.graphMessageId, isDraft: emailMessages.isDraft })
+    .from(emailMessages)
+    .where(eq(emailMessages.id, messageId))
+    .limit(1)
+    .all();
+  if (!row || !row.isDraft) {
+    throw new NotADraftError(messageId);
+  }
+  return { graphMessageId: row.graphMessageId };
+}
+
+export interface UpdateDraftArgs {
+  messageId: number;
+  bodyHtml: string;
+  to?: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject?: string;
+}
+
+/**
+ * Replaces a draft's body verbatim and whole (nothing appended, not even the signature); optionally
+ * changes recipients/subject. Guarded by is_draft = true, checked before any mailbox call (FR-011).
+ */
+export async function updateDraft(db: AppDb, provider: MailProvider, args: UpdateDraftArgs): Promise<DraftSummary> {
+  await provider.verifyWriteAccess();
+
+  if (args.bodyHtml.trim() === '') {
+    throw new EmptyBodyError();
+  }
+
+  const { graphMessageId } = draftGuardLookup(db, args.messageId);
+
+  const message = await provider.updateDraft(graphMessageId, {
+    bodyHtml: args.bodyHtml,
+    to: args.to ? toRecipients(args.to) : undefined,
+    cc: args.cc ? toRecipients(args.cc) : undefined,
+    bcc: args.bcc ? toRecipients(args.bcc) : undefined,
+    subject: args.subject,
+  });
+
+  mirrorDraftMessage(db, args.messageId, message);
+  return summaryOf(db, args.messageId, message);
+}
+
+export interface DeleteDraftResult {
+  messageId: number;
+  deleted: true;
+}
+
+/** Deletes a draft from the mailbox and the store. Guarded by is_draft = true, checked before any mailbox call. */
+export async function deleteDraft(db: AppDb, provider: MailProvider, messageId: number): Promise<DeleteDraftResult> {
+  await provider.verifyWriteAccess();
+
+  const { graphMessageId } = draftGuardLookup(db, messageId);
+  const [row] = db.select({ conversationId: emailMessages.conversationId }).from(emailMessages).where(eq(emailMessages.id, messageId)).limit(1).all();
+
+  await provider.deleteDraft(graphMessageId);
+
+  removeDraftMessage(db, messageId, row!.conversationId);
+  return { messageId, deleted: true };
 }

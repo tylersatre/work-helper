@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { eq } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/server/app.js';
 import { createDb } from '../../src/server/db/index.js';
+import { emailMessages } from '../../src/server/db/schema.js';
 import type * as schema from '../../src/server/db/schema.js';
 import { createIdentityVerifier } from '../../src/server/mcp/auth/identity.js';
 import { setAppState } from '../../src/server/services/app-state.js';
@@ -115,6 +117,19 @@ async function conversationIdBySubject(subject: string): Promise<number> {
   const match = conversations.find((c) => c.subject === subject);
   if (!match) throw new Error(`No synced conversation with subject "${subject}"`);
   return match.id;
+}
+
+async function updateDraft(args: Record<string, unknown>) {
+  return client!.callTool({ name: 'update-draft', arguments: args });
+}
+
+async function deleteDraft(args: Record<string, unknown>) {
+  return client!.callTool({ name: 'delete-draft', arguments: args });
+}
+
+function graphMessageIdOf(storeMessageId: number): string {
+  const [row] = db.select({ graphMessageId: emailMessages.graphMessageId }).from(emailMessages).where(eq(emailMessages.id, storeMessageId)).limit(1).all();
+  return row!.graphMessageId;
 }
 
 async function messageIdByBody(conversationId: number, bodyText: string): Promise<number> {
@@ -338,5 +353,94 @@ describe('US2: create-reply-draft — replies shaped like Outlook', () => {
     expect(result.isError).toBe(true);
     expect(JSON.stringify(result.content)).toContain('Message 999999 not found');
     expect(mailProvider.draftsInMailbox()).toEqual([]);
+  });
+});
+
+describe('US3: update-draft / delete-draft — guarded by the draft flag', () => {
+  it('update-draft replaces the body verbatim (nothing appended, signature untouched), changes cc, leaves to/subject unchanged, visible immediately with no sync run (AC1, FR-009/FR-012)', async () => {
+    buildTestApp();
+    await startAndConnect();
+    setSignature('<p>Tyler Satre</p>');
+    const created = (await createDraft({ to: ['sam.rivera@example.com'], subject: 'Pricing sheet', bodyHtml: '<p>Draft one.</p>' }))
+      .structuredContent as { messageId: number; conversationId: number };
+    const runsBefore = await syncRunCount();
+
+    const result = await updateDraft({ messageId: created.messageId, bodyHtml: '<p>Replaced body.</p>', cc: ['ana.alvarez@example.com'] });
+
+    expect(result.isError).toBeFalsy();
+    const summary = result.structuredContent as { subject: string; to: string[]; cc: string[] };
+    expect(summary.subject).toBe('Pricing sheet');
+    expect(summary.to).toEqual(['sam.rivera@example.com']);
+    expect(summary.cc).toEqual(['ana.alvarez@example.com']);
+    expect(await syncRunCount()).toBe(runsBefore);
+
+    const draft = mailProvider.draftsInMailbox().find((d) => d.id === graphMessageIdOf(created.messageId));
+    expect(draft!.body.content).toBe('<p>Replaced body.</p>');
+
+    const restDetail = await restConversation(created.conversationId);
+    expect(restDetail.messages.find((m) => m.id === created.messageId)!.bodyText).toBe('Replaced body.');
+  });
+
+  it('delete-draft removes the draft from the mailbox and conversation, leaving real messages and other drafts untouched, adding no sync_runs row (AC2, FR-010, FR-014)', async () => {
+    buildTestApp();
+    await startAndConnect();
+    await syncAll();
+    const conversationId = await conversationIdBySubject('Pricing question');
+    const messageId = await messageIdByBody(conversationId, 'Can you send the updated pricing sheet?');
+    const reply = (await createReplyDraft({ messageId, bodyHtml: '<p>Reply body.</p>' })).structuredContent as { messageId: number };
+    const replyAll = (await createReplyDraft({ messageId, replyAll: true, bodyHtml: '<p>Reply-all body.</p>' })).structuredContent as {
+      messageId: number;
+    };
+    const runsBefore = await syncRunCount();
+
+    const result = await deleteDraft({ messageId: reply.messageId });
+
+    expect(result.isError).toBeFalsy();
+    expect(JSON.stringify(result.content)).toContain('Deleted draft');
+    expect(await syncRunCount()).toBe(runsBefore);
+
+    const drafts = mailProvider.draftsInMailbox();
+    expect(drafts.some((d) => d.body.content.includes('Reply body.'))).toBe(false);
+    expect(drafts.some((d) => d.body.content.includes('Reply-all body.'))).toBe(true);
+
+    const conversation = (await getConversation(conversationId)).structuredContent as { messages: { id: number; isDraft: boolean }[] };
+    expect(conversation.messages.some((m) => m.id === reply.messageId)).toBe(false);
+    expect(conversation.messages.some((m) => m.id === replyAll.messageId)).toBe(true);
+    expect(conversation.messages.filter((m) => !m.isDraft)).toHaveLength(1);
+  });
+
+  it('update-draft and delete-draft against a non-draft message id each fail and change nothing (AC3, FR-011, SC-005)', async () => {
+    buildTestApp();
+    await startAndConnect();
+    await syncAll();
+    const conversationId = await conversationIdBySubject('Pricing question');
+    const messageId = await messageIdByBody(conversationId, 'Can you send the updated pricing sheet?');
+    const guardMessage = `Message ${messageId} is not a draft — only draft messages can be edited or deleted.`;
+
+    const updateResult = await updateDraft({ messageId, bodyHtml: '<p>x</p>' });
+    expect(updateResult.isError).toBe(true);
+    expect(JSON.stringify(updateResult.content)).toContain(guardMessage);
+
+    const deleteResult = await deleteDraft({ messageId });
+    expect(deleteResult.isError).toBe(true);
+    expect(JSON.stringify(deleteResult.content)).toContain(guardMessage);
+
+    const conversation = (await getConversation(conversationId)).structuredContent as { messages: { id: number; bodyText: string }[] };
+    expect(conversation.messages.find((m) => m.id === messageId)!.bodyText).toBe('Can you send the updated pricing sheet?');
+  });
+
+  it('update-draft against a stale draft (gone from the mailbox since last sync) fails cleanly with the store untouched (AC4, FR-022)', async () => {
+    buildTestApp();
+    await startAndConnect();
+    const created = (await createDraft({ to: ['sam.rivera@example.com'], subject: 'Stale draft', bodyHtml: '<p>Original.</p>' }))
+      .structuredContent as { messageId: number; conversationId: number };
+    mailProvider.discardDraftFromMailbox(graphMessageIdOf(created.messageId));
+
+    const result = await updateDraft({ messageId: created.messageId, bodyHtml: '<p>New.</p>' });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain('The mailbox no longer has this draft — the next sync will reconcile it.');
+    const restDetail = await restConversation(created.conversationId);
+    expect(restDetail.messages.find((m) => m.id === created.messageId)!.bodyText).toBe('Original.');
   });
 });

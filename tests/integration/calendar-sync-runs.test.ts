@@ -109,6 +109,14 @@ class GatedMailProvider implements MailProvider {
   async createReplyDraft(): Promise<MailMessage> {
     throw new Error('not implemented');
   }
+
+  async updateDraft(): Promise<MailMessage> {
+    throw new Error('not implemented');
+  }
+
+  async deleteDraft(): Promise<void> {
+    throw new Error('not implemented');
+  }
 }
 
 let app: FastifyInstance;

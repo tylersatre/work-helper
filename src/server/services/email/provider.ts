@@ -73,6 +73,14 @@ export interface CreateReplyDraftInput {
   prefixHtml: string;
 }
 
+export interface UpdateDraftInput {
+  bodyHtml?: string;
+  to?: MailRecipient[];
+  cc?: MailRecipient[];
+  bcc?: MailRecipient[];
+  subject?: string;
+}
+
 /** Thrown when the mailbox no longer has a message the caller referenced by its Graph id (sent/discarded since last sync). */
 export class MailMessageGoneError extends Error {
   constructor(graphMessageId: string) {
@@ -101,4 +109,8 @@ export interface MailProvider {
   createDraft(input: CreateDraftInput): Promise<MailMessage>;
   /** Creates a reply/reply-all draft via the mailbox's own reply machinery, then inserts prefixHtml above the quoted original. Throws MailMessageGoneError for an unknown/gone graph id. */
   createReplyDraft(graphMessageId: string, input: CreateReplyDraftInput): Promise<MailMessage>;
+  /** Patches exactly the supplied fields on a draft. Throws MailMessageGoneError when the mailbox no longer has the message. */
+  updateDraft(graphMessageId: string, input: UpdateDraftInput): Promise<MailMessage>;
+  /** Removes a draft from the Drafts folder. Throws MailMessageGoneError when already gone. */
+  deleteDraft(graphMessageId: string): Promise<void>;
 }

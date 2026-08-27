@@ -12,6 +12,7 @@ import {
   type MailProvider,
   type MailRecipient,
   type MailWindow,
+  type UpdateDraftInput,
   type WellKnownFolder,
 } from './provider.js';
 
@@ -276,6 +277,36 @@ export class FakeMailProvider implements MailProvider {
     };
     this.draftsFolder.set(id, seed);
     return { ...toMailMessage(seed, true), isDraft: true };
+  }
+
+  async updateDraft(graphMessageId: string, input: UpdateDraftInput): Promise<MailMessage> {
+    const existing = this.draftsFolder.get(graphMessageId);
+    if (!existing) {
+      throw new MailMessageGoneError(graphMessageId);
+    }
+
+    const updated: SeedMessage = {
+      ...existing,
+      body: input.bodyHtml !== undefined ? { content: input.bodyHtml, contentType: 'html' } : existing.body,
+      toRecipients: input.to ?? existing.toRecipients,
+      ccRecipients: input.cc ?? existing.ccRecipients,
+      bccRecipients: input.bcc ?? existing.bccRecipients,
+      subject: input.subject ?? existing.subject,
+    };
+    this.draftsFolder.set(graphMessageId, updated);
+    return { ...toMailMessage(updated, true), isDraft: true };
+  }
+
+  async deleteDraft(graphMessageId: string): Promise<void> {
+    if (!this.draftsFolder.has(graphMessageId)) {
+      throw new MailMessageGoneError(graphMessageId);
+    }
+    this.draftsFolder.delete(graphMessageId);
+  }
+
+  /** Test-only: simulates a draft going stale (sent/discarded in Outlook) without going through deleteDraft. */
+  discardDraftFromMailbox(graphMessageId: string): void {
+    this.draftsFolder.delete(graphMessageId);
   }
 
   async listFolders(): Promise<MailFolderNode[]> {

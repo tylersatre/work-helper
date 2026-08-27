@@ -11,6 +11,7 @@ import {
   type MailProvider,
   type MailRecipient,
   type MailWindow,
+  type UpdateDraftInput,
   type WellKnownFolder,
 } from './provider.js';
 
@@ -272,6 +273,46 @@ export class GraphMailProvider implements MailProvider {
     }
 
     return toMailMessage({ ...draft, body: { content: mergedContent, contentType: 'html' } });
+  }
+
+  async updateDraft(graphMessageId: string, input: UpdateDraftInput): Promise<MailMessage> {
+    const token = await this.options.getWriteAccessToken();
+
+    const payload: Record<string, unknown> = {};
+    if (input.bodyHtml !== undefined) payload.body = { contentType: 'HTML', content: input.bodyHtml };
+    if (input.to !== undefined) payload.toRecipients = input.to.map(toGraphRecipient);
+    if (input.cc !== undefined) payload.ccRecipients = input.cc.map(toGraphRecipient);
+    if (input.bcc !== undefined) payload.bccRecipients = input.bcc.map(toGraphRecipient);
+    if (input.subject !== undefined) payload.subject = input.subject;
+
+    const response = await this.send(`${GRAPH_BASE}/me/messages/${graphMessageId}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, Prefer: 'IdType="ImmutableId"', 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (response.status === 404) {
+      throw new MailMessageGoneError(graphMessageId);
+    }
+    if (!response.ok) {
+      throw new Error(`Mailbox request failed with a connection error (HTTP ${response.status})`);
+    }
+    const message = (await response.json()) as GraphMessage;
+    return toMailMessage(message);
+  }
+
+  async deleteDraft(graphMessageId: string): Promise<void> {
+    const token = await this.options.getWriteAccessToken();
+
+    const response = await this.send(`${GRAPH_BASE}/me/messages/${graphMessageId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}`, Prefer: 'IdType="ImmutableId"' },
+    });
+    if (response.status === 404) {
+      throw new MailMessageGoneError(graphMessageId);
+    }
+    if (!response.ok) {
+      throw new Error(`Mailbox request failed with a connection error (HTTP ${response.status})`);
+    }
   }
 
   async listFolders(): Promise<MailFolderNode[]> {

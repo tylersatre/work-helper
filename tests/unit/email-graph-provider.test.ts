@@ -600,6 +600,71 @@ describe('GraphMailProvider', () => {
     });
   });
 
+  describe('updateDraft / deleteDraft (research R1, US3)', () => {
+    function writeProvider(getWriteAccessToken: () => Promise<string> = async () => 'write-token-123') {
+      return new GraphMailProvider({ getAccessToken: async () => 'read-token-123', getWriteAccessToken });
+    }
+
+    it('PATCHes exactly the supplied fields, omitting fields not supplied', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(fixtureMessage({ subject: 'New subject', isDraft: true })));
+      const provider = writeProvider();
+
+      await provider.updateDraft('AAMk-draft-1', { bodyHtml: '<p>New body</p>', subject: 'New subject' });
+
+      const [url, init] = fetchMock.mock.calls[0]!;
+      expect(url).toBe('https://graph.microsoft.com/v1.0/me/messages/AAMk-draft-1');
+      const requestInit = init as RequestInit;
+      expect(requestInit.method).toBe('PATCH');
+      expect(JSON.parse(requestInit.body as string)).toEqual({
+        body: { contentType: 'HTML', content: '<p>New body</p>' },
+        subject: 'New subject',
+      });
+      const headers = new Headers(requestInit.headers);
+      expect(headers.get('Authorization')).toBe('Bearer write-token-123');
+      expect(headers.get('Prefer')).toBe('IdType="ImmutableId"');
+    });
+
+    it('includes recipient fields only when supplied', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(fixtureMessage({ isDraft: true })));
+      const provider = writeProvider();
+
+      await provider.updateDraft('AAMk-draft-1', { to: [{ address: 'sam@example.com', name: 'Sam' }] });
+
+      const [, init] = fetchMock.mock.calls[0]!;
+      const body = JSON.parse((init as RequestInit).body as string);
+      expect(body).toEqual({ toRecipients: [{ emailAddress: { address: 'sam@example.com', name: 'Sam' } }] });
+    });
+
+    it('maps a 404 on updateDraft to a mailbox-gone signal', async () => {
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
+      const provider = writeProvider();
+
+      await expect(provider.updateDraft('AAMk-gone-1', { subject: 'x' })).rejects.toThrow(/no longer/i);
+    });
+
+    it('issues DELETE /me/messages/{id} with auth + ImmutableId headers', async () => {
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+      const provider = writeProvider();
+
+      await provider.deleteDraft('AAMk-draft-1');
+
+      const [url, init] = fetchMock.mock.calls[0]!;
+      expect(url).toBe('https://graph.microsoft.com/v1.0/me/messages/AAMk-draft-1');
+      const requestInit = init as RequestInit;
+      expect(requestInit.method).toBe('DELETE');
+      const headers = new Headers(requestInit.headers);
+      expect(headers.get('Authorization')).toBe('Bearer write-token-123');
+      expect(headers.get('Prefer')).toBe('IdType="ImmutableId"');
+    });
+
+    it('maps a 404 on deleteDraft to a mailbox-gone signal', async () => {
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
+      const provider = writeProvider();
+
+      await expect(provider.deleteDraft('AAMk-gone-1')).rejects.toThrow(/no longer/i);
+    });
+  });
+
   describe('verifyWriteAccess (research R3)', () => {
     it('calls getWriteAccessToken and resolves when a token is returned', async () => {
       const getWriteAccessToken = vi.fn(async () => 'write-token-123');
