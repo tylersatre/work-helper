@@ -23,6 +23,8 @@ Date: 2026-08-27
 
 Screenshots: signature-panel-empty.png, signature-panel-persisted.png.
 
+Screenshots re-captured on 2026-08-27 after a CSS fix to `src/client/components/SignaturePanel.vue` (signature textarea now uses the app's dark-mode palette tokens `--wh-surface-raised`, `--wh-border`, `--wh-text-primary` instead of rendering as an unstyled white box). Re-verified both the empty state (signature-panel-empty.png) and the persisted-after-reload state (signature-panel-persisted.png) — the textarea now renders with a dark background matching the rest of the UI, not a stark white box.
+
 ## Scenario 2 — US1 AC2 / FR-013: Draft markers on the Emails page and conversation detail page
 
 **Given** a conversation titled "Follow-up notes" with a draft message, already synced into the store

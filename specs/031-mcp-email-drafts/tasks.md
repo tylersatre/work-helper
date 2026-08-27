@@ -172,7 +172,7 @@ Single npm project at repository root: `src/server/`, `src/client/`, `src/shared
 - [X] T046 [P] Add a seeded draft to `src/server/services/email/dev-seed.ts` so the Draft chip and badge are visible under `MAIL_PROVIDER=fake` without any tool call (research R11)
 - [X] T047 Run the gate commands and record their passing output: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` (quickstart.md gates; also enforced by the Stop hook)
 - [X] T048 Capture `browser-tester` agent evidence into `docs/evidence/mcp-email-drafts/` against the dev server (`MAIL_PROVIDER=fake npm run dev` — API 3031, UI 5131): Sync page signature panel empty state → save `<p>Tyler Satre</p><p>Example Corp</p>` → reload → still shown (US4 AC1); Emails page conversation row shows the Draft chip → open conversation → draft message shows the Draft badge (US1 AC2 / FR-013 UI surfaces)
-- [ ] T049 Run the `verifier` agent to independently confirm every acceptance criterion has a passing automated check plus surface-appropriate evidence (integration/unit/component output for MCP+API criteria, browser evidence for UI criteria) per quickstart.md's story→test map and the constitution's Definition of Done
+- [X] T049 Run the `verifier` agent to independently confirm every acceptance criterion has a passing automated check plus surface-appropriate evidence (integration/unit/component output for MCP+API criteria, browser evidence for UI criteria) per quickstart.md's story→test map and the constitution's Definition of Done
 
 ---
 
