@@ -14,7 +14,7 @@ import type {
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
 const SELECT_FIELDS =
-  'id,conversationId,subject,body,sentDateTime,receivedDateTime,from,toRecipients,ccRecipients,bccRecipients,isRead,importance,flag,categories,hasAttachments,webLink,internetMessageId';
+  'id,conversationId,subject,body,sentDateTime,receivedDateTime,from,toRecipients,ccRecipients,bccRecipients,isRead,importance,flag,categories,hasAttachments,webLink,internetMessageId,isDraft';
 
 const WELL_KNOWN_NAMES: Record<WellKnownFolder, string> = {
   inbox: 'inbox',
@@ -52,6 +52,7 @@ interface GraphMessage {
   hasAttachments?: boolean;
   webLink?: string;
   internetMessageId?: string;
+  isDraft?: boolean;
 }
 
 interface GraphMessagesResponse {
@@ -103,6 +104,7 @@ function toMailMessage(message: GraphMessage): MailMessage {
     hasAttachments: message.hasAttachments ?? false,
     webLink: message.webLink ?? '',
     internetMessageId: message.internetMessageId ?? '',
+    isDraft: message.isDraft ?? false,
   };
 }
 

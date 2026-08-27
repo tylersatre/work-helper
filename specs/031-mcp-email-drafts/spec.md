@@ -89,7 +89,7 @@ The Drafts folder joins sync, superseding its previous deliberate exclusion: eve
 
 **Acceptance Scenarios**:
 
-1. **Given** four synced drafts, after which — in Outlook, with no sync yet — "Quote follow-up" is edited to body `<p>New wording.</p>`, "Intro for Ana" is sent, and "Never mind" is discarded, while "Old idea" (last modified 2026-05-01) is left untouched, **When** a sync runs with range 2026-08-01 to 2026-08-08, **Then** "Quote follow-up" shows the new body and is still marked a draft, "Intro for Ana" no longer appears as a draft anywhere — the sent message now sits in its conversation as a normal snapshotted message — "Never mind" is gone from the store, and "Old idea" is still present and marked as a draft despite its date sitting outside the range (the whole Drafts folder syncs on every run).
+1. **Given** four synced drafts, after which — in Outlook, with no sync yet — "Quote follow-up" is edited to body `<p>New wording.</p>`, "Intro for Ana" is sent (its sent copy dated 2026-08-05, inside the range below), and "Never mind" is discarded, while "Old idea" (last modified 2026-05-01) is left untouched, **When** a sync runs with range 2026-08-01 to 2026-08-08, **Then** "Quote follow-up" shows the new body and is still marked a draft, "Intro for Ana" no longer appears as a draft anywhere — the sent message now sits in its conversation as a normal snapshotted message — "Never mind" is gone from the store, and "Old idea" is still present and marked as a draft despite its date sitting outside the range (the whole Drafts folder syncs on every run).
 
 ---
 
@@ -104,13 +104,14 @@ The Drafts folder joins sync, superseding its previous deliberate exclusion: eve
 - A second create call for the same message: makes a second draft, by design; the tools' descriptions steer agents to the edit tool for revisions.
 - No signature saved: creation proceeds signature-less; nothing is appended in its place.
 - A draft's date sits outside the sync run's range: it syncs anyway — the whole Drafts folder is pulled on every run.
+- A draft sent from Outlook whose sent copy's date falls outside the sync run's range: the draft stops appearing as a draft (its store row is reconciled away), but the sent copy is absent from the conversation until a later run whose range covers its date pulls it — consistent with SC-003, which promises the Drafts folder mirror, not sent-mail completeness.
 - Content from a hostile email attempting to steer a draft: impossible without appearing verbatim in the tool call, because the tools write exactly the HTML the caller supplies — no composing, rewriting, or sanitizing inside the tool.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
-- **FR-001**: The Email Sync page MUST include a signature panel that shows an empty state until a signature is first saved, lets Tyler paste and edit a signature as a single HTML block, and shows the saved signature on every later visit (it persists across reloads).
+- **FR-001**: The Email Sync page MUST include a signature panel that shows an empty state until a signature is first saved, lets Tyler paste and edit a signature as a single HTML block, and shows the saved signature on every later visit (it persists across reloads). Saving a whitespace-only value clears the saved signature — the panel returns to its empty state and draft creation proceeds signature-less again.
 - **FR-002**: There is exactly one signature — no per-context selection — and once saved it is used for every draft creation until Tyler changes it in the panel.
 - **FR-003**: An authorized agent MUST be able to create a fresh standalone draft by supplying recipients (to, and optionally cc and bcc), a subject, and an HTML body; the draft lands in the connected mailbox's Drafts folder addressed and titled exactly as supplied.
 - **FR-004**: An authorized agent MUST be able to create a reply draft or a reply-all draft for a synced message, choosing reply vs reply-all per call, identifying the target by its synced message id.
@@ -125,7 +126,7 @@ The Drafts folder joins sync, superseding its previous deliberate exclusion: eve
 - **FR-013**: Drafts MUST be marked as drafts on every surface that already shows synced mail: in list-conversations and get-conversation responses, and on the Emails page with a visible draft marker on the conversation's list row and on the draft message in the conversation view.
 - **FR-014**: Draft tool writes MUST NOT appear in the Sync page's run history — they are not sync runs.
 - **FR-015**: Every sync run MUST pull the entire Drafts folder regardless of the run's date range, superseding the previous exclusion of the Drafts folder from sync.
-- **FR-016**: Draft-flagged messages are the exception to the snapshot rule — sync MUST mirror the mailbox for them: a draft edited in Outlook shows its new content and stays marked a draft, a draft sent from Outlook stops appearing as a draft anywhere (the sent message then sits in its conversation as a normal snapshotted message), a draft discarded in Outlook is removed from the store, and an untouched draft stays present and marked as a draft even when its date is outside the sync range.
+- **FR-016**: Draft-flagged messages are the exception to the snapshot rule — sync MUST mirror the mailbox for them: a draft edited in Outlook shows its new content and stays marked a draft, a draft sent from Outlook stops appearing as a draft anywhere (the sent message then sits in its conversation as a normal snapshotted message once a run's range covers its date — see Edge Cases for the out-of-range interval), a draft discarded in Outlook is removed from the store, and an untouched draft stays present and marked as a draft even when its date is outside the sync range.
 - **FR-017**: Nothing changes in how non-draft folders sync, in the snapshot rule for non-draft messages, or in the sync tool's explicit-range requirement.
 - **FR-018**: There MUST be no send capability: no tool sends mail, and no draft operation ever changes the mailbox's Sent folder — the agent drafts, only Tyler sends, from Outlook.
 - **FR-019**: Mailbox writes MUST stay limited to the two sanctioned exceptions — read state (existing) and messages in the Drafts folder (this feature); every other mailbox write (move, archive, flag, categories, folder management) stays banned.
@@ -175,11 +176,11 @@ The Drafts folder joins sync, superseding its previous deliberate exclusion: eve
 - `email-sync-improvements` — the synced store and the Sync page this feature extends (and whose deliberate exclusion of the Drafts folder it supersedes).
 - `web-mailbox-signin` — the connected mailbox the tools write to.
 - `mcp-authentik-auth` — "an authorized agent" means an MCP client authenticated per that flow.
-- A mailbox sign-in whose permissions cover writing drafts — sign-ins made before this feature lack it and must be reconnected once on the Sync page (see Assumptions).
+- A mailbox sign-in whose permissions cover writing drafts — per research R3, sign-ins made since the `email-read-state` feature already hold `Mail.ReadWrite`; only a sign-in predating read-state lacks it and must be reconnected once on the Sync page (see Assumptions).
 
 ## Assumptions
 
-- Writing drafts needs a broader mailbox permission than today's sign-in holds, so the mailbox must be reconnected once on the Sync page after this ships (the same one-time reconnect the read-state feature required); until then the tools fail with the reconnect error specced above. *(Tyler flagged this as an assumption to confirm.)*
+- Writing drafts needs a broader mailbox permission than today's sign-in holds, so the mailbox must be reconnected once on the Sync page after this ships (the same one-time reconnect the read-state feature required); until then the tools fail with the reconnect error specced above. *(Tyler flagged this as an assumption to confirm.)* **Resolved by research R3 — disconfirmed**: `Mail.ReadWrite` has been part of the sign-in scopes since the `email-read-state` feature, so a mailbox connected since then needs no reconnect; only a sign-in predating read-state lacks the permission. The FR-021 "lacks draft permission" error path stands exactly as specced — it just should not fire for Tyler's current sign-in.
 - The reply subject ("Re: …"), reply-all recipient derivation (sender to To, other recipients kept, Tyler's own address excluded), and the quoted-thread block all come from the mailbox's own reply machinery, matching what Outlook itself would produce. *(Assumption to confirm.)*
 - Draft tool writes update work-helper's store immediately and never appear in the Sync page's run history (they are not sync runs) — mirroring the read-state precedent. *(Assumption to confirm.)*
 - To, cc, and bcc are all supported on fresh-draft create and on edit; the acceptance scenarios exercise to and cc. *(Assumption to confirm.)*

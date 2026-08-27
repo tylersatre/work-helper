@@ -63,6 +63,7 @@ function baseMessage(): MailMessage {
     hasAttachments: true,
     webLink: '',
     internetMessageId: 'id-1',
+    isDraft: false,
   };
 }
 

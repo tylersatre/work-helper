@@ -36,6 +36,7 @@ export interface MailMessage {
   hasAttachments: boolean;
   webLink: string;
   internetMessageId: string;
+  isDraft: boolean;
 }
 
 export interface MailWindow {

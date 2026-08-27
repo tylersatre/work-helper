@@ -49,6 +49,7 @@ export interface SeedMessage {
   webLink?: string;
   internetMessageId?: string;
   attachments?: SeedAttachment[];
+  isDraft?: boolean;
 }
 
 export interface FakeMailProviderOptions {
@@ -122,6 +123,7 @@ function toMailMessage(seed: SeedMessage, isRead: boolean): MailMessage {
     hasAttachments: attachments.length > 0,
     webLink: seed.webLink ?? '',
     internetMessageId: seed.internetMessageId ?? '',
+    isDraft: seed.isDraft ?? false,
   };
 }
 

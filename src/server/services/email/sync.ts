@@ -216,6 +216,7 @@ async function ingestMessage(db: AppDb, provider: MailProvider, message: MailMes
         categories: message.categories,
         webLink: message.webLink,
         internetMessageId: message.internetMessageId,
+        isDraft: message.isDraft,
         createdAt: Date.now(),
       })
       .returning()

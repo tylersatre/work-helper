@@ -20,6 +20,7 @@ function fixtureMessage(overrides: Record<string, unknown> = {}) {
     hasAttachments: false,
     webLink: 'https://outlook.office.com/mail/AAMk-immutable-1',
     internetMessageId: '<AAMk-immutable-1@example.com>',
+    isDraft: false,
     ...overrides,
   };
 }
@@ -67,7 +68,7 @@ describe('GraphMailProvider', () => {
     const parsed = new URL(url as string);
     expect(parsed.origin + parsed.pathname).toBe('https://graph.microsoft.com/v1.0/me/mailFolders/id-inbox/messages');
     expect(parsed.searchParams.get('$select')).toBe(
-      'id,conversationId,subject,body,sentDateTime,receivedDateTime,from,toRecipients,ccRecipients,bccRecipients,isRead,importance,flag,categories,hasAttachments,webLink,internetMessageId',
+      'id,conversationId,subject,body,sentDateTime,receivedDateTime,from,toRecipients,ccRecipients,bccRecipients,isRead,importance,flag,categories,hasAttachments,webLink,internetMessageId,isDraft',
     );
     expect(parsed.searchParams.get('$filter')).toBe(
       `receivedDateTime ge ${WINDOW.startUtc} and receivedDateTime lt ${WINDOW.endUtc}`,
@@ -155,7 +156,17 @@ describe('GraphMailProvider', () => {
       hasAttachments: false,
       webLink: 'https://outlook.office.com/mail/AAMk-immutable-1',
       internetMessageId: '<AAMk-immutable-1@example.com>',
+      isDraft: false,
     });
+  });
+
+  it('maps isDraft true when Graph reports the message as a draft', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ value: [fixtureMessage({ isDraft: true })] }));
+    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
+
+    const [page] = await drain(provider, INBOX_FOLDER, WINDOW);
+
+    expect(page![0]).toMatchObject({ isDraft: true });
   });
 
   it('maps populated recipients to {address, name} entries, defaulting a missing name to \'\'', async () => {
