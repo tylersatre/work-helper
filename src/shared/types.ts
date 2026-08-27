@@ -113,6 +113,10 @@ export interface EmailConversationMessage {
   participants: EmailConversationParticipant[];
 }
 
+export interface EmailSignature {
+  signature: string | null;
+}
+
 export interface EmailConversationDetail {
   id: number;
   subject: string;

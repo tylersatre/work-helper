@@ -12,6 +12,7 @@ import { boardRoutes } from './routes/board.js';
 import { calendarSyncRoutes } from './routes/calendar-sync.js';
 import { companyRoutes } from './routes/companies.js';
 import { dashboardRoutes } from './routes/dashboard.js';
+import { emailSignatureRoutes } from './routes/email-signature.js';
 import { emailSyncRoutes } from './routes/email-sync.js';
 import { emailRoutes } from './routes/emails.js';
 import { mailboxRoutes } from './routes/mailbox.js';
@@ -102,6 +103,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
   app.register(calendarSyncRoutes);
   app.register(syncStatusRoutes);
   app.register(emailRoutes);
+  app.register(emailSignatureRoutes);
   app.register(mailboxRoutes);
   app.register(oauthRoutes);
   app.register(mcpRoutes);

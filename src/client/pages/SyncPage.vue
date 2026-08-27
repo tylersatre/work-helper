@@ -2,6 +2,7 @@
 import { NButton, NDatePicker, NEmpty } from 'naive-ui';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import MailboxPanel from '../components/MailboxPanel.vue';
+import SignaturePanel from '../components/SignaturePanel.vue';
 
 interface SyncRunView {
   id: number;
@@ -225,6 +226,8 @@ function formatWhen(ms: number): string {
     <h2>Sync</h2>
 
     <MailboxPanel />
+
+    <SignaturePanel />
 
     <section class="email-sync-section" data-testid="email-sync-section">
       <h3>Email</h3>

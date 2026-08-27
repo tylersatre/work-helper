@@ -127,14 +127,14 @@ Single npm project at repository root: `src/server/`, `src/client/`, `src/shared
 
 ### Tests for User Story 4 (write first — must FAIL before implementation) ⚠️
 
-- [ ] T032 [P] [US4] Create `tests/integration/email-signature.test.ts` (red): `GET /api/email-signature` returns `{ signature: null }` before any save; `PUT` with `{ signature: '<p>Tyler Satre</p><p>Example Corp</p>' }` echoes the saved value and a subsequent GET returns it verbatim; a whitespace-only PUT clears it (GET returns null again); a non-string body gets `400` with the house `{ error: { message } }` shape — contracts/http-api.md
-- [ ] T033 [P] [US4] Extend `tests/component/sync-page.test.ts` (red): the `data-testid="signature-section"` panel shows its empty state when GET returns null; entering HTML in the textarea and saving PUTs the value; a remount with the saved value shows it in the panel (persistence, US4 AC1); a failed save shows the error line
+- [X] T032 [P] [US4] Create `tests/integration/email-signature.test.ts` (red): `GET /api/email-signature` returns `{ signature: null }` before any save; `PUT` with `{ signature: '<p>Tyler Satre</p><p>Example Corp</p>' }` echoes the saved value and a subsequent GET returns it verbatim; a whitespace-only PUT clears it (GET returns null again); a non-string body gets `400` with the house `{ error: { message } }` shape — contracts/http-api.md
+- [X] T033 [P] [US4] Extend `tests/component/sync-page.test.ts` (red): the `data-testid="signature-section"` panel shows its empty state when GET returns null; entering HTML in the textarea and saving PUTs the value; a remount with the saved value shows it in the panel (persistence, US4 AC1); a failed save shows the error line
 
 ### Implementation for User Story 4
 
-- [ ] T034 [P] [US4] Add the email-signature PUT request schema (`signature` must be a string) to `src/shared/validation.ts` and the `{ signature: string | null }` payload type to `src/shared/types.ts` — the `dashboard.ts` saved-view pattern
-- [ ] T035 [P] [US4] Create `src/server/routes/email-signature.ts` — `GET /api/email-signature` and `PUT /api/email-signature` backed by `getAppState`/`setAppState` on key `email.signature` (whitespace-only save clears; GET then returns null) — and register the routes in `src/server/app.ts` (makes T032 green)
-- [ ] T036 [P] [US4] Create `src/client/components/SignaturePanel.vue` (MailboxPanel/UpNextDashboard house style: fetch-on-mount, naive-ui textarea holding the raw HTML block, save button, error line, empty state before first save) and add the `data-testid="signature-section"` section to `src/client/pages/SyncPage.vue` (makes T033 green)
+- [X] T034 [P] [US4] Add the email-signature PUT request schema (`signature` must be a string) to `src/shared/validation.ts` and the `{ signature: string | null }` payload type to `src/shared/types.ts` — the `dashboard.ts` saved-view pattern
+- [X] T035 [P] [US4] Create `src/server/routes/email-signature.ts` — `GET /api/email-signature` and `PUT /api/email-signature` backed by `getAppState`/`setAppState` on key `email.signature` (whitespace-only save clears; GET then returns null) — and register the routes in `src/server/app.ts` (makes T032 green)
+- [X] T036 [P] [US4] Create `src/client/components/SignaturePanel.vue` (MailboxPanel/UpNextDashboard house style: fetch-on-mount, naive-ui textarea holding the raw HTML block, save button, error line, empty state before first save) and add the `data-testid="signature-section"` section to `src/client/pages/SyncPage.vue` (makes T033 green)
 
 **Checkpoint**: Tyler can save his signature in the UI and every create appends it; US1–US4 all green.
 

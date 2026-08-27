@@ -502,3 +502,106 @@ describe('SyncPage calendar section', () => {
     expect(emailRows).toHaveLength(2);
   });
 });
+
+// --- Signature panel (US4) -------------------------------------------------------------------
+
+function mockFetchWithSignature(opts: {
+  signature?: string | null;
+  putHandler?: (body: unknown) => Promise<{ status: number; body: unknown }>;
+} = {}) {
+  const { signature = null, putHandler } = opts;
+  return vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+    if (url === '/api/email-signature' && (!options || options.method === undefined)) {
+      return Promise.resolve({ ok: true, json: async () => ({ signature }) });
+    }
+    if (url === '/api/email-signature' && options?.method === 'PUT') {
+      const body = JSON.parse(options.body as string);
+      if (putHandler) return putHandler(body).then((r) => ({ ok: r.status < 400, status: r.status, json: async () => r.body }));
+      return Promise.resolve({ ok: true, status: 200, json: async () => body });
+    }
+    if (url === '/api/email-sync/runs' && (!options || options.method === undefined)) {
+      return Promise.resolve({ ok: true, json: async () => ({ runs: [] }) });
+    }
+    if (url === '/api/calendar-sync/runs' && (!options || options.method === undefined)) {
+      return Promise.resolve({ ok: true, json: async () => ({ runs: [] }) });
+    }
+    if (url === '/api/sync/status') {
+      return Promise.resolve({ ok: true, json: async () => ({ running: false }) });
+    }
+    return Promise.resolve({ ok: true, json: async () => ({}) });
+  });
+}
+
+describe('SyncPage signature panel (US4)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    document.body.innerHTML = '';
+  });
+
+  it('shows the empty state before any signature has been saved', async () => {
+    vi.stubGlobal('fetch', mockFetchWithSignature({ signature: null }));
+
+    mountPage();
+    await flushPromises();
+
+    const panel = screen.getByTestId('signature-section');
+    expect(within(panel).getByText(/no signature saved/i)).toBeTruthy();
+  });
+
+  it('entering HTML and saving PUTs the value', async () => {
+    let putBody: unknown;
+    vi.stubGlobal(
+      'fetch',
+      mockFetchWithSignature({
+        signature: null,
+        putHandler: async (body) => {
+          putBody = body;
+          return { status: 200, body };
+        },
+      }),
+    );
+
+    mountPage();
+    await flushPromises();
+
+    const panel = screen.getByTestId('signature-section');
+    await fireEvent.update(within(panel).getByRole('textbox'), '<p>Tyler Satre</p><p>Example Corp</p>');
+    await fireEvent.click(within(panel).getByRole('button', { name: /save/i }));
+    await flushPromises();
+
+    expect(putBody).toEqual({ signature: '<p>Tyler Satre</p><p>Example Corp</p>' });
+  });
+
+  it('shows the saved value across a remount (persistence)', async () => {
+    vi.stubGlobal('fetch', mockFetchWithSignature({ signature: '<p>Tyler Satre</p>' }));
+
+    mountPage();
+    await flushPromises();
+    document.body.innerHTML = '';
+    mountPage();
+    await flushPromises();
+
+    const panel = screen.getByTestId('signature-section');
+    expect((within(panel).getByRole('textbox') as HTMLTextAreaElement).value).toBe('<p>Tyler Satre</p>');
+  });
+
+  it('shows an error line on a failed save', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockFetchWithSignature({
+        signature: null,
+        putHandler: async () => ({ status: 400, body: { error: { message: 'Invalid signature' } } }),
+      }),
+    );
+
+    mountPage();
+    await flushPromises();
+
+    const panel = screen.getByTestId('signature-section');
+    await fireEvent.update(within(panel).getByRole('textbox'), '<p>New</p>');
+    await fireEvent.click(within(panel).getByRole('button', { name: /save/i }));
+    await flushPromises();
+
+    expect(within(panel).getByText('Invalid signature')).toBeTruthy();
+  });
+});
