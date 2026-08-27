@@ -85,6 +85,11 @@ onMounted(fetchSignature);
   font-family: inherit;
   font-size: 0.85rem;
   margin-bottom: 0.5rem;
+  padding: 0.5rem;
+  background: var(--wh-surface-raised);
+  color: var(--wh-text-primary);
+  border: 1px solid var(--wh-border);
+  border-radius: 4px;
 }
 
 .signature-error {

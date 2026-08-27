@@ -443,4 +443,39 @@ describe('US3: update-draft / delete-draft — guarded by the draft flag', () =>
     const restDetail = await restConversation(created.conversationId);
     expect(restDetail.messages.find((m) => m.id === created.messageId)!.bodyText).toBe('Original.');
   });
+
+  it('update-draft against a draft that was sent from Outlook since the last sync fails cleanly, touching neither the sent message nor the store (research R6, FR-022)', async () => {
+    buildTestApp();
+    await startAndConnect();
+    const created = (await createDraft({ to: ['sam.rivera@example.com'], subject: 'About to be sent', bodyHtml: '<p>Original.</p>' }))
+      .structuredContent as { messageId: number; conversationId: number };
+    const graphId = graphMessageIdOf(created.messageId);
+    mailProvider.sendDraftFromMailbox(graphId, '2026-08-06T10:00:00Z');
+
+    const result = await updateDraft({ messageId: created.messageId, bodyHtml: '<p>New.</p>' });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain('The mailbox no longer has this draft — the next sync will reconcile it.');
+    const [sentCopy] = mailProvider.sentMessages().filter((m) => m.id === graphId);
+    expect(sentCopy!.body.content).toBe('<p>Original.</p>');
+    const restDetail = await restConversation(created.conversationId);
+    expect(restDetail.messages.find((m) => m.id === created.messageId)!.bodyText).toBe('Original.');
+  });
+
+  it('delete-draft against a draft that was sent from Outlook since the last sync fails cleanly, never deleting the sent message (research R6, FR-019/FR-022)', async () => {
+    buildTestApp();
+    await startAndConnect();
+    const created = (await createDraft({ to: ['sam.rivera@example.com'], subject: 'About to be sent', bodyHtml: '<p>Original.</p>' }))
+      .structuredContent as { messageId: number; conversationId: number };
+    const graphId = graphMessageIdOf(created.messageId);
+    mailProvider.sendDraftFromMailbox(graphId, '2026-08-06T10:00:00Z');
+
+    const result = await deleteDraft({ messageId: created.messageId });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain('The mailbox no longer has this draft — the next sync will reconcile it.');
+    expect(mailProvider.sentMessages().some((m) => m.id === graphId)).toBe(true);
+    const restDetail = await restConversation(created.conversationId);
+    expect(restDetail.messages.find((m) => m.id === created.messageId)).toBeDefined();
+  });
 });

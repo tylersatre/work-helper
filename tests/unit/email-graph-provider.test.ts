@@ -606,12 +606,14 @@ describe('GraphMailProvider', () => {
     }
 
     it('PATCHes exactly the supplied fields, omitting fields not supplied', async () => {
-      fetchMock.mockResolvedValueOnce(jsonResponse(fixtureMessage({ subject: 'New subject', isDraft: true })));
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ isDraft: true }))
+        .mockResolvedValueOnce(jsonResponse(fixtureMessage({ subject: 'New subject', isDraft: true })));
       const provider = writeProvider();
 
       await provider.updateDraft('AAMk-draft-1', { bodyHtml: '<p>New body</p>', subject: 'New subject' });
 
-      const [url, init] = fetchMock.mock.calls[0]!;
+      const [url, init] = fetchMock.mock.calls[1]!;
       expect(url).toBe('https://graph.microsoft.com/v1.0/me/messages/AAMk-draft-1');
       const requestInit = init as RequestInit;
       expect(requestInit.method).toBe('PATCH');
@@ -625,30 +627,58 @@ describe('GraphMailProvider', () => {
     });
 
     it('includes recipient fields only when supplied', async () => {
-      fetchMock.mockResolvedValueOnce(jsonResponse(fixtureMessage({ isDraft: true })));
+      fetchMock.mockResolvedValueOnce(jsonResponse({ isDraft: true })).mockResolvedValueOnce(jsonResponse(fixtureMessage({ isDraft: true })));
       const provider = writeProvider();
 
       await provider.updateDraft('AAMk-draft-1', { to: [{ address: 'sam@example.com', name: 'Sam' }] });
 
-      const [, init] = fetchMock.mock.calls[0]!;
+      const [, init] = fetchMock.mock.calls[1]!;
       const body = JSON.parse((init as RequestInit).body as string);
       expect(body).toEqual({ toRecipients: [{ emailAddress: { address: 'sam@example.com', name: 'Sam' } }] });
     });
 
-    it('maps a 404 on updateDraft to a mailbox-gone signal', async () => {
+    it('maps a 404 on the pre-check to a mailbox-gone signal, never PATCHing', async () => {
       fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
       const provider = writeProvider();
 
       await expect(provider.updateDraft('AAMk-gone-1', { subject: 'x' })).rejects.toThrow(/no longer/i);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
-    it('issues DELETE /me/messages/{id} with auth + ImmutableId headers', async () => {
-      fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+    it('verifies the target is still a draft before PATCHing, and maps a message that exists but is no longer a draft (e.g. sent) to a mailbox-gone signal without ever PATCHing it', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ isDraft: false }));
+      const provider = writeProvider();
+
+      await expect(provider.updateDraft('AAMk-sent-1', { subject: 'x' })).rejects.toThrow(/no longer/i);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url] = fetchMock.mock.calls[0]!;
+      const parsed = new URL(url as string);
+      expect(parsed.pathname).toBe('/v1.0/me/messages/AAMk-sent-1');
+      expect(parsed.searchParams.get('$select')).toBe('isDraft');
+    });
+
+    it('PATCHes when the pre-check confirms the target is still a draft', async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ isDraft: true }))
+        .mockResolvedValueOnce(jsonResponse(fixtureMessage({ isDraft: true })));
+      const provider = writeProvider();
+
+      await provider.updateDraft('AAMk-draft-1', { subject: 'x' });
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const [, patchInit] = fetchMock.mock.calls[1]!;
+      expect((patchInit as RequestInit).method).toBe('PATCH');
+    });
+
+    it('verifies the target is still a draft before deleting, then issues DELETE /me/messages/{id} with auth + ImmutableId headers', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ isDraft: true })).mockResolvedValueOnce(new Response(null, { status: 204 }));
       const provider = writeProvider();
 
       await provider.deleteDraft('AAMk-draft-1');
 
-      const [url, init] = fetchMock.mock.calls[0]!;
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const [url, init] = fetchMock.mock.calls[1]!;
       expect(url).toBe('https://graph.microsoft.com/v1.0/me/messages/AAMk-draft-1');
       const requestInit = init as RequestInit;
       expect(requestInit.method).toBe('DELETE');
@@ -657,11 +687,20 @@ describe('GraphMailProvider', () => {
       expect(headers.get('Prefer')).toBe('IdType="ImmutableId"');
     });
 
-    it('maps a 404 on deleteDraft to a mailbox-gone signal', async () => {
+    it('maps a 404 on the pre-check to a mailbox-gone signal, never issuing DELETE', async () => {
       fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
       const provider = writeProvider();
 
       await expect(provider.deleteDraft('AAMk-gone-1')).rejects.toThrow(/no longer/i);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('maps a target that exists but is no longer a draft (e.g. sent) to a mailbox-gone signal, never deleting the real message', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ isDraft: false }));
+      const provider = writeProvider();
+
+      await expect(provider.deleteDraft('AAMk-sent-1')).rejects.toThrow(/no longer/i);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
 

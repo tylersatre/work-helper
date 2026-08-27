@@ -275,7 +275,28 @@ export class GraphMailProvider implements MailProvider {
     return toMailMessage({ ...draft, body: { content: mergedContent, contentType: 'html' } });
   }
 
+  /**
+   * DELETE has no server-side draft protection (works on any message — research R1), and a PATCH to
+   * a sent message fails with a Graph 400, not 404. So both updateDraft and deleteDraft verify the
+   * target is *currently* a draft before writing — the store's is_draft flag can be stale between
+   * syncs (e.g. Tyler sent the draft from Outlook since the last sync), and without this check a
+   * stale delete-draft call would delete a real sent message (FR-011/FR-019).
+   */
+  private async verifyStillDraft(graphMessageId: string): Promise<void> {
+    const url = new URL(`${GRAPH_BASE}/me/messages/${graphMessageId}`);
+    url.searchParams.set('$select', 'isDraft');
+    const response = await this.authorizedFetch(url.toString(), { allowNotFound: true });
+    if (response == null) {
+      throw new MailMessageGoneError(graphMessageId);
+    }
+    const body = (await response.json()) as { isDraft?: boolean };
+    if (body.isDraft !== true) {
+      throw new MailMessageGoneError(graphMessageId);
+    }
+  }
+
   async updateDraft(graphMessageId: string, input: UpdateDraftInput): Promise<MailMessage> {
+    await this.verifyStillDraft(graphMessageId);
     const token = await this.options.getWriteAccessToken();
 
     const payload: Record<string, unknown> = {};
@@ -301,6 +322,7 @@ export class GraphMailProvider implements MailProvider {
   }
 
   async deleteDraft(graphMessageId: string): Promise<void> {
+    await this.verifyStillDraft(graphMessageId);
     const token = await this.options.getWriteAccessToken();
 
     const response = await this.send(`${GRAPH_BASE}/me/messages/${graphMessageId}`, {
