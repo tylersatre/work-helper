@@ -1446,7 +1446,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
     'set-email-read-state',
     {
       description:
-        'Marks up to 50 synced email messages read or unread. Writes each change to the connected Outlook mailbox first, then updates work-helper\'s stored state, and reports an outcome per message. Individual message ids only (from get-conversation messages[].id or emails-for-person emails[].messageId) — to mark a whole thread, fetch it with get-conversation and pass its message ids. This is the only mailbox-modifying tool in work-helper, and read/unread state is the only thing it changes.',
+        'Marks up to 50 synced email messages read or unread. Writes each change to the connected Outlook mailbox first, then updates work-helper\'s stored state, and reports an outcome per message. Individual message ids only (from get-conversation messages[].id or emails-for-person emails[].messageId) — to mark a whole thread, fetch it with get-conversation and pass its message ids. The other sanctioned mailbox writes in work-helper are the draft tools (create-draft, create-reply-draft, update-draft, delete-draft) — this tool changes only read/unread state, and never touches drafts or sends mail.',
       inputSchema: {
         messageIds: z.array(z.number().int().positive()).describe('1–50 synced message ids (individual messages only)'),
         state: z.string().describe('read | unread'),
