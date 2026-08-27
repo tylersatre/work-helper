@@ -70,6 +70,9 @@ class CountingProvider implements MailProvider {
   createDraft(...args: Parameters<MailProvider['createDraft']>): Promise<MailMessage> {
     return this.inner.createDraft(...args);
   }
+  createReplyDraft(...args: Parameters<MailProvider['createReplyDraft']>): Promise<MailMessage> {
+    return this.inner.createReplyDraft(...args);
+  }
 }
 
 class FlakyProvider implements MailProvider {
@@ -90,6 +93,9 @@ class FlakyProvider implements MailProvider {
     return 'updated';
   }
   async createDraft(): Promise<MailMessage> {
+    throw new Error('not implemented');
+  }
+  async createReplyDraft(): Promise<MailMessage> {
     throw new Error('not implemented');
   }
 }

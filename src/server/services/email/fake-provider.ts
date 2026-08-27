@@ -1,16 +1,18 @@
 import { MailWritePermissionError, MailboxNotConnectedError } from './graph-auth.js';
-import type {
-  CreateDraftInput,
-  MailAttachmentMeta,
-  MailFlagStatus,
-  MailFolderNode,
-  MailFolderRef,
-  MailImportance,
-  MailMessage,
-  MailProvider,
-  MailRecipient,
-  MailWindow,
-  WellKnownFolder,
+import {
+  MailMessageGoneError,
+  type CreateDraftInput,
+  type CreateReplyDraftInput,
+  type MailAttachmentMeta,
+  type MailFlagStatus,
+  type MailFolderNode,
+  type MailFolderRef,
+  type MailImportance,
+  type MailMessage,
+  type MailProvider,
+  type MailRecipient,
+  type MailWindow,
+  type WellKnownFolder,
 } from './provider.js';
 
 /**
@@ -224,6 +226,56 @@ export class FakeMailProvider implements MailProvider {
     return this.seeded
       .filter((seed) => resolveFolder(seed.folder).wellKnown === 'sentitems')
       .map((seed) => toMailMessage(seed, this.readState.get(seed.id) ?? seed.isRead ?? false));
+  }
+
+  private findMailboxMessage(graphMessageId: string): SeedMessage | undefined {
+    return this.seeded.find((seed) => seed.id === graphMessageId) ?? this.draftsFolder.get(graphMessageId);
+  }
+
+  async createReplyDraft(graphMessageId: string, input: CreateReplyDraftInput): Promise<MailMessage> {
+    const original = this.findMailboxMessage(graphMessageId);
+    if (!original || this.deletedGraphMessageIds.has(graphMessageId)) {
+      throw new MailMessageGoneError(graphMessageId);
+    }
+
+    const owner = this.options.ownerAddress?.toLowerCase();
+    const isNotOwner = (recipient: SeedRecipient) => recipient.address.toLowerCase() !== owner;
+
+    const to: SeedRecipient[] = original.from ? [original.from] : [];
+    const cc: SeedRecipient[] = [];
+    if (input.replyAll) {
+      const seenAddresses = new Set(to.map((r) => r.address.toLowerCase()));
+      for (const recipient of [...original.toRecipients, ...original.ccRecipients]) {
+        const key = recipient.address.toLowerCase();
+        if (seenAddresses.has(key) || !isNotOwner(recipient)) continue;
+        seenAddresses.add(key);
+        cc.push(recipient);
+      }
+    }
+
+    const subject = /^re:\s/i.test(original.subject) ? original.subject : `Re: ${original.subject}`;
+    const quotedContent = `<blockquote>${original.body.content}</blockquote>`;
+    const bodyContent = `${input.prefixHtml}${quotedContent}`;
+
+    this.draftCounter += 1;
+    const id = `fake-reply-draft-${this.draftCounter}`;
+    const now = new Date().toISOString();
+    const seed: SeedMessage = {
+      id,
+      conversationId: original.conversationId,
+      subject,
+      body: { content: bodyContent, contentType: 'html' },
+      receivedDateTime: now,
+      sentDateTime: now,
+      from: this.options.ownerAddress ? { address: this.options.ownerAddress } : null,
+      toRecipients: to,
+      ccRecipients: cc,
+      bccRecipients: [],
+      folder: 'drafts',
+      isRead: true,
+    };
+    this.draftsFolder.set(id, seed);
+    return { ...toMailMessage(seed, true), isDraft: true };
   }
 
   async listFolders(): Promise<MailFolderNode[]> {

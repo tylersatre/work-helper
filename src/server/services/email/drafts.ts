@@ -6,6 +6,13 @@ import { getAppState } from '../app-state.js';
 import { deriveBodyText } from './sync.js';
 import type { MailMessage, MailProvider, MailRecipient } from './provider.js';
 
+export class MessageNotFoundError extends Error {
+  constructor(messageId: number) {
+    super(`Message ${messageId} not found`);
+    this.name = 'MessageNotFoundError';
+  }
+}
+
 type AppDb = BetterSQLite3Database<typeof schema>;
 
 const SIGNATURE_KEY = 'email.signature';
@@ -194,4 +201,42 @@ export async function createDraft(db: AppDb, provider: MailProvider, args: Creat
 
   const messageId = ingestNewDraft(db, message);
   return summaryOf(db, messageId, message);
+}
+
+export interface CreateReplyDraftArgs {
+  messageId: number;
+  replyAll?: boolean;
+  bodyHtml: string;
+}
+
+/**
+ * Creates a reply/reply-all draft for a synced message: preflight write access, validate the body,
+ * look up the target message in the store (before any mailbox call), compose the prefix with the
+ * saved signature, write through the mailbox's reply machinery, then ingest the response into the
+ * existing conversation (FR-005/FR-006/FR-012/FR-022).
+ */
+export async function createReplyDraft(db: AppDb, provider: MailProvider, args: CreateReplyDraftArgs): Promise<DraftSummary> {
+  await provider.verifyWriteAccess();
+
+  if (args.bodyHtml.trim() === '') {
+    throw new EmptyBodyError();
+  }
+
+  const [row] = db
+    .select({ graphMessageId: emailMessages.graphMessageId })
+    .from(emailMessages)
+    .where(eq(emailMessages.id, args.messageId))
+    .limit(1)
+    .all();
+  if (!row) {
+    throw new MessageNotFoundError(args.messageId);
+  }
+
+  const signature = getAppState(db, SIGNATURE_KEY);
+  const prefixHtml = signature ? `${args.bodyHtml}${signature}` : args.bodyHtml;
+
+  const message = await provider.createReplyDraft(row.graphMessageId, { replyAll: args.replyAll ?? false, prefixHtml });
+
+  const insertedId = ingestNewDraft(db, message);
+  return summaryOf(db, insertedId, message);
 }

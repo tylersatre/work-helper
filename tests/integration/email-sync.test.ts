@@ -445,6 +445,10 @@ describe('US1: sync-emails records run history through the shared coordinator', 
       async createDraft(): Promise<MailMessage> {
         throw new Error('not implemented');
       }
+
+      async createReplyDraft(): Promise<MailMessage> {
+        throw new Error('not implemented');
+      }
     }
     buildTestApp(new GatedProvider());
     await startAndConnect();

@@ -67,6 +67,20 @@ export interface CreateDraftInput {
   bodyHtml: string;
 }
 
+export interface CreateReplyDraftInput {
+  replyAll: boolean;
+  /** Already-composed supplied HTML + signature, inserted above the mailbox's quoted original. */
+  prefixHtml: string;
+}
+
+/** Thrown when the mailbox no longer has a message the caller referenced by its Graph id (sent/discarded since last sync). */
+export class MailMessageGoneError extends Error {
+  constructor(graphMessageId: string) {
+    super(`The mailbox no longer has message ${graphMessageId}`);
+    this.name = 'MailMessageGoneError';
+  }
+}
+
 export interface MailProvider {
   /** Full folder tree, including folders the sync service will exclude (Junk/Deleted Items/Drafts). */
   listFolders(): Promise<MailFolderNode[]>;
@@ -85,4 +99,6 @@ export interface MailProvider {
   setMessageReadState(graphMessageId: string, isRead: boolean): Promise<'updated' | 'not-found'>;
   /** Creates a fresh draft in the Drafts folder with exactly the given recipients/subject/body. Returns the created message (isDraft: true). */
   createDraft(input: CreateDraftInput): Promise<MailMessage>;
+  /** Creates a reply/reply-all draft via the mailbox's own reply machinery, then inserts prefixHtml above the quoted original. Throws MailMessageGoneError for an unknown/gone graph id. */
+  createReplyDraft(graphMessageId: string, input: CreateReplyDraftInput): Promise<MailMessage>;
 }

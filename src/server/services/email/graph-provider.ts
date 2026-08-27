@@ -1,15 +1,17 @@
-import type {
-  CreateDraftInput,
-  MailAttachmentMeta,
-  MailFlagStatus,
-  MailFolderNode,
-  MailFolderRef,
-  MailImportance,
-  MailMessage,
-  MailProvider,
-  MailRecipient,
-  MailWindow,
-  WellKnownFolder,
+import {
+  MailMessageGoneError,
+  type CreateDraftInput,
+  type CreateReplyDraftInput,
+  type MailAttachmentMeta,
+  type MailFlagStatus,
+  type MailFolderNode,
+  type MailFolderRef,
+  type MailImportance,
+  type MailMessage,
+  type MailProvider,
+  type MailRecipient,
+  type MailWindow,
+  type WellKnownFolder,
 } from './provider.js';
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
@@ -88,6 +90,18 @@ function toRecipient(recipient: GraphRecipient): MailRecipient {
 
 function toGraphRecipient(recipient: MailRecipient): GraphRecipient {
   return { emailAddress: { address: recipient.address, name: recipient.name } };
+}
+
+const BODY_TAG_PATTERN = /<body[^>]*>/i;
+
+/** Inserts prefixHtml immediately after the opening <body …> tag; falls back to a plain prepend when there is none. */
+function insertPrefix(content: string, prefixHtml: string): string {
+  const match = BODY_TAG_PATTERN.exec(content);
+  if (!match) {
+    return `${prefixHtml}${content}`;
+  }
+  const insertAt = match.index + match[0].length;
+  return `${content.slice(0, insertAt)}${prefixHtml}${content.slice(insertAt)}`;
 }
 
 function toMailMessage(message: GraphMessage): MailMessage {
@@ -228,6 +242,36 @@ export class GraphMailProvider implements MailProvider {
     }
     const message = (await response.json()) as GraphMessage;
     return toMailMessage(message);
+  }
+
+  async createReplyDraft(graphMessageId: string, input: CreateReplyDraftInput): Promise<MailMessage> {
+    const token = await this.options.getWriteAccessToken();
+    const endpoint = input.replyAll ? 'createReplyAll' : 'createReply';
+
+    const postResponse = await this.send(`${GRAPH_BASE}/me/messages/${graphMessageId}/${endpoint}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, Prefer: 'IdType="ImmutableId"', 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (postResponse.status === 404) {
+      throw new MailMessageGoneError(graphMessageId);
+    }
+    if (!postResponse.ok) {
+      throw new Error(`Mailbox request failed with a connection error (HTTP ${postResponse.status})`);
+    }
+    const draft = (await postResponse.json()) as GraphMessage;
+    const mergedContent = insertPrefix(draft.body.content, input.prefixHtml);
+
+    const patchResponse = await this.send(`${GRAPH_BASE}/me/messages/${draft.id}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, Prefer: 'IdType="ImmutableId"', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body: { contentType: 'HTML', content: mergedContent } }),
+    });
+    if (!patchResponse.ok) {
+      throw new Error(`Mailbox request failed with a connection error (HTTP ${patchResponse.status})`);
+    }
+
+    return toMailMessage({ ...draft, body: { content: mergedContent, contentType: 'html' } });
   }
 
   async listFolders(): Promise<MailFolderNode[]> {

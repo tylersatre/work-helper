@@ -15,6 +15,8 @@ import { startStubIdentityProvider, type StubIdentityProvider } from './helpers/
 const LANES = ['To Do', 'In Progress', 'Waiting', 'Done'];
 const MCP_TOKEN_SECRET = 'correct-horse-battery';
 const OWNER_ADDRESS = 'tyler@example.com';
+const SYNC_START = '2026-08-01';
+const SYNC_END = '2026-08-08';
 
 let app: FastifyInstance;
 let db: BetterSQLite3Database<typeof schema>;
@@ -87,8 +89,16 @@ async function startAndConnect(): Promise<void> {
   await client.connect(transport);
 }
 
+async function syncAll() {
+  return client!.callTool({ name: 'sync-emails', arguments: { startDate: SYNC_START, endDate: SYNC_END } });
+}
+
 async function createDraft(args: Record<string, unknown>) {
   return client!.callTool({ name: 'create-draft', arguments: args });
+}
+
+async function createReplyDraft(args: Record<string, unknown>) {
+  return client!.callTool({ name: 'create-reply-draft', arguments: args });
 }
 
 async function listConversations() {
@@ -97,6 +107,22 @@ async function listConversations() {
 
 async function getConversation(conversationId: number) {
   return client!.callTool({ name: 'get-conversation', arguments: { conversationId } });
+}
+
+async function conversationIdBySubject(subject: string): Promise<number> {
+  const result = await listConversations();
+  const { conversations } = result.structuredContent as { conversations: { id: number; subject: string }[] };
+  const match = conversations.find((c) => c.subject === subject);
+  if (!match) throw new Error(`No synced conversation with subject "${subject}"`);
+  return match.id;
+}
+
+async function messageIdByBody(conversationId: number, bodyText: string): Promise<number> {
+  const result = await getConversation(conversationId);
+  const { messages } = result.structuredContent as { messages: { id: number; bodyText: string }[] };
+  const match = messages.find((m) => m.bodyText === bodyText);
+  if (!match) throw new Error(`No message with body "${bodyText}" in conversation ${conversationId}`);
+  return match.id;
 }
 
 async function restConversations(): Promise<{ conversations: { id: number; subject: string; hasDraft: boolean }[] }> {
@@ -260,6 +286,57 @@ describe('US1: create-draft — fresh drafts land in the Drafts folder', () => {
 
     expect(result.isError).toBe(true);
     expect(JSON.stringify(result.content)).toContain('A body is required');
+    expect(mailProvider.draftsInMailbox()).toEqual([]);
+  });
+});
+
+describe('US2: create-reply-draft — replies shaped like Outlook', () => {
+  it('reply and reply-all both carry "Re:" subject, sit inside the original conversation as drafts, and read supplied HTML → signature → quote (AC1, FR-005/FR-006, SC-002)', async () => {
+    buildTestApp();
+    await startAndConnect();
+    await syncAll();
+    setSignature('<p>Tyler Satre</p>');
+    const conversationId = await conversationIdBySubject('Pricing question');
+    const messageId = await messageIdByBody(conversationId, 'Can you send the updated pricing sheet?');
+
+    const replyResult = await createReplyDraft({ messageId, bodyHtml: '<p>Sure, attached.</p>' });
+    expect(replyResult.isError).toBeFalsy();
+    expect(JSON.stringify(replyResult.content)).toContain('Created reply draft \\"Re: Pricing question\\"');
+    const replySummary = replyResult.structuredContent as { conversationId: number; subject: string; to: string[]; cc: string[] };
+    expect(replySummary.subject).toBe('Re: Pricing question');
+    expect(replySummary.conversationId).toBe(conversationId);
+    expect(replySummary.to).toEqual(['sam.rivera@example.com']);
+    expect(replySummary.cc).toEqual([]);
+
+    const replyAllResult = await createReplyDraft({ messageId, replyAll: true, bodyHtml: '<p>Sure, attached.</p>' });
+    expect(JSON.stringify(replyAllResult.content)).toContain('Created reply-all draft');
+    const replyAllSummary = replyAllResult.structuredContent as { to: string[]; cc: string[] };
+    expect(replyAllSummary.to).toEqual(['sam.rivera@example.com']);
+    expect(replyAllSummary.cc).toEqual(['ana.alvarez@example.com']);
+
+    const drafts = mailProvider.draftsInMailbox().filter((d) => d.subject === 'Re: Pricing question');
+    expect(drafts).toHaveLength(2);
+    const [draft] = drafts;
+    const suppliedIndex = draft!.body.content.indexOf('Sure, attached.');
+    const signatureIndex = draft!.body.content.indexOf('Tyler Satre');
+    const quoteIndex = draft!.body.content.indexOf('Can you send the updated pricing sheet?');
+    expect(suppliedIndex).toBeGreaterThanOrEqual(0);
+    expect(signatureIndex).toBeGreaterThan(suppliedIndex);
+    expect(quoteIndex).toBeGreaterThan(signatureIndex);
+
+    const conversation = (await getConversation(conversationId)).structuredContent as { messages: { isDraft: boolean }[] };
+    expect(conversation.messages.filter((m) => m.isDraft)).toHaveLength(2);
+  });
+
+  it('fails with "Message 999999 not found" for an unsynced messageId and creates nothing (AC2, FR-022)', async () => {
+    buildTestApp();
+    await startAndConnect();
+    await syncAll();
+
+    const result = await createReplyDraft({ messageId: 999999, bodyHtml: '<p>Hi</p>' });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain('Message 999999 not found');
     expect(mailProvider.draftsInMailbox()).toEqual([]);
   });
 });

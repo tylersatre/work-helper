@@ -46,6 +46,10 @@ class StubProvider implements MailProvider {
   async createDraft(): Promise<MailMessage> {
     throw new Error('not implemented');
   }
+
+  async createReplyDraft(): Promise<MailMessage> {
+    throw new Error('not implemented');
+  }
 }
 
 function baseMessage(): MailMessage {

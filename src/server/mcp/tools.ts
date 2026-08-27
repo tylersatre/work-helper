@@ -50,7 +50,13 @@ import { eventsForPerson, getEvent, listEvents } from '../services/calendar/quer
 import type { MailProvider } from '../services/email/provider.js';
 import { MailWritePermissionError, MailboxNotConnectedError } from '../services/email/graph-auth.js';
 import { setEmailReadState } from '../services/email/read-state.js';
-import { createDraft as createDraftService, EmptyBodyError } from '../services/email/drafts.js';
+import {
+  createDraft as createDraftService,
+  createReplyDraft as createReplyDraftService,
+  EmptyBodyError,
+  MessageNotFoundError,
+} from '../services/email/drafts.js';
+import { MailMessageGoneError } from '../services/email/provider.js';
 import { computeSyncWindow } from '../services/email/sync.js';
 import type { SyncCoordinator } from '../services/email/sync-coordinator.js';
 import { conversationSubject, emailsForPerson, getConversation, listConversations, listUnlinkedAddresses } from '../services/email/queries.js';
@@ -1526,6 +1532,12 @@ export function createMcpServer(context: McpToolsContext): McpServer {
     if (error instanceof EmptyBodyError) {
       return toolError(error.message);
     }
+    if (error instanceof MessageNotFoundError) {
+      return toolError(error.message);
+    }
+    if (error instanceof MailMessageGoneError) {
+      return toolError('The mailbox no longer has this draft — the next sync will reconcile it.');
+    }
     throw error;
   }
 
@@ -1557,6 +1569,38 @@ export function createMcpServer(context: McpToolsContext): McpServer {
 
       return {
         content: [{ type: 'text', text: `Created draft "${summary.subject}" (message ${summary.messageId}).` }],
+        structuredContent: { ...summary },
+      };
+    },
+  );
+
+  server.registerTool(
+    'create-reply-draft',
+    {
+      description:
+        'Creates a reply (or reply-all) draft for a synced message, shaped exactly like an Outlook desktop reply: "Re:" subject, mailbox-derived recipients (you are never a recipient of your own reply), and a body of the supplied HTML, then the saved signature, then the quoted original thread. The draft lands inside the conversation it replies to. Each call makes a new draft — use update-draft to revise it.',
+      inputSchema: {
+        messageId: z.number().describe('Synced message id to reply to'),
+        replyAll: z.boolean().optional().describe('true for reply-all; defaults to reply (sender only)'),
+        bodyHtml: z.string().describe('HTML reply content, written verbatim above the signature and quoted thread'),
+      },
+      outputSchema: draftSummarySchema,
+    },
+    async ({ messageId, replyAll, bodyHtml }) => {
+      if (!context.mailProvider) {
+        return toolError('The mailbox is not connected — connect the mailbox on the Sync page.');
+      }
+
+      let summary;
+      try {
+        summary = await createReplyDraftService(context.db, context.mailProvider, { messageId, replyAll, bodyHtml });
+      } catch (error) {
+        return draftToolError(error);
+      }
+
+      const kind = replyAll ? 'reply-all' : 'reply';
+      return {
+        content: [{ type: 'text', text: `Created ${kind} draft "${summary.subject}" (message ${summary.messageId}).` }],
         structuredContent: { ...summary },
       };
     },

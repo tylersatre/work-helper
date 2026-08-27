@@ -526,6 +526,80 @@ describe('GraphMailProvider', () => {
     });
   });
 
+  describe('createReplyDraft (research R2)', () => {
+    function writeProvider(getWriteAccessToken: () => Promise<string> = async () => 'write-token-123') {
+      return new GraphMailProvider({ getAccessToken: async () => 'read-token-123', getWriteAccessToken });
+    }
+
+    it('POSTs an empty body to createReply, inserts the prefix after <body …>, then PATCHes the merged body', async () => {
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(
+            fixtureMessage({
+              id: 'AAMk-reply-draft-1',
+              subject: 'Re: Pricing question',
+              body: { content: '<html><body class="x"><p>Quoted original</p></body></html>', contentType: 'html' },
+              isDraft: true,
+            }),
+          ),
+        )
+        .mockResolvedValueOnce(new Response(null, { status: 200 }));
+      const provider = writeProvider();
+
+      const draft = await provider.createReplyDraft('AAMk-original-1', { replyAll: false, prefixHtml: '<p>Sure thing.</p>' });
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const [postUrl, postInit] = fetchMock.mock.calls[0]!;
+      expect(postUrl).toBe('https://graph.microsoft.com/v1.0/me/messages/AAMk-original-1/createReply');
+      const postRequestInit = postInit as RequestInit;
+      expect(postRequestInit.method).toBe('POST');
+      expect(JSON.parse(postRequestInit.body as string)).toEqual({});
+      const postHeaders = new Headers(postRequestInit.headers);
+      expect(postHeaders.get('Authorization')).toBe('Bearer write-token-123');
+      expect(postHeaders.get('Prefer')).toBe('IdType="ImmutableId"');
+
+      const [patchUrl, patchInit] = fetchMock.mock.calls[1]!;
+      expect(patchUrl).toBe('https://graph.microsoft.com/v1.0/me/messages/AAMk-reply-draft-1');
+      const patchRequestInit = patchInit as RequestInit;
+      expect(patchRequestInit.method).toBe('PATCH');
+      const patchBody = JSON.parse(patchRequestInit.body as string);
+      expect(patchBody.body.content).toBe('<html><body class="x"><p>Sure thing.</p><p>Quoted original</p></body></html>');
+
+      expect(draft.id).toBe('AAMk-reply-draft-1');
+      expect(draft.body.content).toBe('<html><body class="x"><p>Sure thing.</p><p>Quoted original</p></body></html>');
+    });
+
+    it('uses createReplyAll when replyAll is true', async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(fixtureMessage({ body: { content: '<p>Quoted</p>', contentType: 'html' }, isDraft: true })))
+        .mockResolvedValueOnce(new Response(null, { status: 200 }));
+      const provider = writeProvider();
+
+      await provider.createReplyDraft('AAMk-original-1', { replyAll: true, prefixHtml: '<p>Hi all.</p>' });
+
+      const [postUrl] = fetchMock.mock.calls[0]!;
+      expect(postUrl).toBe('https://graph.microsoft.com/v1.0/me/messages/AAMk-original-1/createReplyAll');
+    });
+
+    it('prepends the prefix when the returned body has no <body> tag', async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(fixtureMessage({ body: { content: '<p>Quoted original</p>', contentType: 'html' }, isDraft: true })))
+        .mockResolvedValueOnce(new Response(null, { status: 200 }));
+      const provider = writeProvider();
+
+      const draft = await provider.createReplyDraft('AAMk-original-1', { replyAll: false, prefixHtml: '<p>Sure thing.</p>' });
+
+      expect(draft.body.content).toBe('<p>Sure thing.</p><p>Quoted original</p>');
+    });
+
+    it('maps a 404 on the createReply call to a mailbox-gone signal', async () => {
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
+      const provider = writeProvider();
+
+      await expect(provider.createReplyDraft('AAMk-gone-1', { replyAll: false, prefixHtml: '<p>Hi</p>' })).rejects.toThrow(/no longer/i);
+    });
+  });
+
   describe('verifyWriteAccess (research R3)', () => {
     it('calls getWriteAccessToken and resolves when a token is returned', async () => {
       const getWriteAccessToken = vi.fn(async () => 'write-token-123');
