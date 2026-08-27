@@ -457,6 +457,8 @@ describe('US1: sync-emails records run history through the shared coordinator', 
       async deleteDraft(): Promise<void> {
         throw new Error('not implemented');
       }
+
+      async fetchDraftMessages(): Promise<void> {}
     }
     buildTestApp(new GatedProvider());
     await startAndConnect();
@@ -618,7 +620,7 @@ describe('US3: sync all meaningful folders', () => {
     };
   }
 
-  it('covers Inbox, Archive, and custom folders while excluding Junk/Drafts/Deleted Items (US3 scenario 1)', async () => {
+  it('covers Inbox, Archive, and custom folders via the ranged walk while excluding Junk/Deleted Items; Drafts syncs separately in full (US3 scenario 1, US5)', async () => {
     const seeds = [
       folderMessage('msg-hello', 'Hello', 'inbox'),
       folderMessage('msg-board', 'Board minutes', 'archive'),
@@ -631,24 +633,24 @@ describe('US3: sync all meaningful folders', () => {
     await startAndConnect();
 
     const result = await syncEmails('2026-08-01', '2026-08-08');
-    expect(result.structuredContent).toMatchObject({ status: 'complete', syncedCount: 3 });
+    expect(result.structuredContent).toMatchObject({ status: 'complete', syncedCount: 4 });
 
     const stored = allMessages();
-    expect(stored).toHaveLength(3);
+    expect(stored).toHaveLength(4);
     const bySubject = new Map(stored.map((m) => [m.subject, m.sourceFolder]));
     expect(bySubject.get('Hello')).toBe('Inbox');
     expect(bySubject.get('Board minutes')).toBe('Archive');
     expect(bySubject.get('Site survey')).toBe('Projects');
     expect(bySubject.has('You won a prize')).toBe(false);
-    expect(bySubject.has('Half-written')).toBe(false);
     expect(bySubject.has('Old news')).toBe(false);
+    const halfWritten = stored.find((m) => m.subject === 'Half-written');
+    expect(halfWritten?.isDraft).toBe(true);
 
     const listed = await listConversations();
     const { conversations } = listed.structuredContent as { conversations: { subject: string }[] };
     const subjects = conversations.map((c) => c.subject);
-    expect(subjects).toEqual(expect.arrayContaining(['Hello', 'Board minutes', 'Site survey']));
+    expect(subjects).toEqual(expect.arrayContaining(['Hello', 'Board minutes', 'Site survey', 'Half-written']));
     expect(subjects).not.toContain('You won a prize');
-    expect(subjects).not.toContain('Half-written');
     expect(subjects).not.toContain('Old news');
   });
 });
@@ -732,5 +734,115 @@ describe('US4: keep stored metadata fresh on re-sync', () => {
 
     const [after] = allMessages();
     expect(after).toEqual(before);
+  });
+});
+
+describe('US5: the Drafts folder mirrors the mailbox on every sync', () => {
+  const OWNER_ADDRESS = 'tyler@example.com';
+
+  function quoteFollowUp(): SeedMessage {
+    return {
+      id: 'draft-quote-followup',
+      conversationId: 'conv-quote-followup',
+      subject: 'Quote follow-up',
+      body: { content: '<p>Old wording.</p>', contentType: 'html' },
+      receivedDateTime: '2026-08-02T09:00:00Z',
+      sentDateTime: '2026-08-02T09:00:00Z',
+      from: { address: OWNER_ADDRESS, name: 'Tyler Satre' },
+      toRecipients: [{ address: 'sam.rivera@example.com', name: 'Sam Rivera' }],
+      ccRecipients: [],
+      bccRecipients: [],
+      folder: 'drafts',
+      isRead: true,
+    };
+  }
+
+  function introForAna(): SeedMessage {
+    return {
+      id: 'draft-intro-ana',
+      conversationId: 'conv-intro-ana',
+      subject: 'Intro for Ana',
+      body: { content: '<p>Nice to meet you.</p>', contentType: 'html' },
+      receivedDateTime: '2026-08-03T09:00:00Z',
+      sentDateTime: '2026-08-03T09:00:00Z',
+      from: { address: OWNER_ADDRESS, name: 'Tyler Satre' },
+      toRecipients: [{ address: 'ana.alvarez@example.com', name: 'Ana Alvarez' }],
+      ccRecipients: [],
+      bccRecipients: [],
+      folder: 'drafts',
+      isRead: true,
+    };
+  }
+
+  function neverMind(): SeedMessage {
+    return {
+      id: 'draft-never-mind',
+      conversationId: 'conv-never-mind',
+      subject: 'Never mind',
+      body: { content: '<p>Ignore this.</p>', contentType: 'html' },
+      receivedDateTime: '2026-08-01T09:00:00Z',
+      sentDateTime: '2026-08-01T09:00:00Z',
+      from: { address: OWNER_ADDRESS, name: 'Tyler Satre' },
+      toRecipients: [{ address: 'sam.rivera@example.com', name: 'Sam Rivera' }],
+      ccRecipients: [],
+      bccRecipients: [],
+      folder: 'drafts',
+      isRead: true,
+    };
+  }
+
+  function oldIdea(): SeedMessage {
+    return {
+      id: 'draft-old-idea',
+      conversationId: 'conv-old-idea',
+      subject: 'Old idea',
+      body: { content: '<p>Someday.</p>', contentType: 'html' },
+      receivedDateTime: '2026-05-01T09:00:00Z',
+      sentDateTime: '2026-05-01T09:00:00Z',
+      from: { address: OWNER_ADDRESS, name: 'Tyler Satre' },
+      toRecipients: [{ address: 'sam.rivera@example.com', name: 'Sam Rivera' }],
+      ccRecipients: [],
+      bccRecipients: [],
+      folder: 'drafts',
+      isRead: true,
+    };
+  }
+
+  it('edits, sent-transitions, discards, and leaves untouched drafts are all reconciled correctly on a narrow-range sync (AC1, FR-015/FR-016, SC-003)', async () => {
+    const provider = new FakeMailProvider([quoteFollowUp(), introForAna(), neverMind(), oldIdea()], { ownerAddress: OWNER_ADDRESS });
+    buildTestApp(provider);
+    await startAndConnect();
+
+    const firstSync = await syncEmails('2026-08-01', '2026-08-08');
+    expect(firstSync.structuredContent).toMatchObject({ status: 'complete', syncedCount: 4 });
+
+    provider.editDraftInMailbox('draft-quote-followup', '<p>New wording.</p>');
+    provider.sendDraftFromMailbox('draft-intro-ana', '2026-08-05T10:00:00Z');
+    provider.discardDraftFromMailbox('draft-never-mind');
+    // draft-old-idea (2026-05-01) is left untouched in the mailbox — out of range but still mirrored (FR-015).
+
+    const secondSync = await syncEmails('2026-08-01', '2026-08-08');
+    expect(secondSync.isError).toBeFalsy();
+    const secondContent = secondSync.structuredContent as { status: string; syncedCount: number; updatedCount: number };
+    expect(secondContent.syncedCount).toBe(0);
+    expect(secondContent.updatedCount).toBeGreaterThanOrEqual(2);
+
+    const messages = allMessages();
+
+    const quoteFollowUpRow = messages.find((m) => m.graphMessageId === 'draft-quote-followup');
+    expect(quoteFollowUpRow?.isDraft).toBe(true);
+    expect(quoteFollowUpRow?.bodyOriginal).toBe('<p>New wording.</p>');
+
+    const introAnaRow = messages.find((m) => m.graphMessageId === 'draft-intro-ana');
+    expect(introAnaRow).toBeDefined();
+    expect(introAnaRow?.isDraft).toBe(false);
+    expect(introAnaRow?.sentAt).toBe(Date.parse('2026-08-05T10:00:00Z'));
+
+    expect(messages.find((m) => m.graphMessageId === 'draft-never-mind')).toBeUndefined();
+    expect(allConversations().find((c) => c.graphConversationId === 'conv-never-mind')).toBeUndefined();
+
+    const oldIdeaRow = messages.find((m) => m.graphMessageId === 'draft-old-idea');
+    expect(oldIdeaRow?.isDraft).toBe(true);
+    expect(oldIdeaRow?.bodyOriginal).toBe('<p>Someday.</p>');
   });
 });

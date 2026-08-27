@@ -309,6 +309,34 @@ export class FakeMailProvider implements MailProvider {
     this.draftsFolder.delete(graphMessageId);
   }
 
+  /** Test-only: simulates an Outlook edit to a draft's body between syncs. */
+  editDraftInMailbox(graphMessageId: string, bodyHtml: string): void {
+    const existing = this.draftsFolder.get(graphMessageId);
+    if (!existing) return;
+    this.draftsFolder.set(graphMessageId, { ...existing, body: { content: bodyHtml, contentType: 'html' } });
+  }
+
+  /**
+   * Test-only: simulates sending a draft from Outlook — it leaves the Drafts folder and its sent
+   * copy (same immutable id, per research R6) becomes visible to the ranged folder walk and to
+   * sentMessages().
+   */
+  sendDraftFromMailbox(graphMessageId: string, sentDateTime: string): void {
+    const existing = this.draftsFolder.get(graphMessageId);
+    if (!existing) return;
+    this.draftsFolder.delete(graphMessageId);
+    const sentSeed: SeedMessage = { ...existing, receivedDateTime: sentDateTime, sentDateTime, folder: 'sent' };
+    this.seeded.push(sentSeed);
+    this.folders.set(resolveFolder('sent').id, resolveFolder('sent'));
+    this.readState.set(sentSeed.id, sentSeed.isRead ?? true);
+  }
+
+  async fetchDraftMessages(onMessage: (message: MailMessage) => void | Promise<void>): Promise<void> {
+    for (const seed of this.draftsFolder.values()) {
+      await onMessage({ ...toMailMessage(seed, true), isDraft: true });
+    }
+  }
+
   async listFolders(): Promise<MailFolderNode[]> {
     if (this.options.failImmediately) {
       throw new Error('mailbox unreachable');

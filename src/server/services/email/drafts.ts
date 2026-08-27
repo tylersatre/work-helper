@@ -112,8 +112,8 @@ function participantsOf(message: MailMessage): AddressRole[] {
   });
 }
 
-/** Ingests a freshly created/replied draft into the store as a new message, starting or joining a conversation by graphConversationId. */
-function ingestNewDraft(db: AppDb, message: MailMessage): number {
+/** Ingests a freshly created/replied draft into the store as a new message, starting or joining a conversation by graphConversationId. Also used by sync's Drafts-folder phase for hand-started drafts new to the store (US5). */
+export function ingestNewDraft(db: AppDb, message: MailMessage): number {
   const bodyText = deriveBodyText(message.body.content, message.body.contentType);
   const roles = participantsOf(message);
 
@@ -193,8 +193,8 @@ export function mirrorDraftMessage(db: AppDb, messageId: number, message: MailMe
   });
 }
 
-/** Removes a draft row (+ participants), deleting its conversation too when that was the last message. */
-function removeDraftMessage(db: AppDb, messageId: number, conversationId: number): void {
+/** Removes a draft row (+ participants), deleting its conversation too when that was the last message. Also used by sync's Drafts-folder reconciliation (US5). */
+export function removeDraftMessage(db: AppDb, messageId: number, conversationId: number): void {
   db.transaction((tx) => {
     tx.delete(emailParticipants).where(eq(emailParticipants.messageId, messageId)).run();
     tx.delete(emailMessages).where(eq(emailMessages.id, messageId)).run();

@@ -3,6 +3,7 @@ import { eq, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { emailAddresses, emailAttachments, emailConversations, emailMessages, emailParticipants } from '../../db/schema.js';
 import type * as schema from '../../db/schema.js';
+import { ingestNewDraft, mirrorDraftMessage, removeDraftMessage } from './drafts.js';
 import type { MailFolderNode, MailMessage, MailProvider, WellKnownFolder } from './provider.js';
 
 type AppDb = BetterSQLite3Database<typeof schema>;
@@ -171,6 +172,7 @@ async function ingestMessage(db: AppDb, provider: MailProvider, message: MailMes
           categories: message.categories,
           webLink: message.webLink,
           internetMessageId: message.internetMessageId,
+          isDraft: message.isDraft,
         })
         .where(eq(emailMessages.id, existing.id))
         .run();
@@ -243,7 +245,51 @@ async function ingestMessage(db: AppDb, provider: MailProvider, message: MailMes
   return 'new';
 }
 
-/** Pulls every syncable folder (all but Junk/Deleted Items/Drafts) in the given window, storing new messages and refreshing already-stored ones. Partial progress survives a mid-run failure. */
+/**
+ * Pulls the entire Drafts folder (no date filter — FR-015) and mirrors every draft-flagged row: new
+ * drafts are inserted, re-encountered drafts have all content fields + participants replaced
+ * wholesale (research R6). At the end, reconciles removals — every store row still `is_draft = 1`
+ * whose `graphMessageId` was not seen in this pull is deleted (discarded/sent-and-not-yet-ranged
+ * drafts), uncounted.
+ */
+async function runDraftsPhase(db: AppDb, provider: MailProvider): Promise<{ newCount: number; updatedCount: number }> {
+  let newCount = 0;
+  let updatedCount = 0;
+  const seenGraphMessageIds = new Set<string>();
+
+  await provider.fetchDraftMessages((message) => {
+    seenGraphMessageIds.add(message.id);
+    const [existing] = db
+      .select({ id: emailMessages.id })
+      .from(emailMessages)
+      .where(eq(emailMessages.graphMessageId, message.id))
+      .limit(1)
+      .all();
+
+    if (existing) {
+      mirrorDraftMessage(db, existing.id, message);
+      updatedCount += 1;
+    } else {
+      ingestNewDraft(db, message);
+      newCount += 1;
+    }
+  });
+
+  const staleDrafts = db
+    .select({ id: emailMessages.id, graphMessageId: emailMessages.graphMessageId, conversationId: emailMessages.conversationId })
+    .from(emailMessages)
+    .where(eq(emailMessages.isDraft, true))
+    .all()
+    .filter((row) => !seenGraphMessageIds.has(row.graphMessageId));
+
+  for (const row of staleDrafts) {
+    removeDraftMessage(db, row.id, row.conversationId);
+  }
+
+  return { newCount, updatedCount };
+}
+
+/** Pulls every syncable folder (all but Junk/Deleted Items/Drafts) in the given window, storing new messages and refreshing already-stored ones, then mirrors the entire Drafts folder (US5). Partial progress survives a mid-run failure. */
 export async function runSync(db: AppDb, provider: MailProvider, window: SyncWindow): Promise<SyncResult> {
   let newCount = 0;
   let updatedCount = 0;
@@ -263,6 +309,11 @@ export async function runSync(db: AppDb, provider: MailProvider, window: SyncWin
         }
       }
     }
+
+    const drafts = await runDraftsPhase(db, provider);
+    newCount += drafts.newCount;
+    updatedCount += drafts.updatedCount;
+
     return { status: 'complete', newCount, updatedCount };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

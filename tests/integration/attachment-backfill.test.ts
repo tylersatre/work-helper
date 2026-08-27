@@ -79,6 +79,9 @@ class CountingProvider implements MailProvider {
   deleteDraft(...args: Parameters<MailProvider['deleteDraft']>): Promise<void> {
     return this.inner.deleteDraft(...args);
   }
+  fetchDraftMessages(...args: Parameters<MailProvider['fetchDraftMessages']>): Promise<void> {
+    return this.inner.fetchDraftMessages(...args);
+  }
 }
 
 class FlakyProvider implements MailProvider {
@@ -110,6 +113,7 @@ class FlakyProvider implements MailProvider {
   async deleteDraft(): Promise<void> {
     throw new Error('not implemented');
   }
+  async fetchDraftMessages(): Promise<void> {}
 }
 
 async function waitUntil(predicate: () => boolean, timeoutMs = 1000): Promise<boolean> {

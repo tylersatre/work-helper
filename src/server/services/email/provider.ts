@@ -113,4 +113,6 @@ export interface MailProvider {
   updateDraft(graphMessageId: string, input: UpdateDraftInput): Promise<MailMessage>;
   /** Removes a draft from the Drafts folder. Throws MailMessageGoneError when already gone. */
   deleteDraft(graphMessageId: string): Promise<void>;
+  /** Pages the entire Drafts folder, no date filter, invoking onMessage per draft — the sync run's Drafts phase (FR-015). */
+  fetchDraftMessages(onMessage: (message: MailMessage) => void | Promise<void>): Promise<void>;
 }

@@ -315,6 +315,21 @@ export class GraphMailProvider implements MailProvider {
     }
   }
 
+  async fetchDraftMessages(onMessage: (message: MailMessage) => void | Promise<void>): Promise<void> {
+    const url = new URL(`${GRAPH_BASE}/me/mailFolders/drafts/messages`);
+    url.searchParams.set('$select', SELECT_FIELDS);
+    let nextUrl: string | undefined = url.toString();
+
+    while (nextUrl) {
+      const response = await this.authorizedFetch(nextUrl);
+      const body = (await response.json()) as GraphMessagesResponse;
+      for (const message of body.value) {
+        await onMessage(toMailMessage(message));
+      }
+      nextUrl = body['@odata.nextLink'];
+    }
+  }
+
   async listFolders(): Promise<MailFolderNode[]> {
     const wellKnownIds = new Map<string, WellKnownFolder>();
     for (const [wellKnown, name] of Object.entries(WELL_KNOWN_NAMES) as [WellKnownFolder, string][]) {

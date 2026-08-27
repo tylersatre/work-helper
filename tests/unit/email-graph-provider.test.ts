@@ -665,6 +665,39 @@ describe('GraphMailProvider', () => {
     });
   });
 
+  describe('fetchDraftMessages (research R6, US5)', () => {
+    it('pages the entire Drafts folder with no $filter, using the existing $select list and ImmutableId header, following @odata.nextLink', async () => {
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse({
+            value: [fixtureMessage({ id: 'draft-1', isDraft: true })],
+            '@odata.nextLink': 'https://graph.microsoft.com/v1.0/me/mailFolders/drafts/messages?$skiptoken=abc',
+          }),
+        )
+        .mockResolvedValueOnce(jsonResponse({ value: [fixtureMessage({ id: 'draft-2', isDraft: true })] }));
+      const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
+
+      const seen: string[] = [];
+      await provider.fetchDraftMessages((message) => {
+        seen.push(message.id);
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const [url, init] = fetchMock.mock.calls[0]!;
+      const parsed = new URL(url as string);
+      expect(parsed.origin + parsed.pathname).toBe('https://graph.microsoft.com/v1.0/me/mailFolders/drafts/messages');
+      expect(parsed.searchParams.get('$filter')).toBeNull();
+      expect(parsed.searchParams.get('$select')).toBe(
+        'id,conversationId,subject,body,sentDateTime,receivedDateTime,from,toRecipients,ccRecipients,bccRecipients,isRead,importance,flag,categories,hasAttachments,webLink,internetMessageId,isDraft',
+      );
+      const headers = new Headers((init as RequestInit).headers);
+      expect(headers.get('Authorization')).toBe('Bearer token-123');
+      expect(headers.get('Prefer')).toBe('IdType="ImmutableId"');
+      expect(fetchMock.mock.calls[1]![0]).toBe('https://graph.microsoft.com/v1.0/me/mailFolders/drafts/messages?$skiptoken=abc');
+      expect(seen).toEqual(['draft-1', 'draft-2']);
+    });
+  });
+
   describe('verifyWriteAccess (research R3)', () => {
     it('calls getWriteAccessToken and resolves when a token is returned', async () => {
       const getWriteAccessToken = vi.fn(async () => 'write-token-123');

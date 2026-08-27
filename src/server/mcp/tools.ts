@@ -591,7 +591,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
     'sync-emails',
     {
       description:
-        'Pulls messages for a date range (inclusive, server-local timezone) from every mailbox folder except Junk, Deleted Items, and Drafts into the store, refreshing already-stored messages it re-encounters.',
+        'Pulls messages for a date range (inclusive, server-local timezone) from every mailbox folder except Junk and Deleted Items into the store, refreshing already-stored messages it re-encounters. The Drafts folder is not date-ranged — every sync also pulls it in full, mirroring edits and removals so work-helper\'s drafts always match the mailbox exactly.',
       inputSchema: { startDate: z.string().optional(), endDate: z.string().optional() },
       outputSchema: {
         status: z.enum(['complete', 'interrupted']),
