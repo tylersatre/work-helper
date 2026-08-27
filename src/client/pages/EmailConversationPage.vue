@@ -99,6 +99,7 @@ onMounted(fetchConversation);
             </dl>
             <div class="email-meta-badges">
               <span v-if="!message.isRead" data-testid="message-unread" class="email-meta-badge email-meta-badge-unread">Unread</span>
+              <span v-if="message.isDraft" data-testid="message-draft" class="email-meta-badge email-meta-badge-draft">Draft</span>
               <span v-if="importanceLabel(message.importance)" class="email-meta-badge email-meta-badge-importance">
                 {{ importanceLabel(message.importance) }}
               </span>
@@ -262,6 +263,11 @@ onMounted(fetchConversation);
 }
 
 .email-meta-badge-flag {
+  background: rgba(234, 179, 8, 0.18);
+  color: #fde68a;
+}
+
+.email-meta-badge-draft {
   background: rgba(234, 179, 8, 0.18);
   color: #fde68a;
 }

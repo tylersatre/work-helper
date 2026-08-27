@@ -1,20 +1,24 @@
-import type {
-  MailAttachmentMeta,
-  MailFlagStatus,
-  MailFolderNode,
-  MailFolderRef,
-  MailImportance,
-  MailMessage,
-  MailProvider,
-  MailRecipient,
-  MailWindow,
-  WellKnownFolder,
+import {
+  MailMessageGoneError,
+  type CreateDraftInput,
+  type CreateReplyDraftInput,
+  type MailAttachmentMeta,
+  type MailFlagStatus,
+  type MailFolderNode,
+  type MailFolderRef,
+  type MailImportance,
+  type MailMessage,
+  type MailProvider,
+  type MailRecipient,
+  type MailWindow,
+  type UpdateDraftInput,
+  type WellKnownFolder,
 } from './provider.js';
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
 const SELECT_FIELDS =
-  'id,conversationId,subject,body,sentDateTime,receivedDateTime,from,toRecipients,ccRecipients,bccRecipients,isRead,importance,flag,categories,hasAttachments,webLink,internetMessageId';
+  'id,conversationId,subject,body,sentDateTime,receivedDateTime,from,toRecipients,ccRecipients,bccRecipients,isRead,importance,flag,categories,hasAttachments,webLink,internetMessageId,isDraft';
 
 const WELL_KNOWN_NAMES: Record<WellKnownFolder, string> = {
   inbox: 'inbox',
@@ -52,6 +56,7 @@ interface GraphMessage {
   hasAttachments?: boolean;
   webLink?: string;
   internetMessageId?: string;
+  isDraft?: boolean;
 }
 
 interface GraphMessagesResponse {
@@ -84,6 +89,22 @@ function toRecipient(recipient: GraphRecipient): MailRecipient {
   return { address: recipient.emailAddress?.address ?? '', name: recipient.emailAddress?.name ?? '' };
 }
 
+function toGraphRecipient(recipient: MailRecipient): GraphRecipient {
+  return { emailAddress: { address: recipient.address, name: recipient.name } };
+}
+
+const BODY_TAG_PATTERN = /<body[^>]*>/i;
+
+/** Inserts prefixHtml immediately after the opening <body …> tag; falls back to a plain prepend when there is none. */
+function insertPrefix(content: string, prefixHtml: string): string {
+  const match = BODY_TAG_PATTERN.exec(content);
+  if (!match) {
+    return `${prefixHtml}${content}`;
+  }
+  const insertAt = match.index + match[0].length;
+  return `${content.slice(0, insertAt)}${prefixHtml}${content.slice(insertAt)}`;
+}
+
 function toMailMessage(message: GraphMessage): MailMessage {
   return {
     id: message.id,
@@ -103,6 +124,7 @@ function toMailMessage(message: GraphMessage): MailMessage {
     hasAttachments: message.hasAttachments ?? false,
     webLink: message.webLink ?? '',
     internetMessageId: message.internetMessageId ?? '',
+    isDraft: message.isDraft ?? false,
   };
 }
 
@@ -199,6 +221,135 @@ export class GraphMailProvider implements MailProvider {
     }
     const body = (await response.json()) as GraphAttachmentsResponse;
     return body.value.map((a) => ({ name: a.name, contentType: a.contentType ?? null, sizeBytes: a.size, isInline: a.isInline === true }));
+  }
+
+  async createDraft(input: CreateDraftInput): Promise<MailMessage> {
+    const token = await this.options.getWriteAccessToken();
+
+    const response = await this.send(`${GRAPH_BASE}/me/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, Prefer: 'IdType="ImmutableId"', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        toRecipients: input.to.map(toGraphRecipient),
+        ccRecipients: (input.cc ?? []).map(toGraphRecipient),
+        bccRecipients: (input.bcc ?? []).map(toGraphRecipient),
+        subject: input.subject,
+        body: { contentType: 'HTML', content: input.bodyHtml },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Mailbox request failed with a connection error (HTTP ${response.status})`);
+    }
+    const message = (await response.json()) as GraphMessage;
+    return toMailMessage(message);
+  }
+
+  async createReplyDraft(graphMessageId: string, input: CreateReplyDraftInput): Promise<MailMessage> {
+    const token = await this.options.getWriteAccessToken();
+    const endpoint = input.replyAll ? 'createReplyAll' : 'createReply';
+
+    const postResponse = await this.send(`${GRAPH_BASE}/me/messages/${graphMessageId}/${endpoint}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, Prefer: 'IdType="ImmutableId"', 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (postResponse.status === 404) {
+      throw new MailMessageGoneError(graphMessageId);
+    }
+    if (!postResponse.ok) {
+      throw new Error(`Mailbox request failed with a connection error (HTTP ${postResponse.status})`);
+    }
+    const draft = (await postResponse.json()) as GraphMessage;
+    const mergedContent = insertPrefix(draft.body.content, input.prefixHtml);
+
+    const patchResponse = await this.send(`${GRAPH_BASE}/me/messages/${draft.id}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, Prefer: 'IdType="ImmutableId"', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body: { contentType: 'HTML', content: mergedContent } }),
+    });
+    if (!patchResponse.ok) {
+      throw new Error(`Mailbox request failed with a connection error (HTTP ${patchResponse.status})`);
+    }
+
+    return toMailMessage({ ...draft, body: { content: mergedContent, contentType: 'html' } });
+  }
+
+  /**
+   * DELETE has no server-side draft protection (works on any message — research R1), and a PATCH to
+   * a sent message fails with a Graph 400, not 404. So both updateDraft and deleteDraft verify the
+   * target is *currently* a draft before writing — the store's is_draft flag can be stale between
+   * syncs (e.g. Tyler sent the draft from Outlook since the last sync), and without this check a
+   * stale delete-draft call would delete a real sent message (FR-011/FR-019).
+   */
+  private async verifyStillDraft(graphMessageId: string): Promise<void> {
+    const url = new URL(`${GRAPH_BASE}/me/messages/${graphMessageId}`);
+    url.searchParams.set('$select', 'isDraft');
+    const response = await this.authorizedFetch(url.toString(), { allowNotFound: true });
+    if (response == null) {
+      throw new MailMessageGoneError(graphMessageId);
+    }
+    const body = (await response.json()) as { isDraft?: boolean };
+    if (body.isDraft !== true) {
+      throw new MailMessageGoneError(graphMessageId);
+    }
+  }
+
+  async updateDraft(graphMessageId: string, input: UpdateDraftInput): Promise<MailMessage> {
+    await this.verifyStillDraft(graphMessageId);
+    const token = await this.options.getWriteAccessToken();
+
+    const payload: Record<string, unknown> = {};
+    if (input.bodyHtml !== undefined) payload.body = { contentType: 'HTML', content: input.bodyHtml };
+    if (input.to !== undefined) payload.toRecipients = input.to.map(toGraphRecipient);
+    if (input.cc !== undefined) payload.ccRecipients = input.cc.map(toGraphRecipient);
+    if (input.bcc !== undefined) payload.bccRecipients = input.bcc.map(toGraphRecipient);
+    if (input.subject !== undefined) payload.subject = input.subject;
+
+    const response = await this.send(`${GRAPH_BASE}/me/messages/${graphMessageId}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, Prefer: 'IdType="ImmutableId"', 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (response.status === 404) {
+      throw new MailMessageGoneError(graphMessageId);
+    }
+    if (!response.ok) {
+      throw new Error(`Mailbox request failed with a connection error (HTTP ${response.status})`);
+    }
+    const message = (await response.json()) as GraphMessage;
+    return toMailMessage(message);
+  }
+
+  async deleteDraft(graphMessageId: string): Promise<void> {
+    await this.verifyStillDraft(graphMessageId);
+    const token = await this.options.getWriteAccessToken();
+
+    const response = await this.send(`${GRAPH_BASE}/me/messages/${graphMessageId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}`, Prefer: 'IdType="ImmutableId"' },
+    });
+    if (response.status === 404) {
+      throw new MailMessageGoneError(graphMessageId);
+    }
+    if (!response.ok) {
+      throw new Error(`Mailbox request failed with a connection error (HTTP ${response.status})`);
+    }
+  }
+
+  async fetchDraftMessages(onMessage: (message: MailMessage) => void | Promise<void>): Promise<void> {
+    const url = new URL(`${GRAPH_BASE}/me/mailFolders/drafts/messages`);
+    url.searchParams.set('$select', SELECT_FIELDS);
+    let nextUrl: string | undefined = url.toString();
+
+    while (nextUrl) {
+      const response = await this.authorizedFetch(nextUrl);
+      const body = (await response.json()) as GraphMessagesResponse;
+      for (const message of body.value) {
+        await onMessage(toMailMessage(message));
+      }
+      nextUrl = body['@odata.nextLink'];
+    }
   }
 
   async listFolders(): Promise<MailFolderNode[]> {

@@ -33,6 +33,7 @@ function baseMessage(overrides: Record<string, unknown> = {}) {
     bodyContentType: 'text',
     sourceFolder: 'Inbox',
     isRead: false,
+    isDraft: false,
     importance: 'high',
     flagStatus: 'flagged',
     categories: ['Orange category'],
@@ -61,6 +62,18 @@ async function renderPage(body: unknown) {
 describe('EmailConversationPage', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('shows a Draft badge only for messages with isDraft true', async () => {
+    await renderPage(
+      detail({
+        messages: [baseMessage({ id: 40, isDraft: true }), baseMessage({ id: 41, isDraft: false })],
+      }),
+    );
+
+    const messages = screen.getAllByTestId('email-message');
+    expect(within(messages[0]!).getByTestId('message-draft')).toBeTruthy();
+    expect(within(messages[1]!).queryByTestId('message-draft')).toBeNull();
   });
 
   it('renders every message fully expanded, in the order returned (oldest-first)', async () => {

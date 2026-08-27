@@ -68,6 +68,7 @@ onMounted(() => fetchPage());
             <span class="email-conversation-date">{{ absoluteLocal(conversation.latestMessageAt) }}</span>
             <span v-if="conversation.hasUnread" data-testid="unread-indicator" class="email-conversation-unread-dot" aria-label="Unread"></span>
             <span v-if="conversation.hasAttachments" data-testid="attachment-indicator" class="email-conversation-attachment" aria-label="Has attachments">📎</span>
+            <span v-if="conversation.hasDraft" data-testid="draft-indicator" class="email-conversation-draft-badge">Draft</span>
           </span>
         </RouterLink>
       </li>
@@ -114,6 +115,15 @@ onMounted(() => fetchPage());
   height: 0.5rem;
   border-radius: 50%;
   background: #3b82f6;
+}
+
+.email-conversation-draft-badge {
+  background: rgba(234, 179, 8, 0.18);
+  color: #fde68a;
+  border-radius: 3px;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 600;
 }
 
 .email-conversation-subject.subject-placeholder {

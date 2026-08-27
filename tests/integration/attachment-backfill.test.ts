@@ -67,6 +67,21 @@ class CountingProvider implements MailProvider {
   setMessageReadState(...args: Parameters<MailProvider['setMessageReadState']>): Promise<'updated' | 'not-found'> {
     return this.inner.setMessageReadState(...args);
   }
+  createDraft(...args: Parameters<MailProvider['createDraft']>): Promise<MailMessage> {
+    return this.inner.createDraft(...args);
+  }
+  createReplyDraft(...args: Parameters<MailProvider['createReplyDraft']>): Promise<MailMessage> {
+    return this.inner.createReplyDraft(...args);
+  }
+  updateDraft(...args: Parameters<MailProvider['updateDraft']>): Promise<MailMessage> {
+    return this.inner.updateDraft(...args);
+  }
+  deleteDraft(...args: Parameters<MailProvider['deleteDraft']>): Promise<void> {
+    return this.inner.deleteDraft(...args);
+  }
+  fetchDraftMessages(...args: Parameters<MailProvider['fetchDraftMessages']>): Promise<void> {
+    return this.inner.fetchDraftMessages(...args);
+  }
 }
 
 class FlakyProvider implements MailProvider {
@@ -86,6 +101,19 @@ class FlakyProvider implements MailProvider {
   async setMessageReadState(): Promise<'updated' | 'not-found'> {
     return 'updated';
   }
+  async createDraft(): Promise<MailMessage> {
+    throw new Error('not implemented');
+  }
+  async createReplyDraft(): Promise<MailMessage> {
+    throw new Error('not implemented');
+  }
+  async updateDraft(): Promise<MailMessage> {
+    throw new Error('not implemented');
+  }
+  async deleteDraft(): Promise<void> {
+    throw new Error('not implemented');
+  }
+  async fetchDraftMessages(): Promise<void> {}
 }
 
 async function waitUntil(predicate: () => boolean, timeoutMs = 1000): Promise<boolean> {

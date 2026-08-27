@@ -1,15 +1,19 @@
 import { MailWritePermissionError, MailboxNotConnectedError } from './graph-auth.js';
-import type {
-  MailAttachmentMeta,
-  MailFlagStatus,
-  MailFolderNode,
-  MailFolderRef,
-  MailImportance,
-  MailMessage,
-  MailProvider,
-  MailRecipient,
-  MailWindow,
-  WellKnownFolder,
+import {
+  MailMessageGoneError,
+  type CreateDraftInput,
+  type CreateReplyDraftInput,
+  type MailAttachmentMeta,
+  type MailFlagStatus,
+  type MailFolderNode,
+  type MailFolderRef,
+  type MailImportance,
+  type MailMessage,
+  type MailProvider,
+  type MailRecipient,
+  type MailWindow,
+  type UpdateDraftInput,
+  type WellKnownFolder,
 } from './provider.js';
 
 /**
@@ -49,6 +53,7 @@ export interface SeedMessage {
   webLink?: string;
   internetMessageId?: string;
   attachments?: SeedAttachment[];
+  isDraft?: boolean;
 }
 
 export interface FakeMailProviderOptions {
@@ -64,6 +69,8 @@ export interface FakeMailProviderOptions {
   deletedGraphMessageIds?: Iterable<string>;
   /** Graph ids whose setMessageReadState() call throws — simulates a mid-list mailbox rejection. */
   failWriteGraphMessageIds?: Iterable<string>;
+  /** The mailbox owner's own address ("me") — used for reply-all self-exclusion and Sent-folder identity. */
+  ownerAddress?: string;
 }
 
 export interface RecordedWrite {
@@ -122,6 +129,7 @@ function toMailMessage(seed: SeedMessage, isRead: boolean): MailMessage {
     hasAttachments: attachments.length > 0,
     webLink: seed.webLink ?? '',
     internetMessageId: seed.internetMessageId ?? '',
+    isDraft: seed.isDraft ?? false,
   };
 }
 
@@ -132,6 +140,8 @@ export class FakeMailProvider implements MailProvider {
   private readonly deletedGraphMessageIds: Set<string>;
   private readonly failWriteGraphMessageIds: Set<string>;
   private readonly writes: RecordedWrite[] = [];
+  private readonly draftsFolder: Map<string, SeedMessage>;
+  private draftCounter = 0;
 
   constructor(
     private readonly seeded: SeedMessage[],
@@ -145,6 +155,9 @@ export class FakeMailProvider implements MailProvider {
     this.readState = new Map(seeded.map((seed) => [seed.id, seed.isRead ?? false]));
     this.deletedGraphMessageIds = new Set(options.deletedGraphMessageIds ?? []);
     this.failWriteGraphMessageIds = new Set(options.failWriteGraphMessageIds ?? []);
+    this.draftsFolder = new Map(
+      seeded.filter((seed) => resolveFolder(seed.folder).wellKnown === 'drafts').map((seed) => [seed.id, seed]),
+    );
   }
 
   async verifyWriteAccess(): Promise<void> {
@@ -180,6 +193,150 @@ export class FakeMailProvider implements MailProvider {
   /** Test-only: every setMessageReadState() write accepted by the mailbox, in call order. */
   get recordedWrites(): readonly RecordedWrite[] {
     return this.writes;
+  }
+
+  async createDraft(input: CreateDraftInput): Promise<MailMessage> {
+    this.draftCounter += 1;
+    const id = `fake-draft-${this.draftCounter}`;
+    const now = new Date().toISOString();
+    const seed: SeedMessage = {
+      id,
+      conversationId: `fake-draft-conv-${this.draftCounter}`,
+      subject: input.subject,
+      body: { content: input.bodyHtml, contentType: 'html' },
+      receivedDateTime: now,
+      // Graph reports this sentinel for an unsent message's sentDateTime.
+      sentDateTime: '0001-01-01T00:00:00Z',
+      from: this.options.ownerAddress ? { address: this.options.ownerAddress } : null,
+      toRecipients: input.to,
+      ccRecipients: input.cc ?? [],
+      bccRecipients: input.bcc ?? [],
+      folder: 'drafts',
+      isRead: true,
+    };
+    this.draftsFolder.set(id, seed);
+    return { ...toMailMessage(seed, true), isDraft: true };
+  }
+
+  /** Test-only: every message currently in the mailbox's Drafts folder. */
+  draftsInMailbox(): MailMessage[] {
+    return [...this.draftsFolder.values()].map((seed) => ({ ...toMailMessage(seed, true), isDraft: true }));
+  }
+
+  /** Test-only: every message currently in the mailbox's Sent folder (SC-004 invariance checks). */
+  sentMessages(): MailMessage[] {
+    return this.seeded
+      .filter((seed) => resolveFolder(seed.folder).wellKnown === 'sentitems')
+      .map((seed) => toMailMessage(seed, this.readState.get(seed.id) ?? seed.isRead ?? false));
+  }
+
+  private findMailboxMessage(graphMessageId: string): SeedMessage | undefined {
+    return this.seeded.find((seed) => seed.id === graphMessageId) ?? this.draftsFolder.get(graphMessageId);
+  }
+
+  async createReplyDraft(graphMessageId: string, input: CreateReplyDraftInput): Promise<MailMessage> {
+    const original = this.findMailboxMessage(graphMessageId);
+    if (!original || this.deletedGraphMessageIds.has(graphMessageId)) {
+      throw new MailMessageGoneError(graphMessageId);
+    }
+
+    const owner = this.options.ownerAddress?.toLowerCase();
+    const isNotOwner = (recipient: SeedRecipient) => recipient.address.toLowerCase() !== owner;
+
+    const to: SeedRecipient[] = original.from ? [original.from] : [];
+    const cc: SeedRecipient[] = [];
+    if (input.replyAll) {
+      const seenAddresses = new Set(to.map((r) => r.address.toLowerCase()));
+      for (const recipient of [...original.toRecipients, ...original.ccRecipients]) {
+        const key = recipient.address.toLowerCase();
+        if (seenAddresses.has(key) || !isNotOwner(recipient)) continue;
+        seenAddresses.add(key);
+        cc.push(recipient);
+      }
+    }
+
+    const subject = /^re:\s/i.test(original.subject) ? original.subject : `Re: ${original.subject}`;
+    const quotedContent = `<blockquote>${original.body.content}</blockquote>`;
+    const bodyContent = `${input.prefixHtml}${quotedContent}`;
+
+    this.draftCounter += 1;
+    const id = `fake-reply-draft-${this.draftCounter}`;
+    const now = new Date().toISOString();
+    const seed: SeedMessage = {
+      id,
+      conversationId: original.conversationId,
+      subject,
+      body: { content: bodyContent, contentType: 'html' },
+      receivedDateTime: now,
+      // Graph reports this sentinel for an unsent message's sentDateTime.
+      sentDateTime: '0001-01-01T00:00:00Z',
+      from: this.options.ownerAddress ? { address: this.options.ownerAddress } : null,
+      toRecipients: to,
+      ccRecipients: cc,
+      bccRecipients: [],
+      folder: 'drafts',
+      isRead: true,
+    };
+    this.draftsFolder.set(id, seed);
+    return { ...toMailMessage(seed, true), isDraft: true };
+  }
+
+  async updateDraft(graphMessageId: string, input: UpdateDraftInput): Promise<MailMessage> {
+    const existing = this.draftsFolder.get(graphMessageId);
+    if (!existing) {
+      throw new MailMessageGoneError(graphMessageId);
+    }
+
+    const updated: SeedMessage = {
+      ...existing,
+      body: input.bodyHtml !== undefined ? { content: input.bodyHtml, contentType: 'html' } : existing.body,
+      toRecipients: input.to ?? existing.toRecipients,
+      ccRecipients: input.cc ?? existing.ccRecipients,
+      bccRecipients: input.bcc ?? existing.bccRecipients,
+      subject: input.subject ?? existing.subject,
+    };
+    this.draftsFolder.set(graphMessageId, updated);
+    return { ...toMailMessage(updated, true), isDraft: true };
+  }
+
+  async deleteDraft(graphMessageId: string): Promise<void> {
+    if (!this.draftsFolder.has(graphMessageId)) {
+      throw new MailMessageGoneError(graphMessageId);
+    }
+    this.draftsFolder.delete(graphMessageId);
+  }
+
+  /** Test-only: simulates a draft going stale (sent/discarded in Outlook) without going through deleteDraft. */
+  discardDraftFromMailbox(graphMessageId: string): void {
+    this.draftsFolder.delete(graphMessageId);
+  }
+
+  /** Test-only: simulates an Outlook edit to a draft's body between syncs. */
+  editDraftInMailbox(graphMessageId: string, bodyHtml: string): void {
+    const existing = this.draftsFolder.get(graphMessageId);
+    if (!existing) return;
+    this.draftsFolder.set(graphMessageId, { ...existing, body: { content: bodyHtml, contentType: 'html' } });
+  }
+
+  /**
+   * Test-only: simulates sending a draft from Outlook — it leaves the Drafts folder and its sent
+   * copy (same immutable id, per research R6) becomes visible to the ranged folder walk and to
+   * sentMessages().
+   */
+  sendDraftFromMailbox(graphMessageId: string, sentDateTime: string): void {
+    const existing = this.draftsFolder.get(graphMessageId);
+    if (!existing) return;
+    this.draftsFolder.delete(graphMessageId);
+    const sentSeed: SeedMessage = { ...existing, receivedDateTime: sentDateTime, sentDateTime, folder: 'sent' };
+    this.seeded.push(sentSeed);
+    this.folders.set(resolveFolder('sent').id, resolveFolder('sent'));
+    this.readState.set(sentSeed.id, sentSeed.isRead ?? true);
+  }
+
+  async fetchDraftMessages(onMessage: (message: MailMessage) => void | Promise<void>): Promise<void> {
+    for (const seed of this.draftsFolder.values()) {
+      await onMessage({ ...toMailMessage(seed, true), isDraft: true });
+    }
   }
 
   async listFolders(): Promise<MailFolderNode[]> {

@@ -93,6 +93,22 @@ const jordanSmith: SeedMessage = {
   isRead: true,
 };
 
+/** A draft message so the Draft chip/badge (031-mcp-email-drafts US1) are visible without any tool call. */
+const followUpDraft: SeedMessage = {
+  id: 'dev-msg-followup-draft',
+  conversationId: 'dev-conv-followup-draft',
+  subject: 'Follow-up notes',
+  body: { content: '<p>A few thoughts before I send this.</p>', contentType: 'html' },
+  receivedDateTime: '2026-08-07T09:00:00Z',
+  sentDateTime: '2026-08-07T09:00:00Z',
+  from: { address: 'tyler@example.com', name: 'Tyler Satre' },
+  toRecipients: [{ address: 'sam.rivera@example.com', name: 'Sam Rivera' }],
+  ccRecipients: [],
+  bccRecipients: [],
+  folder: 'drafts',
+  isRead: true,
+};
+
 /** Sam Rivera's second address, involved via a different conversation (US3 sc1 — several addresses). */
 const samPersonal: SeedMessage = {
   id: 'dev-msg-sam-personal',
@@ -109,11 +125,11 @@ const samPersonal: SeedMessage = {
   isRead: true,
 };
 
-const FIXED_MESSAGES: SeedMessage[] = [pricingQuestion, pricingReply, quoteAttached, signatureOnly, jordanSmith, samPersonal];
+const FIXED_MESSAGES: SeedMessage[] = [pricingQuestion, pricingReply, quoteAttached, signatureOnly, jordanSmith, samPersonal, followUpDraft];
 
-// pricingQuestion + pricingReply share one conversation ("dev-conv-pricing"), so the 6 fixed
-// messages above form only 5 distinct conversations.
-const FIXED_CONVERSATION_COUNT = 5;
+// pricingQuestion + pricingReply share one conversation ("dev-conv-pricing"), so the 7 fixed
+// messages above form only 6 distinct conversations.
+const FIXED_CONVERSATION_COUNT = 6;
 const FILLER_COUNT = 30 - FIXED_CONVERSATION_COUNT;
 
 /** Filler conversations so the Emails page has 30 total (25 shown, load-more reveals the rest). */

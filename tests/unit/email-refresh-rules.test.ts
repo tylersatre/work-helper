@@ -16,6 +16,7 @@ class StubProvider implements MailProvider {
   folder: { id: string; name: string; wellKnown: WellKnownFolder | null } = { id: 'inbox', name: 'Inbox', wellKnown: 'inbox' };
   message: MailMessage;
   attachments: MailAttachmentMeta[] = [];
+  draftMessages: MailMessage[] = [];
 
   constructor(message: MailMessage) {
     this.message = message;
@@ -42,6 +43,28 @@ class StubProvider implements MailProvider {
   async setMessageReadState(): Promise<'updated' | 'not-found'> {
     return 'updated';
   }
+
+  async createDraft(): Promise<MailMessage> {
+    throw new Error('not implemented');
+  }
+
+  async createReplyDraft(): Promise<MailMessage> {
+    throw new Error('not implemented');
+  }
+
+  async updateDraft(): Promise<MailMessage> {
+    throw new Error('not implemented');
+  }
+
+  async deleteDraft(): Promise<void> {
+    throw new Error('not implemented');
+  }
+
+  async fetchDraftMessages(onMessage: (message: MailMessage) => void | Promise<void>): Promise<void> {
+    for (const message of this.draftMessages) {
+      await onMessage(message);
+    }
+  }
 }
 
 function baseMessage(): MailMessage {
@@ -63,6 +86,7 @@ function baseMessage(): MailMessage {
     hasAttachments: true,
     webLink: '',
     internetMessageId: 'id-1',
+    isDraft: false,
   };
 }
 
@@ -130,5 +154,86 @@ describe('refresh-on-resync field rules (R7)', () => {
     // Attachment rows: replaced wholesale.
     const attachmentsAfter = db.select().from(emailAttachments).where(eq(emailAttachments.messageId, before!.id)).all();
     expect(attachmentsAfter.map((a) => a.name)).toEqual(['b.pdf']);
+  });
+});
+
+describe('draft mirror exception on re-sync (US5, research R6)', () => {
+  function draftMessage(): MailMessage {
+    return {
+      id: 'draft-1',
+      conversationId: 'conv-draft',
+      subject: 'Original draft subject',
+      body: { content: 'Original body', contentType: 'text' },
+      receivedDateTime: '2026-08-06T09:00:00Z',
+      sentDateTime: '2026-08-06T09:00:00Z',
+      from: { address: 'tyler@example.com', name: 'Tyler' },
+      toRecipients: [{ address: 'sam@example.com', name: 'Sam' }],
+      ccRecipients: [],
+      bccRecipients: [],
+      isRead: true,
+      importance: 'normal',
+      flagStatus: 'notFlagged',
+      categories: [],
+      hasAttachments: false,
+      webLink: '',
+      internetMessageId: '',
+      isDraft: true,
+    };
+  }
+
+  it('mirrors all content fields (subject, body, participants full-replace) on a draft row re-encountered via the Drafts pull, while non-draft rows stay locked (FR-016/FR-017)', async () => {
+    const { db } = createDb(':memory:');
+    const window = computeSyncWindow('2026-08-01', '2026-08-08');
+    const provider = new StubProvider(baseMessage());
+    provider.draftMessages = [draftMessage()];
+
+    const first = await runSync(db, provider, window);
+    expect(first.newCount).toBe(2);
+
+    const [draftBefore] = db.select().from(emailMessages).where(eq(emailMessages.graphMessageId, 'draft-1')).all();
+    expect(draftBefore!.isDraft).toBe(true);
+    const [nonDraftBefore] = db.select().from(emailMessages).where(eq(emailMessages.graphMessageId, 'msg-1')).all();
+
+    provider.draftMessages = [
+      {
+        ...draftMessage(),
+        subject: 'Changed subject',
+        body: { content: 'Changed body', contentType: 'text' },
+        toRecipients: [{ address: 'ana@example.com', name: 'Ana' }],
+      },
+    ];
+
+    const second = await runSync(db, provider, window);
+    expect(second.updatedCount).toBeGreaterThanOrEqual(1);
+
+    const [draftAfter] = db.select().from(emailMessages).where(eq(emailMessages.graphMessageId, 'draft-1')).all();
+    expect(draftAfter!.subject).toBe('Changed subject');
+    expect(draftAfter!.bodyOriginal).toBe('Changed body');
+    const participantsAfter = db.select().from(emailParticipants).where(eq(emailParticipants.messageId, draftAfter!.id)).all();
+    expect(participantsAfter.map((p) => p.displayName)).toContain('Ana');
+
+    // Non-draft row from the ranged walk stays snapshot-locked, unaffected by the drafts phase.
+    const [nonDraftAfter] = db.select().from(emailMessages).where(eq(emailMessages.graphMessageId, 'msg-1')).all();
+    expect(nonDraftAfter!.subject).toBe(nonDraftBefore!.subject);
+    expect(nonDraftAfter!.bodyOriginal).toBe(nonDraftBefore!.bodyOriginal);
+  });
+
+  it("flips is_draft to false when a previously-draft row's id reappears via the ranged folder walk (sent-draft transition, research R6)", async () => {
+    const { db } = createDb(':memory:');
+    const window = computeSyncWindow('2026-08-01', '2026-08-08');
+    const provider = new StubProvider(baseMessage());
+    provider.draftMessages = [{ ...draftMessage(), id: 'shared-id' }];
+
+    await runSync(db, provider, window);
+    const [beforeFlip] = db.select().from(emailMessages).where(eq(emailMessages.graphMessageId, 'shared-id')).all();
+    expect(beforeFlip!.isDraft).toBe(true);
+
+    provider.draftMessages = [];
+    provider.message = { ...baseMessage(), id: 'shared-id' };
+
+    await runSync(db, provider, window);
+
+    const [afterFlip] = db.select().from(emailMessages).where(eq(emailMessages.graphMessageId, 'shared-id')).all();
+    expect(afterFlip!.isDraft).toBe(false);
   });
 });

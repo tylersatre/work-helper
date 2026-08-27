@@ -76,6 +76,7 @@ export const emailMessages = sqliteTable(
     categories: text('categories', { mode: 'json' }).$type<string[]>().notNull().default([]),
     webLink: text('web_link').notNull().default(''),
     internetMessageId: text('internet_message_id').notNull().default(''),
+    isDraft: integer('is_draft', { mode: 'boolean' }).notNull().default(false),
     createdAt: integer('created_at').notNull(),
   },
   (t) => [

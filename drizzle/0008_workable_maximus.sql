@@ -1,0 +1,1 @@
+ALTER TABLE `email_messages` ADD `is_draft` integer DEFAULT false NOT NULL;

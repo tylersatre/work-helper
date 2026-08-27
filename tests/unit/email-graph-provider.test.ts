@@ -20,6 +20,7 @@ function fixtureMessage(overrides: Record<string, unknown> = {}) {
     hasAttachments: false,
     webLink: 'https://outlook.office.com/mail/AAMk-immutable-1',
     internetMessageId: '<AAMk-immutable-1@example.com>',
+    isDraft: false,
     ...overrides,
   };
 }
@@ -67,7 +68,7 @@ describe('GraphMailProvider', () => {
     const parsed = new URL(url as string);
     expect(parsed.origin + parsed.pathname).toBe('https://graph.microsoft.com/v1.0/me/mailFolders/id-inbox/messages');
     expect(parsed.searchParams.get('$select')).toBe(
-      'id,conversationId,subject,body,sentDateTime,receivedDateTime,from,toRecipients,ccRecipients,bccRecipients,isRead,importance,flag,categories,hasAttachments,webLink,internetMessageId',
+      'id,conversationId,subject,body,sentDateTime,receivedDateTime,from,toRecipients,ccRecipients,bccRecipients,isRead,importance,flag,categories,hasAttachments,webLink,internetMessageId,isDraft',
     );
     expect(parsed.searchParams.get('$filter')).toBe(
       `receivedDateTime ge ${WINDOW.startUtc} and receivedDateTime lt ${WINDOW.endUtc}`,
@@ -155,7 +156,17 @@ describe('GraphMailProvider', () => {
       hasAttachments: false,
       webLink: 'https://outlook.office.com/mail/AAMk-immutable-1',
       internetMessageId: '<AAMk-immutable-1@example.com>',
+      isDraft: false,
     });
+  });
+
+  it('maps isDraft true when Graph reports the message as a draft', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ value: [fixtureMessage({ isDraft: true })] }));
+    const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
+
+    const [page] = await drain(provider, INBOX_FOLDER, WINDOW);
+
+    expect(page![0]).toMatchObject({ isDraft: true });
   });
 
   it('maps populated recipients to {address, name} entries, defaulting a missing name to \'\'', async () => {
@@ -451,6 +462,278 @@ describe('GraphMailProvider', () => {
       const provider = writeProvider();
 
       await expect(provider.setMessageReadState('AAMk-immutable-1', true)).rejects.toThrow();
+    });
+  });
+
+  describe('createDraft (research R1)', () => {
+    function writeProvider(getWriteAccessToken: () => Promise<string> = async () => 'write-token-123') {
+      return new GraphMailProvider({ getAccessToken: async () => 'read-token-123', getWriteAccessToken });
+    }
+
+    it('issues POST /me/messages with recipients/subject/HTML body, auth + ImmutableId headers, and returns the mapped created message', async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(
+          fixtureMessage({
+            id: 'AAMk-new-draft-1',
+            conversationId: 'conv-new',
+            subject: 'Pricing sheet',
+            body: { content: '<p>Hi</p>', contentType: 'html' },
+            isDraft: true,
+          }),
+          201,
+        ),
+      );
+      const provider = writeProvider();
+
+      const created = await provider.createDraft({
+        to: [{ address: 'sam@example.com', name: 'Sam' }],
+        cc: [{ address: 'ana@example.com', name: 'Ana' }],
+        bcc: [{ address: 'bob@example.com', name: 'Bob' }],
+        subject: 'Pricing sheet',
+        bodyHtml: '<p>Hi</p>',
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0]!;
+      expect(url).toBe('https://graph.microsoft.com/v1.0/me/messages');
+      const requestInit = init as RequestInit;
+      expect(requestInit.method).toBe('POST');
+      expect(JSON.parse(requestInit.body as string)).toEqual({
+        toRecipients: [{ emailAddress: { address: 'sam@example.com', name: 'Sam' } }],
+        ccRecipients: [{ emailAddress: { address: 'ana@example.com', name: 'Ana' } }],
+        bccRecipients: [{ emailAddress: { address: 'bob@example.com', name: 'Bob' } }],
+        subject: 'Pricing sheet',
+        body: { contentType: 'HTML', content: '<p>Hi</p>' },
+      });
+      const headers = new Headers(requestInit.headers);
+      expect(headers.get('Authorization')).toBe('Bearer write-token-123');
+      expect(headers.get('Prefer')).toBe('IdType="ImmutableId"');
+      expect(headers.get('Content-Type')).toBe('application/json');
+
+      expect(created).toMatchObject({ id: 'AAMk-new-draft-1', conversationId: 'conv-new', subject: 'Pricing sheet', isDraft: true });
+    });
+
+    it('omits cc/bcc from the payload when not supplied', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(fixtureMessage({ isDraft: true })));
+      const provider = writeProvider();
+
+      await provider.createDraft({ to: [{ address: 'sam@example.com', name: 'Sam' }], subject: 'Hi', bodyHtml: '<p>Hi</p>' });
+
+      const [, init] = fetchMock.mock.calls[0]!;
+      const body = JSON.parse((init as RequestInit).body as string);
+      expect(body.ccRecipients).toEqual([]);
+      expect(body.bccRecipients).toEqual([]);
+    });
+  });
+
+  describe('createReplyDraft (research R2)', () => {
+    function writeProvider(getWriteAccessToken: () => Promise<string> = async () => 'write-token-123') {
+      return new GraphMailProvider({ getAccessToken: async () => 'read-token-123', getWriteAccessToken });
+    }
+
+    it('POSTs an empty body to createReply, inserts the prefix after <body …>, then PATCHes the merged body', async () => {
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(
+            fixtureMessage({
+              id: 'AAMk-reply-draft-1',
+              subject: 'Re: Pricing question',
+              body: { content: '<html><body class="x"><p>Quoted original</p></body></html>', contentType: 'html' },
+              isDraft: true,
+            }),
+          ),
+        )
+        .mockResolvedValueOnce(new Response(null, { status: 200 }));
+      const provider = writeProvider();
+
+      const draft = await provider.createReplyDraft('AAMk-original-1', { replyAll: false, prefixHtml: '<p>Sure thing.</p>' });
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const [postUrl, postInit] = fetchMock.mock.calls[0]!;
+      expect(postUrl).toBe('https://graph.microsoft.com/v1.0/me/messages/AAMk-original-1/createReply');
+      const postRequestInit = postInit as RequestInit;
+      expect(postRequestInit.method).toBe('POST');
+      expect(JSON.parse(postRequestInit.body as string)).toEqual({});
+      const postHeaders = new Headers(postRequestInit.headers);
+      expect(postHeaders.get('Authorization')).toBe('Bearer write-token-123');
+      expect(postHeaders.get('Prefer')).toBe('IdType="ImmutableId"');
+
+      const [patchUrl, patchInit] = fetchMock.mock.calls[1]!;
+      expect(patchUrl).toBe('https://graph.microsoft.com/v1.0/me/messages/AAMk-reply-draft-1');
+      const patchRequestInit = patchInit as RequestInit;
+      expect(patchRequestInit.method).toBe('PATCH');
+      const patchBody = JSON.parse(patchRequestInit.body as string);
+      expect(patchBody.body.content).toBe('<html><body class="x"><p>Sure thing.</p><p>Quoted original</p></body></html>');
+
+      expect(draft.id).toBe('AAMk-reply-draft-1');
+      expect(draft.body.content).toBe('<html><body class="x"><p>Sure thing.</p><p>Quoted original</p></body></html>');
+    });
+
+    it('uses createReplyAll when replyAll is true', async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(fixtureMessage({ body: { content: '<p>Quoted</p>', contentType: 'html' }, isDraft: true })))
+        .mockResolvedValueOnce(new Response(null, { status: 200 }));
+      const provider = writeProvider();
+
+      await provider.createReplyDraft('AAMk-original-1', { replyAll: true, prefixHtml: '<p>Hi all.</p>' });
+
+      const [postUrl] = fetchMock.mock.calls[0]!;
+      expect(postUrl).toBe('https://graph.microsoft.com/v1.0/me/messages/AAMk-original-1/createReplyAll');
+    });
+
+    it('prepends the prefix when the returned body has no <body> tag', async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(fixtureMessage({ body: { content: '<p>Quoted original</p>', contentType: 'html' }, isDraft: true })))
+        .mockResolvedValueOnce(new Response(null, { status: 200 }));
+      const provider = writeProvider();
+
+      const draft = await provider.createReplyDraft('AAMk-original-1', { replyAll: false, prefixHtml: '<p>Sure thing.</p>' });
+
+      expect(draft.body.content).toBe('<p>Sure thing.</p><p>Quoted original</p>');
+    });
+
+    it('maps a 404 on the createReply call to a mailbox-gone signal', async () => {
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
+      const provider = writeProvider();
+
+      await expect(provider.createReplyDraft('AAMk-gone-1', { replyAll: false, prefixHtml: '<p>Hi</p>' })).rejects.toThrow(/no longer/i);
+    });
+  });
+
+  describe('updateDraft / deleteDraft (research R1, US3)', () => {
+    function writeProvider(getWriteAccessToken: () => Promise<string> = async () => 'write-token-123') {
+      return new GraphMailProvider({ getAccessToken: async () => 'read-token-123', getWriteAccessToken });
+    }
+
+    it('PATCHes exactly the supplied fields, omitting fields not supplied', async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ isDraft: true }))
+        .mockResolvedValueOnce(jsonResponse(fixtureMessage({ subject: 'New subject', isDraft: true })));
+      const provider = writeProvider();
+
+      await provider.updateDraft('AAMk-draft-1', { bodyHtml: '<p>New body</p>', subject: 'New subject' });
+
+      const [url, init] = fetchMock.mock.calls[1]!;
+      expect(url).toBe('https://graph.microsoft.com/v1.0/me/messages/AAMk-draft-1');
+      const requestInit = init as RequestInit;
+      expect(requestInit.method).toBe('PATCH');
+      expect(JSON.parse(requestInit.body as string)).toEqual({
+        body: { contentType: 'HTML', content: '<p>New body</p>' },
+        subject: 'New subject',
+      });
+      const headers = new Headers(requestInit.headers);
+      expect(headers.get('Authorization')).toBe('Bearer write-token-123');
+      expect(headers.get('Prefer')).toBe('IdType="ImmutableId"');
+    });
+
+    it('includes recipient fields only when supplied', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ isDraft: true })).mockResolvedValueOnce(jsonResponse(fixtureMessage({ isDraft: true })));
+      const provider = writeProvider();
+
+      await provider.updateDraft('AAMk-draft-1', { to: [{ address: 'sam@example.com', name: 'Sam' }] });
+
+      const [, init] = fetchMock.mock.calls[1]!;
+      const body = JSON.parse((init as RequestInit).body as string);
+      expect(body).toEqual({ toRecipients: [{ emailAddress: { address: 'sam@example.com', name: 'Sam' } }] });
+    });
+
+    it('maps a 404 on the pre-check to a mailbox-gone signal, never PATCHing', async () => {
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
+      const provider = writeProvider();
+
+      await expect(provider.updateDraft('AAMk-gone-1', { subject: 'x' })).rejects.toThrow(/no longer/i);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('verifies the target is still a draft before PATCHing, and maps a message that exists but is no longer a draft (e.g. sent) to a mailbox-gone signal without ever PATCHing it', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ isDraft: false }));
+      const provider = writeProvider();
+
+      await expect(provider.updateDraft('AAMk-sent-1', { subject: 'x' })).rejects.toThrow(/no longer/i);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url] = fetchMock.mock.calls[0]!;
+      const parsed = new URL(url as string);
+      expect(parsed.pathname).toBe('/v1.0/me/messages/AAMk-sent-1');
+      expect(parsed.searchParams.get('$select')).toBe('isDraft');
+    });
+
+    it('PATCHes when the pre-check confirms the target is still a draft', async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ isDraft: true }))
+        .mockResolvedValueOnce(jsonResponse(fixtureMessage({ isDraft: true })));
+      const provider = writeProvider();
+
+      await provider.updateDraft('AAMk-draft-1', { subject: 'x' });
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const [, patchInit] = fetchMock.mock.calls[1]!;
+      expect((patchInit as RequestInit).method).toBe('PATCH');
+    });
+
+    it('verifies the target is still a draft before deleting, then issues DELETE /me/messages/{id} with auth + ImmutableId headers', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ isDraft: true })).mockResolvedValueOnce(new Response(null, { status: 204 }));
+      const provider = writeProvider();
+
+      await provider.deleteDraft('AAMk-draft-1');
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const [url, init] = fetchMock.mock.calls[1]!;
+      expect(url).toBe('https://graph.microsoft.com/v1.0/me/messages/AAMk-draft-1');
+      const requestInit = init as RequestInit;
+      expect(requestInit.method).toBe('DELETE');
+      const headers = new Headers(requestInit.headers);
+      expect(headers.get('Authorization')).toBe('Bearer write-token-123');
+      expect(headers.get('Prefer')).toBe('IdType="ImmutableId"');
+    });
+
+    it('maps a 404 on the pre-check to a mailbox-gone signal, never issuing DELETE', async () => {
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
+      const provider = writeProvider();
+
+      await expect(provider.deleteDraft('AAMk-gone-1')).rejects.toThrow(/no longer/i);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('maps a target that exists but is no longer a draft (e.g. sent) to a mailbox-gone signal, never deleting the real message', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ isDraft: false }));
+      const provider = writeProvider();
+
+      await expect(provider.deleteDraft('AAMk-sent-1')).rejects.toThrow(/no longer/i);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('fetchDraftMessages (research R6, US5)', () => {
+    it('pages the entire Drafts folder with no $filter, using the existing $select list and ImmutableId header, following @odata.nextLink', async () => {
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse({
+            value: [fixtureMessage({ id: 'draft-1', isDraft: true })],
+            '@odata.nextLink': 'https://graph.microsoft.com/v1.0/me/mailFolders/drafts/messages?$skiptoken=abc',
+          }),
+        )
+        .mockResolvedValueOnce(jsonResponse({ value: [fixtureMessage({ id: 'draft-2', isDraft: true })] }));
+      const provider = new GraphMailProvider({ getAccessToken: async () => 'token-123', getWriteAccessToken: async () => 'write-token-123' });
+
+      const seen: string[] = [];
+      await provider.fetchDraftMessages((message) => {
+        seen.push(message.id);
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const [url, init] = fetchMock.mock.calls[0]!;
+      const parsed = new URL(url as string);
+      expect(parsed.origin + parsed.pathname).toBe('https://graph.microsoft.com/v1.0/me/mailFolders/drafts/messages');
+      expect(parsed.searchParams.get('$filter')).toBeNull();
+      expect(parsed.searchParams.get('$select')).toBe(
+        'id,conversationId,subject,body,sentDateTime,receivedDateTime,from,toRecipients,ccRecipients,bccRecipients,isRead,importance,flag,categories,hasAttachments,webLink,internetMessageId,isDraft',
+      );
+      const headers = new Headers((init as RequestInit).headers);
+      expect(headers.get('Authorization')).toBe('Bearer token-123');
+      expect(headers.get('Prefer')).toBe('IdType="ImmutableId"');
+      expect(fetchMock.mock.calls[1]![0]).toBe('https://graph.microsoft.com/v1.0/me/mailFolders/drafts/messages?$skiptoken=abc');
+      expect(seen).toEqual(['draft-1', 'draft-2']);
     });
   });
 

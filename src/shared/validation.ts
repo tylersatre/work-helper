@@ -57,6 +57,10 @@ export const taskEffortValues = ['S', 'M', 'L', 'XL'] as const;
 export const taskPrioritySchema = z.enum(taskPriorityValues);
 export const taskEffortSchema = z.enum(taskEffortValues);
 
+export const emailSignatureInputSchema = z.object({
+  signature: z.string(),
+});
+
 export const dashboardSavedViewSchema = z.object({
   lanes: z
     .array(z.string().min(1))

@@ -50,6 +50,16 @@ import { eventsForPerson, getEvent, listEvents } from '../services/calendar/quer
 import type { MailProvider } from '../services/email/provider.js';
 import { MailWritePermissionError, MailboxNotConnectedError } from '../services/email/graph-auth.js';
 import { setEmailReadState } from '../services/email/read-state.js';
+import {
+  createDraft as createDraftService,
+  createReplyDraft as createReplyDraftService,
+  deleteDraft as deleteDraftService,
+  updateDraft as updateDraftService,
+  EmptyBodyError,
+  MessageNotFoundError,
+  NotADraftError,
+} from '../services/email/drafts.js';
+import { MailMessageGoneError } from '../services/email/provider.js';
 import { computeSyncWindow } from '../services/email/sync.js';
 import type { SyncCoordinator } from '../services/email/sync-coordinator.js';
 import { conversationSubject, emailsForPerson, getConversation, listConversations, listUnlinkedAddresses } from '../services/email/queries.js';
@@ -581,7 +591,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
     'sync-emails',
     {
       description:
-        'Pulls messages for a date range (inclusive, server-local timezone) from every mailbox folder except Junk, Deleted Items, and Drafts into the store, refreshing already-stored messages it re-encounters.',
+        'Pulls messages for a date range (inclusive, server-local timezone) from every mailbox folder except Junk and Deleted Items into the store, refreshing already-stored messages it re-encounters. The Drafts folder is not date-ranged — every sync also pulls it in full, mirroring edits and removals so work-helper\'s drafts always match the mailbox exactly.',
       inputSchema: { startDate: z.string().optional(), endDate: z.string().optional() },
       outputSchema: {
         status: z.enum(['complete', 'interrupted']),
@@ -682,6 +692,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
     latestMessageAt: z.number(),
     hasUnread: z.boolean(),
     hasAttachments: z.boolean(),
+    hasDraft: z.boolean(),
     participants: z.array(conversationParticipantSummarySchema),
   };
 
@@ -706,6 +717,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
     bodyText: z.string(),
     sourceFolder: z.string(),
     isRead: z.boolean(),
+    isDraft: z.boolean(),
     importance: z.enum(['low', 'normal', 'high']),
     flagStatus: z.enum(['notFlagged', 'complete', 'flagged']),
     categories: z.array(z.string()),
@@ -795,6 +807,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
             receivedAt: z.number(),
             sourceFolder: z.string(),
             isRead: z.boolean(),
+            isDraft: z.boolean(),
             importance: z.enum(['low', 'normal', 'high']),
             flagStatus: z.enum(['notFlagged', 'complete', 'flagged']),
             categories: z.array(z.string()),
@@ -1433,7 +1446,7 @@ export function createMcpServer(context: McpToolsContext): McpServer {
     'set-email-read-state',
     {
       description:
-        'Marks up to 50 synced email messages read or unread. Writes each change to the connected Outlook mailbox first, then updates work-helper\'s stored state, and reports an outcome per message. Individual message ids only (from get-conversation messages[].id or emails-for-person emails[].messageId) — to mark a whole thread, fetch it with get-conversation and pass its message ids. This is the only mailbox-modifying tool in work-helper, and read/unread state is the only thing it changes.',
+        'Marks up to 50 synced email messages read or unread. Writes each change to the connected Outlook mailbox first, then updates work-helper\'s stored state, and reports an outcome per message. Individual message ids only (from get-conversation messages[].id or emails-for-person emails[].messageId) — to mark a whole thread, fetch it with get-conversation and pass its message ids. The other sanctioned mailbox writes in work-helper are the draft tools (create-draft, create-reply-draft, update-draft, delete-draft) — this tool changes only read/unread state, and never touches drafts or sends mail.',
       inputSchema: {
         messageIds: z.array(z.number().int().positive()).describe('1–50 synced message ids (individual messages only)'),
         state: z.string().describe('read | unread'),
@@ -1494,6 +1507,168 @@ export function createMcpServer(context: McpToolsContext): McpServer {
 
       const structuredContent = { state, outcomes, markedCount, alreadyCount, notFoundCount, failedCount };
       return { content: [{ type: 'text', text }], structuredContent };
+    },
+  );
+
+  const draftSummarySchema = {
+    messageId: z.number(),
+    conversationId: z.number(),
+    subject: z.string(),
+    to: z.array(z.string()),
+    cc: z.array(z.string()),
+    bcc: z.array(z.string()),
+    isDraft: z.literal(true),
+    webLink: z.string(),
+  };
+
+  function draftToolError(error: unknown): ReturnType<typeof toolError> {
+    if (error instanceof MailboxNotConnectedError) {
+      return toolError(
+        error.reason === 'never-signed-in'
+          ? 'The mailbox is not connected — connect the mailbox on the Sync page.'
+          : `The mailbox sign-in has expired (${error.detail}) — reconnect the mailbox on the Sync page.`,
+      );
+    }
+    if (error instanceof MailWritePermissionError) {
+      return toolError(error.message);
+    }
+    if (error instanceof EmptyBodyError) {
+      return toolError(error.message);
+    }
+    if (error instanceof MessageNotFoundError) {
+      return toolError(error.message);
+    }
+    if (error instanceof NotADraftError) {
+      return toolError(error.message);
+    }
+    if (error instanceof MailMessageGoneError) {
+      return toolError('The mailbox no longer has this draft — the next sync will reconcile it.');
+    }
+    throw error;
+  }
+
+  server.registerTool(
+    'create-draft',
+    {
+      description:
+        'Creates a fresh standalone draft in the mailbox\'s Drafts folder — each call makes a new draft, it never revises one (use update-draft to revise an existing draft). The saved signature (from the Sync page) is appended below the supplied body.',
+      inputSchema: {
+        to: z.array(z.string()).min(1).describe('Recipient email addresses'),
+        cc: z.array(z.string()).optional(),
+        bcc: z.array(z.string()).optional(),
+        subject: z.string(),
+        bodyHtml: z.string().describe('HTML body, written verbatim; the saved signature is appended below it'),
+      },
+      outputSchema: draftSummarySchema,
+    },
+    async ({ to, cc, bcc, subject, bodyHtml }) => {
+      if (!context.mailProvider) {
+        return toolError('The mailbox is not connected — connect the mailbox on the Sync page.');
+      }
+
+      let summary;
+      try {
+        summary = await createDraftService(context.db, context.mailProvider, { to, cc, bcc, subject, bodyHtml });
+      } catch (error) {
+        return draftToolError(error);
+      }
+
+      return {
+        content: [{ type: 'text', text: `Created draft "${summary.subject}" (message ${summary.messageId}).` }],
+        structuredContent: { ...summary },
+      };
+    },
+  );
+
+  server.registerTool(
+    'create-reply-draft',
+    {
+      description:
+        'Creates a reply (or reply-all) draft for a synced message, shaped exactly like an Outlook desktop reply: "Re:" subject, mailbox-derived recipients (you are never a recipient of your own reply), and a body of the supplied HTML, then the saved signature, then the quoted original thread. The draft lands inside the conversation it replies to. Each call makes a new draft — use update-draft to revise it.',
+      inputSchema: {
+        messageId: z.number().describe('Synced message id to reply to'),
+        replyAll: z.boolean().optional().describe('true for reply-all; defaults to reply (sender only)'),
+        bodyHtml: z.string().describe('HTML reply content, written verbatim above the signature and quoted thread'),
+      },
+      outputSchema: draftSummarySchema,
+    },
+    async ({ messageId, replyAll, bodyHtml }) => {
+      if (!context.mailProvider) {
+        return toolError('The mailbox is not connected — connect the mailbox on the Sync page.');
+      }
+
+      let summary;
+      try {
+        summary = await createReplyDraftService(context.db, context.mailProvider, { messageId, replyAll, bodyHtml });
+      } catch (error) {
+        return draftToolError(error);
+      }
+
+      const kind = replyAll ? 'reply-all' : 'reply';
+      return {
+        content: [{ type: 'text', text: `Created ${kind} draft "${summary.subject}" (message ${summary.messageId}).` }],
+        structuredContent: { ...summary },
+      };
+    },
+  );
+
+  server.registerTool(
+    'update-draft',
+    {
+      description:
+        'Replaces a draft\'s body verbatim and whole — nothing is appended, not even the signature — and optionally changes its recipients or subject. Works on any draft (agent-created or started in Outlook), and only on drafts — set-email-read-state and this tool family are the only mailbox-modifying tools in work-helper.',
+      inputSchema: {
+        messageId: z.number().describe('Synced draft message id'),
+        bodyHtml: z.string().describe('Replacement HTML body, written verbatim and whole — nothing is appended'),
+        to: z.array(z.string()).optional().describe('Omitted ⇒ unchanged'),
+        cc: z.array(z.string()).optional(),
+        bcc: z.array(z.string()).optional(),
+        subject: z.string().optional(),
+      },
+      outputSchema: draftSummarySchema,
+    },
+    async ({ messageId, bodyHtml, to, cc, bcc, subject }) => {
+      if (!context.mailProvider) {
+        return toolError('The mailbox is not connected — connect the mailbox on the Sync page.');
+      }
+
+      let summary;
+      try {
+        summary = await updateDraftService(context.db, context.mailProvider, { messageId, bodyHtml, to, cc, bcc, subject });
+      } catch (error) {
+        return draftToolError(error);
+      }
+
+      return {
+        content: [{ type: 'text', text: `Updated draft "${summary.subject}" (message ${summary.messageId}).` }],
+        structuredContent: { ...summary },
+      };
+    },
+  );
+
+  server.registerTool(
+    'delete-draft',
+    {
+      description: 'Deletes a draft from the mailbox\'s Drafts folder. Drafts only; touches no other message.',
+      inputSchema: { messageId: z.number().describe('Synced draft message id') },
+      outputSchema: { messageId: z.number(), deleted: z.literal(true) },
+    },
+    async ({ messageId }) => {
+      if (!context.mailProvider) {
+        return toolError('The mailbox is not connected — connect the mailbox on the Sync page.');
+      }
+
+      let result;
+      try {
+        result = await deleteDraftService(context.db, context.mailProvider, messageId);
+      } catch (error) {
+        return draftToolError(error);
+      }
+
+      return {
+        content: [{ type: 'text', text: `Deleted draft (message ${result.messageId}).` }],
+        structuredContent: { ...result },
+      };
     },
   );
 

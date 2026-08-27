@@ -36,6 +36,7 @@ export interface MailMessage {
   hasAttachments: boolean;
   webLink: string;
   internetMessageId: string;
+  isDraft: boolean;
 }
 
 export interface MailWindow {
@@ -57,6 +58,37 @@ export interface MailFolderRef {
   wellKnown: WellKnownFolder | null;
 }
 
+export interface CreateDraftInput {
+  to: MailRecipient[];
+  cc?: MailRecipient[];
+  bcc?: MailRecipient[];
+  subject: string;
+  /** Already-composed HTML — signature appending happens in the service, not the provider. */
+  bodyHtml: string;
+}
+
+export interface CreateReplyDraftInput {
+  replyAll: boolean;
+  /** Already-composed supplied HTML + signature, inserted above the mailbox's quoted original. */
+  prefixHtml: string;
+}
+
+export interface UpdateDraftInput {
+  bodyHtml?: string;
+  to?: MailRecipient[];
+  cc?: MailRecipient[];
+  bcc?: MailRecipient[];
+  subject?: string;
+}
+
+/** Thrown when the mailbox no longer has a message the caller referenced by its Graph id (sent/discarded since last sync). */
+export class MailMessageGoneError extends Error {
+  constructor(graphMessageId: string) {
+    super(`The mailbox no longer has message ${graphMessageId}`);
+    this.name = 'MailMessageGoneError';
+  }
+}
+
 export interface MailProvider {
   /** Full folder tree, including folders the sync service will exclude (Junk/Deleted Items/Drafts). */
   listFolders(): Promise<MailFolderNode[]>;
@@ -73,4 +105,14 @@ export interface MailProvider {
   verifyWriteAccess(): Promise<void>;
   /** Sets a message's read/unread state via the mailbox's minimal single-property write. 'not-found' when the mailbox no longer has the message (e.g. deleted); other failures throw. */
   setMessageReadState(graphMessageId: string, isRead: boolean): Promise<'updated' | 'not-found'>;
+  /** Creates a fresh draft in the Drafts folder with exactly the given recipients/subject/body. Returns the created message (isDraft: true). */
+  createDraft(input: CreateDraftInput): Promise<MailMessage>;
+  /** Creates a reply/reply-all draft via the mailbox's own reply machinery, then inserts prefixHtml above the quoted original. Throws MailMessageGoneError for an unknown/gone graph id. */
+  createReplyDraft(graphMessageId: string, input: CreateReplyDraftInput): Promise<MailMessage>;
+  /** Patches exactly the supplied fields on a draft. Throws MailMessageGoneError when the mailbox no longer has the message. */
+  updateDraft(graphMessageId: string, input: UpdateDraftInput): Promise<MailMessage>;
+  /** Removes a draft from the Drafts folder. Throws MailMessageGoneError when already gone. */
+  deleteDraft(graphMessageId: string): Promise<void>;
+  /** Pages the entire Drafts folder, no date filter, invoking onMessage per draft — the sync run's Drafts phase (FR-015). */
+  fetchDraftMessages(onMessage: (message: MailMessage) => void | Promise<void>): Promise<void>;
 }

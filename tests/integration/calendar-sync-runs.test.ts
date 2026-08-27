@@ -101,6 +101,24 @@ class GatedMailProvider implements MailProvider {
   async setMessageReadState(): Promise<'updated' | 'not-found'> {
     return 'updated';
   }
+
+  async createDraft(): Promise<MailMessage> {
+    throw new Error('not implemented');
+  }
+
+  async createReplyDraft(): Promise<MailMessage> {
+    throw new Error('not implemented');
+  }
+
+  async updateDraft(): Promise<MailMessage> {
+    throw new Error('not implemented');
+  }
+
+  async deleteDraft(): Promise<void> {
+    throw new Error('not implemented');
+  }
+
+  async fetchDraftMessages(): Promise<void> {}
 }
 
 let app: FastifyInstance;
