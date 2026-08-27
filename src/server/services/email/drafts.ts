@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
-import { emailAddresses, emailConversations, emailMessages, emailParticipants } from '../../db/schema.js';
+import { emailAddresses, emailConversations, emailMessages, emailParticipants, taskConversations } from '../../db/schema.js';
 import type * as schema from '../../db/schema.js';
 import { getAppState } from '../app-state.js';
 import { deriveBodyText } from './sync.js';
@@ -62,6 +62,16 @@ function findOrCreateAddressId(db: AppDb, address: string): number {
     .returning()
     .all();
   return created!.id;
+}
+
+/** Graph reports 0001-01-01T00:00:00Z for an unsent draft's sentDateTime — order it by when it showed up instead. */
+function resolveSentAt(message: MailMessage): number {
+  const parsedSentAt = Date.parse(message.sentDateTime);
+  if (Number.isFinite(parsedSentAt) && parsedSentAt > 0) {
+    return parsedSentAt;
+  }
+  const receivedAt = Date.parse(message.receivedDateTime);
+  return Number.isFinite(receivedAt) && receivedAt > 0 ? receivedAt : Date.now();
 }
 
 function findOrCreateConversationId(db: AppDb, graphConversationId: string): number {
@@ -131,7 +141,7 @@ export function ingestNewDraft(db: AppDb, message: MailMessage): number {
         bodyOriginal: message.body.content,
         bodyContentType: message.body.contentType,
         bodyText,
-        sentAt: Date.parse(message.sentDateTime),
+        sentAt: resolveSentAt(message),
         receivedAt: Date.parse(message.receivedDateTime),
         isRead: message.isRead,
         importance: message.importance,
@@ -172,7 +182,7 @@ export function mirrorDraftMessage(db: AppDb, messageId: number, message: MailMe
         bodyOriginal: message.body.content,
         bodyContentType: message.body.contentType,
         bodyText,
-        sentAt: Date.parse(message.sentDateTime),
+        sentAt: resolveSentAt(message),
         receivedAt: Date.parse(message.receivedDateTime),
         isRead: message.isRead,
         importance: message.importance,
@@ -205,7 +215,15 @@ export function removeDraftMessage(db: AppDb, messageId: number, conversationId:
       .where(eq(emailMessages.conversationId, conversationId))
       .limit(1)
       .all();
-    if (!remaining) {
+    const [linked] = tx
+      .select({ taskId: taskConversations.taskId })
+      .from(taskConversations)
+      .where(eq(taskConversations.conversationId, conversationId))
+      .limit(1)
+      .all();
+    // A linked conversation outlives its last draft — dropping it would cascade the task link away,
+    // and a later sync of the sent copy would rebuild the conversation under a new id.
+    if (!remaining && !linked) {
       tx.delete(emailConversations).where(eq(emailConversations.id, conversationId)).run();
     }
   });

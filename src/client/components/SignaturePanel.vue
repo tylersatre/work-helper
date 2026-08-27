@@ -14,6 +14,8 @@ async function fetchSignature(): Promise<void> {
     const body = (await response.json()) as { signature: string | null };
     savedSignature.value = body.signature;
     signature.value = body.signature ?? '';
+  } catch {
+    errorMessage.value = 'Could not load the saved signature — reload the page';
   } finally {
     loaded.value = true;
   }
@@ -34,6 +36,8 @@ async function onSave(): Promise<void> {
       return;
     }
     savedSignature.value = body.signature ?? null;
+  } catch {
+    errorMessage.value = 'Could not save the signature — try again';
   } finally {
     saving.value = false;
   }
@@ -46,7 +50,7 @@ onMounted(fetchSignature);
   <section data-testid="signature-section" class="signature-panel">
     <h3>Signature</h3>
 
-    <p v-if="loaded && savedSignature === null" class="signature-empty">No signature saved yet.</p>
+    <p v-if="loaded && !errorMessage && savedSignature === null" class="signature-empty">No signature saved yet.</p>
 
     <textarea
       v-model="signature"

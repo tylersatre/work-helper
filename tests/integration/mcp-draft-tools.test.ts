@@ -127,6 +127,18 @@ async function deleteDraft(args: Record<string, unknown>) {
   return client!.callTool({ name: 'delete-draft', arguments: args });
 }
 
+async function createTask(args: Record<string, unknown>) {
+  return client!.callTool({ name: 'create-task', arguments: args });
+}
+
+async function linkConversationToTask(args: Record<string, unknown>) {
+  return client!.callTool({ name: 'link-conversation-to-task', arguments: args });
+}
+
+async function getTask(args: Record<string, unknown>) {
+  return client!.callTool({ name: 'get-task', arguments: args });
+}
+
 function graphMessageIdOf(storeMessageId: number): string {
   const [row] = db.select({ graphMessageId: emailMessages.graphMessageId }).from(emailMessages).where(eq(emailMessages.id, storeMessageId)).limit(1).all();
   return row!.graphMessageId;
@@ -293,6 +305,18 @@ describe('US1: create-draft — fresh drafts land in the Drafts folder', () => {
     expect(mailProvider.draftsInMailbox()).toEqual([]);
   });
 
+  it("a fresh draft's conversation sorts first, not last, even though Graph reports an unset sentDateTime for it (regression)", async () => {
+    buildTestApp();
+    await startAndConnect();
+    await syncAll();
+
+    const result = await createDraft({ to: ['sam.rivera@example.com'], subject: 'Brand new draft', bodyHtml: '<p>Hi</p>' });
+    const { conversationId } = result.structuredContent as { conversationId: number };
+
+    const { conversations } = (await listConversations()).structuredContent as { conversations: { id: number }[] };
+    expect(conversations[0]!.id).toBe(conversationId);
+  });
+
   it('fails with "A body is required" for an empty/whitespace bodyHtml and creates nothing (AC4, FR-022)', async () => {
     buildTestApp();
     await startAndConnect();
@@ -341,6 +365,19 @@ describe('US2: create-reply-draft — replies shaped like Outlook', () => {
 
     const conversation = (await getConversation(conversationId)).structuredContent as { messages: { isDraft: boolean }[] };
     expect(conversation.messages.filter((m) => m.isDraft)).toHaveLength(2);
+  });
+
+  it("a reply draft does not retitle its conversation to \"Re: ...\", even though Graph reports an unset sentDateTime for it (regression)", async () => {
+    buildTestApp();
+    await startAndConnect();
+    await syncAll();
+    const conversationId = await conversationIdBySubject('Pricing question');
+    const messageId = await messageIdByBody(conversationId, 'Can you send the updated pricing sheet?');
+
+    await createReplyDraft({ messageId, bodyHtml: '<p>Sure, attached.</p>' });
+
+    const { conversations } = (await listConversations()).structuredContent as { conversations: { id: number; subject: string }[] };
+    expect(conversations.find((c) => c.id === conversationId)!.subject).toBe('Pricing question');
   });
 
   it('fails with "Message 999999 not found" for an unsynced messageId and creates nothing (AC2, FR-022)', async () => {
@@ -407,6 +444,21 @@ describe('US3: update-draft / delete-draft — guarded by the draft flag', () =>
     expect(conversation.messages.some((m) => m.id === reply.messageId)).toBe(false);
     expect(conversation.messages.some((m) => m.id === replyAll.messageId)).toBe(true);
     expect(conversation.messages.filter((m) => !m.isDraft)).toHaveLength(1);
+  });
+
+  it("deleting a draft-only conversation's last draft does not drop its task link (regression)", async () => {
+    buildTestApp();
+    await startAndConnect();
+    const created = (await createDraft({ to: ['sam.rivera@example.com'], subject: 'Linked draft', bodyHtml: '<p>Hi</p>' }))
+      .structuredContent as { messageId: number; conversationId: number };
+    const task = await createTask({ title: 'Follow up' });
+    const taskId = (task.structuredContent as { id: number }).id;
+    await linkConversationToTask({ taskId, conversationId: created.conversationId });
+
+    await deleteDraft({ messageId: created.messageId });
+
+    const after = (await getTask({ taskId })).structuredContent as { conversations: { id: number }[] };
+    expect(after.conversations.some((c) => c.id === created.conversationId)).toBe(true);
   });
 
   it('update-draft and delete-draft against a non-draft message id each fail and change nothing (AC3, FR-011, SC-005)', async () => {

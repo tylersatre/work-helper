@@ -205,7 +205,8 @@ export class FakeMailProvider implements MailProvider {
       subject: input.subject,
       body: { content: input.bodyHtml, contentType: 'html' },
       receivedDateTime: now,
-      sentDateTime: now,
+      // Graph reports this sentinel for an unsent message's sentDateTime.
+      sentDateTime: '0001-01-01T00:00:00Z',
       from: this.options.ownerAddress ? { address: this.options.ownerAddress } : null,
       toRecipients: input.to,
       ccRecipients: input.cc ?? [],
@@ -267,7 +268,8 @@ export class FakeMailProvider implements MailProvider {
       subject,
       body: { content: bodyContent, contentType: 'html' },
       receivedDateTime: now,
-      sentDateTime: now,
+      // Graph reports this sentinel for an unsent message's sentDateTime.
+      sentDateTime: '0001-01-01T00:00:00Z',
       from: this.options.ownerAddress ? { address: this.options.ownerAddress } : null,
       toRecipients: to,
       ccRecipients: cc,
